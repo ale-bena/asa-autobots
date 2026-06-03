@@ -1,0 +1,10 @@
+console.log("================================================================================");
+console.log("🧠 ASA Autobots - LLM Coordinator Agent Runner (Bootstrap)");
+console.log("================================================================================");
+console.log("Status: Currently in Design and Requirements phase.");
+console.log("Branch: overhaul-design");
+console.log("");
+console.log("Refer to the system prompt and tool specifications at:");
+console.log("👉 http://localhost:3000/#prompt-design");
+console.log("👉 design_and_requirements.md");
+console.log("================================================================================");

@@ -1,0 +1,10 @@
+console.log("================================================================================");
+console.log("🤖 ASA Autobots - BDI/PDDL Agent Runner (Bootstrap)");
+console.log("================================================================================");
+console.log("Status: Currently in Design and Requirements phase.");
+console.log("Branch: overhaul-design");
+console.log("");
+console.log("Refer to the specifications and plan library definitions at:");
+console.log("👉 http://localhost:3000/#plan-library");
+console.log("👉 design_and_requirements.md");
+console.log("================================================================================");
