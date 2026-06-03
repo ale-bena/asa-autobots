@@ -1,6 +1,6 @@
 # Requirements and Design Specification: Overhauled Deliveroo Multi-Agent System
 
-This document outlines the goals, requirements, architectural options, agent designs, tool interfaces, and PDDL modeling specs for the overhauled `asa-autobots` multi-agent coordination system. It represents the problem domain starting from first-principles design.
+This document outlines the goals, requirements, architectural options, agent designs, tool interfaces, plan libraries, reactive replanning mechanisms, and PDDL modeling specs for the overhauled `asa-autobots` multi-agent coordination system.
 
 ---
 
@@ -14,20 +14,209 @@ The environment features:
 - Impeding obstacles (crates) that block pathing but can be pushed.
 - Two distinct agents that must collaborate to maximize cumulative team scores while meeting external constraints, solving math challenges, and respecting dynamic rules.
 
-### The Hybrid Agent Paradigm
-We divide cognitive and physical responsibilities between two agents with distinct reasoning profiles:
-1. **Agent 1: PDDL Agent (The Planner)**
-   - **Characteristics**: Fast, deterministic, and symbolic. 
-   - **Role**: Compiles local spatial surroundings (obstacles, crates, packages) into a symbolic state representation, runs an automated planner (via PDDL solver), and executes actions (movement, picking up, delivery, pushing crates).
-   - **Constraint**: Cannot access the LLM; acts purely on symbolic facts and local sensory inputs.
-2. **Agent 2: LLM Agent (The Coordinator)**
-   - **Characteristics**: Flexible, cognitive, and communicative.
-   - **Role**: Interacts with the human/admin client, evaluates mathematical query strings, parses fuzzy instructions, modifies behavioral policy filters, and coordinates collaborative plans with Agent 1.
-   - **Capabilities**: Can call tools, query LLM backend models, and reason using natural language.
+### 1.1. Special Missions: Three Levels of Complexity
+The system is built to handle specific, external challenge prompts ("Special Missions") divided into three tiers:
+
+1. **Level 1: Atomic Special Missions**
+   * *Description*: Simple, short-term instructions (e.g. "go to cell X, Y", "deliver current packages").
+   * *Handling*: Solved via direct, single-turn LLM tool calls mapping to atomic agent commands.
+2. **Level 2: Intermediate Special Missions**
+   * *Description*: Persistent, non-atomic constraints that remain active for the duration of the match.
+   * *Examples*:
+     - *Stack Constraints*: "Deliver stacks of exactly 3 parcels to double reward" or "exactly 5 parcels to receive 0.3x reward."
+     - *Spatial Modifiers*: "Deliver in (x1, y1) for 5x points" or "deliver in (x2, y2) for 0 points."
+     - *Reward Filtering*: "If you deliver parcels with a score higher than 10, receive 0 reward."
+     - *Avoidance Penalties*: "Do not go through tile (x, y), otherwise you lose 50 points."
+   * *Handling*: The LLM agent parses these rules and injects them into the **Policy Evaluation Engine** of the agents, dynamically modifying path costs and pickup utilities.
+3. **Level 3: Coordination & Communication Missions**
+   * *Description*: Requires active communication, synchronization, and joint planning between both agents.
+   * *Examples*:
+     - *Rendezvous*: "Move both agents to the neighborhood of position (x, y) within a maximum distance of 3, and wait for each other."
+     - *Relay Handoffs*: "If a parcel is initially picked up by one agent and later delivered by the other agent, receive a 200 pts bonus."
+     - *Synchronized Waiting (Red Light, Green Light)*: "All agents must move to an odd-numbered row and wait for our message before moving again."
+   * *Handling*: Managed via a decentralized Peer-to-Peer (P2P) JSON handshake protocol over the game-chat channel, backed by stateful tracking in the Policy Engine.
 
 ---
 
-## 2. LLM System Prompt Design
+## 2. Rationale & Purposes for Key Architecture Choices
+
+To design a robust, real-time agent system, we justify our choices as follows:
+
+| Architectural Choice | Purpose & Justification |
+| :--- | :--- |
+| **Hybrid LLM/PDDL split** | The LLM acts as the high-level cognitive coordinator (translating user prompts, calculating math, enforcing global policy) because symbolic solvers cannot parse natural language or algebraic strings. The PDDL solver is relegated strictly to resolving complex, spatial obstacle-pushing states. |
+| **Decoupled Policy Engine** | Standard planners compiled from raw state would require re-solving PDDL whenever a rule changes. By decoupling rules (e.g., avoid tiles, stack sizes) into an intermediate Policy Engine, we can filter goal selection and modify A* graph weights on the fly without invoking the planner. |
+| **A* / PDDL Hybrid Pathing** | The PDDL solver is highly CPU-intensive and slow (often taking 1–3 seconds per solve). We use a fast local A* algorithm (running in <1ms) for atomic pathfinding. PDDL is called only when A* detects that a path is blocked by a pushable crate. |
+| **Decentralized P2P Comms** | Connecting agents directly via game-chat preserves agent autonomy and makes the system resilient to central server failures. It is modeled after standard distributed academic multi-agent systems. |
+
+---
+
+## 3. Addressing PDDL Solver Slowness: Hybrid Planning
+
+The online PDDL solver is a bottleneck. In a dynamic, real-time game where environment updates occur multiple times per second, calling the PDDL solver every tick leads to sluggishness and failures.
+
+To address this, we restrict PDDL planner calls to **Macro-Level Decisions** and utilize a **Plan Library** and **A* Router** for **Micro-Level Execution**.
+
+```mermaid
+graph TD
+    Goal[Goal: Deliver Parcel] --> CheckCrates{Path Blocked by Crate?}
+    CheckCrates -->|No| PlanLib[Plan Library: A* Navigation Recipe]
+    CheckCrates -->|Yes| PddlCall[Invoke PDDL Solver]
+    PlanLib --> Execute[Atomic Motor Action]
+    PddlCall --> CompilePlan[Compile Action Sequence]
+    CompilePlan --> Execute
+```
+
+### PDDL Solver Trigger Criteria
+The PDDL solver is ONLY invoked when:
+1. An agent detects a target parcel or delivery path is blocked by a crate, requiring a sequence of push actions.
+2. The agent is carrying a crate and needs to solve how to position it on a "crate-move-capable" tile to clear a passage.
+3. The layout contains complex labyrinth-style crate obstacles that A* cannot route around.
+
+For all other activities—such as default navigation to a parcel, moving to a delivery zone, or exploring—the agent utilizes the **Plan Library**.
+
+---
+
+## 4. The Plan Library
+
+The BDI (Belief-Desire-Intention) agent maintains a **Plan Library**: a set of pre-compiled behavioral recipes that execute immediately without solver latency.
+
+### 4.1. Structure of a Plan Recipe
+Each recipe in the library defines:
+- **Trigger**: The desire or event that activates the plan.
+- **Preconditions**: Belief conditions that must be true to execute the plan.
+- **Body**: A generator function yielding atomic actions (e.g. `move`, `pickup`, `putdown`, `wait`).
+- **Effects/Goals**: The post-conditions achieved upon success.
+
+### 4.2. Concrete Plan Recipes
+We define four core plans in the library:
+
+```javascript
+// Example conceptual implementation of the Plan Library Recipes
+export const PlanLibrary = {
+    /**
+     * Navigation Plan (A* Route)
+     */
+    NavigateTo: {
+        preconditions: (beliefs, targetX, targetY) => {
+            // Path must exist and not be blocked by unpushable crates
+            return beliefs.grid.hasPath(beliefs.me.x, beliefs.me.y, targetX, targetY);
+        },
+        body: function* (beliefs, targetX, targetY) {
+            const path = beliefs.grid.findAStarPath(
+                beliefs.me.x, beliefs.me.y, 
+                targetX, targetY, 
+                beliefs.policy // respects avoid-tiles & penalties
+            );
+            for (const step of path) {
+                yield { action: 'move', target: step };
+            }
+        }
+    },
+
+    /**
+     * Standard Delivery Plan
+     */
+    CollectAndDeliver: {
+        preconditions: (beliefs, parcelId) => {
+            return beliefs.parcels.has(parcelId) && !beliefs.isCarrying(parcelId);
+        },
+        body: function* (beliefs, parcelId) {
+            const parcel = beliefs.parcels.get(parcelId);
+            // 1. Route to parcel
+            yield* PlanLibrary.NavigateTo.body(beliefs, parcel.x, parcel.y);
+            // 2. Pickup
+            yield { action: 'pickup', target: parcelId };
+            // 3. Find nearest delivery zone
+            const deliveryZone = beliefs.grid.findNearestDelivery(beliefs.me.x, beliefs.me.y, beliefs.policy);
+            // 4. Route to delivery zone
+            yield* PlanLibrary.NavigateTo.body(beliefs, deliveryZone.x, deliveryZone.y);
+            // 5. Deliver
+            yield { action: 'deliver', target: parcelId };
+        }
+    },
+
+    /**
+     * Cooperative Handoff (Rendezvous Dropper)
+     */
+    RendezvousDrop: {
+        preconditions: (beliefs, coopId, x, y) => {
+            return beliefs.policy.activeCooperation?.coordinationId === coopId && beliefs.carrying.size > 0;
+        },
+        body: function* (beliefs, coopId, x, y) {
+            // 1. Move to rendezvous spot
+            yield* PlanLibrary.NavigateTo.body(beliefs, x, y);
+            // 2. Drop cargo
+            yield { action: 'putdown' };
+            // 3. Move to adjacent clear space to clear the drop zone
+            const escapeTile = beliefs.grid.findAdjacentClearTile(x, y);
+            yield* PlanLibrary.NavigateTo.body(beliefs, escapeTile.x, escapeTile.y);
+            // 4. Signal readiness to partner
+            yield { action: 'say', payload: { type: 'RELEASE_CARGO', coopId } };
+        }
+    }
+};
+```
+
+---
+
+## 5. Dynamic Replanning and Reactive Obstacle Avoidance
+
+In a multi-agent environment, paths are highly dynamic. Other moving agents or spawned crates can block planned paths on any given tick. Invoking the slow PDDL solver for a simple collision would cause the agent to freeze.
+
+We implement a **Three-Tier Reactive Replanning Hierarchy** to handle obstacles with minimal latency.
+
+```mermaid
+graph TD
+    Blocked[Action Blocked / Next Tile Occupied] --> Wait{Tick Delay < Limit?}
+    Wait -->|Yes| ActionWait[Wait 1 Tick]
+    Wait -->|No| LocalAS{Local A* Bypass Possible?}
+    LocalAS -->|Yes| ActionAS[Re-Route via A*]
+    LocalAS -->|No| ResolvePDDL[Invoke PDDL Solver / Re-Plan Macro]
+```
+
+### 5.1. Tier 1: Local Waiting (Collision Back-off)
+- **Problem**: Another agent is briefly stepping through the tile our plan requires.
+- **Solution**: The agent stands still (yields a `wait` action) for up to 2 consecutive ticks. In most cases, the blocking agent moves away, allowing the original plan to resume without any recalculation.
+
+### 5.2. Tier 2: Local A* Re-routing (Bypass)
+- **Problem**: The path is blocked by a stationary agent or newly spawned item, but alternate routes exist.
+- **Solution**: The agent marks the blocked tile as temporarily impassable and runs a local A* query to the current sub-goal. If a path is found, the current plan's steps are updated in memory instantly (<1ms).
+
+### 5.3. Tier 3: Macro PDDL Re-Solving
+- **Problem**: A pushable crate has blocked the only available corridor, or our target parcel was picked up by a competitor.
+- **Solution**: The current plan is aborted. The agent compiles the new state representation and triggers the PDDL solver to compute a new macro-sequence (e.g. pushing the crate out of the way or selecting a new target parcel).
+
+---
+
+## 6. Modeling and Integrating Special Missions
+
+We model Special Missions inside our BDI loop by updating beliefs and policies, which in turn influences how plans are selected and executed:
+
+### 6.1. Level 2 Persistent Rules Modeling
+The Policy Engine maintains state rules that alter both the A* pathfinder weights and the BDI goal selection:
+
+1. **Stack Size Constraints (e.g. exactly 3 parcels)**:
+   - *Model*: The Policy Engine exposes a rule `requiredDeliveryStackSize = 3`.
+   - *Integration*: In the `CollectAndDeliver` plan, the delivery sub-action is blocked from executing until the BDI agent's belief base indicates `carrying.size == 3`. The agent continues searching for parcels until the criteria is met.
+2. **Avoidance Tiles (e.g. avoid (x,y) or lose 50pts)**:
+   - *Model*: The Policy Engine adds `(x,y)` to `avoidTiles` with a weight penalty of `50`.
+   - *Integration*: The A* pathfinder adds the penalty to the cost of that node. The pathfinder will naturally route around the tile unless it is the only path and the reward exceeds the penalty.
+3. **Reward Penalties (e.g. no reward if score > 10)**:
+   - *Model*: The Policy Engine sets a filtering rule `maxRewardLimit = 10`.
+   - *Integration*: The belief update loop automatically filters visible parcels, flagging parcels with rewards greater than 10 as "inactive/unfeasible", removing them from planning desires.
+
+### 6.2. Level 3 Coordination Modeling
+1. **Rendezvous Exchange**:
+   - *Model*: An active cooperation contract object is stored: `{ type: 'RENDEZVOUS', x, y, role }`.
+   - *Integration*: Bypasses standard parcel collection goals. The agent instantiates the `RendezvousDrop` plan from the library if it is the dropper, or navigates to the neighboring cell and waits for the `RELEASE_CARGO` chat signal if it is the picker.
+2. **Red Light, Green Light**:
+   - *Model*: Policy state `hold = true` is set upon receiving a "RED_LIGHT" signal.
+   - *Integration*: The BDI main execution loop intercepts all outgoing actions, forcing the agent to execute a `wait` command until `hold` is set to `false` by a "GREEN_LIGHT" signal.
+
+---
+
+## 7. LLM System Prompt Design
 
 To guarantee robust operation and limit non-deterministic completions, the LLM agent must be configured with a strict, instructions-first system prompt. Below is the proposed design for the LLM Coordinator's system prompt.
 
@@ -96,11 +285,11 @@ On every operational frame, the LLM is supplied with a serialized JSON view of t
 
 ---
 
-## 3. Tool Design & API Requirements
+## 8. Tool Design & API Requirements
 
 The LLM Agent uses function calling to translate cognitive choices into actions. Below are the JSON schema designs for these tools.
 
-### 3.1. Evaluate Math Expression
+### 8.1. Evaluate Math Expression
 - **Name**: `evaluate_math_expression`
 - **Description**: Evaluates mathematical/arithmetic expressions (e.g., `'5 * 4'`, `'(12 - 2) / 2'`) before calling coordinates.
 - **Parameters**:
@@ -117,7 +306,7 @@ The LLM Agent uses function calling to translate cognitive choices into actions.
   }
   ```
 
-### 3.2. Move Agent to Coordinate
+### 8.2. Move Agent to Coordinate
 - **Name**: `move_agent_to_coordinate`
 - **Description**: Directs an agent to navigate immediately to target coordinates.
 - **Parameters**:
@@ -136,7 +325,7 @@ The LLM Agent uses function calling to translate cognitive choices into actions.
   }
   ```
 
-### 3.3. Apply Agent Rules (Policy Modifiers)
+### 8.3. Apply Agent Rules (Policy Modifiers)
 - **Name**: `apply_agent_rules`
 - **Description**: Updates environmental policy rules (avoid tiles, score minimums) for an agent.
 - **Parameters**:
@@ -170,7 +359,7 @@ The LLM Agent uses function calling to translate cognitive choices into actions.
   }
   ```
 
-### 3.4. Cooperate with Agent
+### 8.4. Cooperate with Agent
 - **Name**: `cooperate_with_agent`
 - **Description**: Initiates a multi-agent coordination contract.
 - **Parameters**:
@@ -200,7 +389,7 @@ The LLM Agent uses function calling to translate cognitive choices into actions.
   }
   ```
 
-### 3.5. Instruct Agent to Say
+### 8.5. Instruct Agent to Say
 - **Name**: `instruct_agent_to_say`
 - **Description**: Command an agent to output a public message in the environment.
 - **Parameters**:
@@ -217,7 +406,7 @@ The LLM Agent uses function calling to translate cognitive choices into actions.
 
 ---
 
-## 4. State Representation and Communication Architecture
+## 9. State Representation and Communication Architecture
 
 The state system can be structured using one of two primary architectural topologies:
 
@@ -269,26 +458,7 @@ To prevent deadlocks and clarify synchronization, we define the following P2P me
 
 ---
 
-## 5. Policy Evaluation Engine
-
-A **Policy Evaluation Engine** is essential. It acts as an abstraction layer between the high-level cognitive desires (from the LLM or user rules) and the low-level physical planners (PDDL solver & A* pathfinder).
-
-```mermaid
-graph TD
-    LLM[LLM Coordinator] -->|Injects Rule Modifiers| PolicyEngine[Policy Evaluation Engine]
-    Sensing[Sensing Events] -->|Updates Grid/Objects| Beliefs[Belief Set]
-    Beliefs & PolicyEngine -->|Weighted Grid & Goals| PddlCompiler[PDDL Compiler & A* Pathfinder]
-    PddlCompiler -->|Action Plan| Execution[Motor Execution]
-```
-
-### Why Do We Need It?
-1. **Decoupling Planning from Business Rules**: The PDDL planner should not hardcode rules like "avoid tile (2,3)" or "only deliver when carrying 3 parcels." Instead, the PDDL compiler queries the Policy Engine to adjust the generated problem file dynamically.
-2. **Soft Cost Adjustments in Route Planning**: Standard PDDL and A* treat paths binarily (passable or blocked). The Policy Engine translates soft rules (e.g. "avoid coordinates near enemies") into numerical weight multipliers in the A* graph, routing the agent around high-risk zones without declaring them entirely impassable.
-3. **Commitment & Intentions Tracking**: The Policy Engine tracks whether an agent is locked into a high-priority mission (e.g. rendezvous) or is free to pursue default local goals. It prevents the PDDL agent from abandoning cooperation due to short-term parcel spawns.
-
----
-
-## 6. PDDL Modeling for Crate Movements
+## 10. PDDL Modeling for Crate Movements
 
 A core challenge is managing heavy obstacle crates blocking paths. Pushing a crate requires specific mechanics. Crucially, **crates can only be moved onto "crate move capable" tiles**.
 

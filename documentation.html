@@ -201,6 +201,8 @@
             flex-direction: column;
             gap: 0.35rem;
             flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 5px;
         }
 
         .nav-item a {
@@ -374,6 +376,15 @@
             letter-spacing: -0.5px;
         }
 
+        h3 {
+            font-family: var(--font-heading);
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+            color: var(--text-main);
+        }
+
         p {
             color: var(--text-muted);
             margin-bottom: 1.5rem;
@@ -506,6 +517,53 @@
             width: 16px;
             height: 16px;
             color: var(--primary);
+        }
+
+        /* --- Special Missions Grid --- */
+        .missions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1.25rem;
+            margin-top: 1.5rem;
+        }
+
+        .mission-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .mission-card.lvl-1 { border-left: 3px solid var(--accent-cyan); }
+        .mission-card.lvl-2 { border-left: 3px solid var(--accent-orange); }
+        .mission-card.lvl-3 { border-left: 3px solid var(--secondary); }
+
+        .mission-lvl {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .lvl-1 .mission-lvl { color: var(--accent-cyan); }
+        .lvl-2 .mission-lvl { color: var(--accent-orange); }
+        .lvl-3 .mission-lvl { color: var(--secondary); }
+
+        .mission-title {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .mission-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
         }
 
         /* --- Interactive Terminal (Section 2) --- */
@@ -898,6 +956,48 @@
             font-size: 1.5rem;
         }
 
+        /* --- 3-Tier replanning accordions --- */
+        .replanning-container {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .replan-card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+        }
+
+        .replan-card-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .replan-num {
+            background-color: var(--primary);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.8rem;
+        }
+
+        .replan-title {
+            font-family: var(--font-heading);
+            font-weight: 600;
+            color: var(--text-main);
+            font-size: 1.05rem;
+        }
+
         /* Responsive Layout adjustments */
         @media (max-width: 1024px) {
             .app-container {
@@ -918,6 +1018,9 @@
                 padding: 2rem;
             }
             .agent-deck {
+                grid-template-columns: 1fr;
+            }
+            .missions-grid {
                 grid-template-columns: 1fr;
             }
             .arch-section {
@@ -954,6 +1057,21 @@
                     <li class="nav-item active" data-sec="overview">
                         <a href="#overview">Overview & Goals</a>
                     </li>
+                    <li class="nav-item" data-sec="choices-rationale">
+                        <a href="#choices-rationale">Architecture & Choices</a>
+                    </li>
+                    <li class="nav-item" data-sec="slowness-mitigation">
+                        <a href="#slowness-mitigation">PDDL Slowness & Pathing</a>
+                    </li>
+                    <li class="nav-item" data-sec="plan-library">
+                        <a href="#plan-library">The Plan Library</a>
+                    </li>
+                    <li class="nav-item" data-sec="dynamic-replanning">
+                        <a href="#dynamic-replanning">Dynamic Replanning</a>
+                    </li>
+                    <li class="nav-item" data-sec="special-modeling">
+                        <a href="#special-modeling">Modeling Special Missions</a>
+                    </li>
                     <li class="nav-item" data-sec="prompt-design">
                         <a href="#prompt-design">LLM Prompt Design</a>
                     </li>
@@ -962,9 +1080,6 @@
                     </li>
                     <li class="nav-item" data-sec="state-comms">
                         <a href="#state-comms">State & Comms</a>
-                    </li>
-                    <li class="nav-item" data-sec="policy-engine">
-                        <a href="#policy-engine">Policy Engine</a>
                     </li>
                     <li class="nav-item" data-sec="pddl-model">
                         <a href="#pddl-model">PDDL Crate Modeling</a>
@@ -1048,12 +1163,244 @@
                         </ul>
                     </div>
                 </div>
+
+                <h3 style="margin-top: 2.5rem;">Special Mission Challenge Tiers</h3>
+                <p>The system is built to intercept and handle specific, external challenge prompts ("Special Missions") of varying complexities:</p>
+
+                <div class="missions-grid">
+                    <div class="mission-card lvl-1">
+                        <span class="mission-lvl">Level 1</span>
+                        <div class="mission-title">Atomic Missions</div>
+                        <div class="mission-desc">Relatively simple, short-term tasks. For example, immediate navigation instructions or commands to deliver current parcels. Solved via small additions to the LLM agent's direct tools.</div>
+                    </div>
+                    <div class="mission-card lvl-2">
+                        <span class="mission-lvl">Level 2</span>
+                        <div class="mission-title">Intermediate Missions</div>
+                        <div class="mission-desc">Persistent, non-atomic constraints active for the duration of the match. For example, stack size restrictions (delivering exactly 3 parcels at a time) or avoid tiles with point penalties.</div>
+                    </div>
+                    <div class="mission-card lvl-3">
+                        <span class="mission-lvl">Level 3</span>
+                        <div class="mission-title">Coordination Missions</div>
+                        <div class="mission-desc">Complex missions requiring active inter-agent communication. Examples include cooperative cargo handoffs (rendezvous exchanges) or synchronized "red light, green light" waiting.</div>
+                    </div>
+                </div>
             </section>
 
-            <!-- 2. LLM System Prompt Design -->
-            <section id="prompt-design">
+            <!-- 2. Choices & Rationale -->
+            <section id="choices-rationale">
                 <div class="section-header">
                     <div class="section-num">2</div>
+                    <h2>Architecture Rationale & Purposes for Choices</h2>
+                </div>
+                <p>To design an efficient, real-time agent system, we justify our core structural choices below:</p>
+
+                <div class="card">
+                    <div class="card-title">Why use a Hybrid LLM / PDDL Agent Split?</div>
+                    <p style="margin-bottom: 0;">LLMs are excellent at parsing fuzzy instructions, evaluating math, and reasoning about cooperative strategies, but they cannot act in real-time or solve micro-spatial movements deterministically. PDDL is an exact, symbolic solver, but cannot parse text or execute calculations. Combining them lets the LLM act as the "cognitive coordinator" and the PDDL/BDI logic act as the "physical planner".</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Why decouple the Policy Engine from the Planner?</div>
+                    <p style="margin-bottom: 0;">If rules like "avoid tile (3,4)" or "wait for 3 parcels" were compiled directly into PDDL state descriptions, every rule update would require a full planner call. By pulling rules into a separate Policy Engine, we can alter path costs (A*) and block delivery goals on the fly, entirely bypassing the planner for rule modifications.</p>
+                </div>
+            </section>
+
+            <!-- 3. PDDL Slowness Mitigation -->
+            <section id="slowness-mitigation">
+                <div class="section-header">
+                    <div class="section-num">3</div>
+                    <h2>PDDL Slowness & Pathing Mitigation</h2>
+                </div>
+                <p>The online PDDL solver is highly CPU-intensive and slow, often taking <strong>1–3 seconds</strong> to return a plan. In a dynamic, real-time grid-world, calling PDDL for every basic movement step causes the agent to lag, freeze, and fail.</p>
+                
+                <div class="card">
+                    <div class="card-title">Our Solution: Macro vs. Micro Planning</div>
+                    <p>We restrict PDDL planner calls to <strong>Macro-Level Decisions</strong>, utilizing local <strong>A* pathfinding</strong> (< 1ms) and pre-compiled <strong>Plan Library Recipes</strong> for micro-execution. PDDL is ONLY called when:</p>
+                    <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.95rem;">
+                        <li>A target parcel or delivery path is blocked by a crate, requiring push actions.</li>
+                        <li>An agent needs to figure out how to push a crate onto a "crate-move-capable" tile to clear a corridor.</li>
+                        <li>Complex, maze-like obstacle configurations arise that A* cannot resolve.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 4. The Plan Library -->
+            <section id="plan-library">
+                <div class="section-header">
+                    <div class="section-num">4</div>
+                    <h2>The Plan Library</h2>
+                </div>
+                <p>To avoid PDDL solver latency, the physical BDI agent utilizes a <strong>Plan Library</strong> of pre-defined recipes. These recipes execute instantly for standard, recurring tasks.</p>
+
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchTab(event, 'recipe-nav')">NavigateTo Recipe</button>
+                    <button class="tab-btn" onclick="switchTab(event, 'recipe-collect')">CollectAndDeliver Recipe</button>
+                    <button class="tab-btn" onclick="switchTab(event, 'recipe-coop')">RendezvousDrop Recipe</button>
+                </div>
+
+                <div id="recipe-nav" class="tab-content active">
+                    <div class="terminal-window">
+                        <div class="terminal-header">
+                            <div class="terminal-dots">
+                                <div class="dot dot-red"></div>
+                                <div class="dot dot-yellow"></div>
+                                <div class="dot dot-green"></div>
+                            </div>
+                            <span class="terminal-title">NavigateTo.js</span>
+                        </div>
+                        <div class="terminal-body">
+                            <pre><code>NavigateTo: {
+    preconditions: (beliefs, targetX, targetY) => {
+        // Path must exist and not be blocked by unpushable obstacles
+        return beliefs.grid.hasPath(beliefs.me.x, beliefs.me.y, targetX, targetY);
+    },
+    body: function* (beliefs, targetX, targetY) {
+        const path = beliefs.grid.findAStarPath(
+            beliefs.me.x, beliefs.me.y, 
+            targetX, targetY, 
+            beliefs.policy // respects avoid-tiles & penalties
+        );
+        for (const step of path) {
+            yield { action: 'move', target: step };
+        }
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="recipe-collect" class="tab-content">
+                    <div class="terminal-window">
+                        <div class="terminal-header">
+                            <div class="terminal-dots">
+                                <div class="dot dot-red"></div>
+                                <div class="dot dot-yellow"></div>
+                                <div class="dot dot-green"></div>
+                            </div>
+                            <span class="terminal-title">CollectAndDeliver.js</span>
+                        </div>
+                        <div class="terminal-body">
+                            <pre><code>CollectAndDeliver: {
+    preconditions: (beliefs, parcelId) => {
+        return beliefs.parcels.has(parcelId) && !beliefs.isCarrying(parcelId);
+    },
+    body: function* (beliefs, parcelId) {
+        const parcel = beliefs.parcels.get(parcelId);
+        // 1. Navigate to parcel
+        yield* PlanLibrary.NavigateTo.body(beliefs, parcel.x, parcel.y);
+        // 2. Perform pickup
+        yield { action: 'pickup', target: parcelId };
+        // 3. Find nearest delivery zone
+        const deliveryZone = beliefs.grid.findNearestDelivery(beliefs.me.x, beliefs.me.y, beliefs.policy);
+        // 4. Navigate to delivery zone
+        yield* PlanLibrary.NavigateTo.body(beliefs, deliveryZone.x, deliveryZone.y);
+        // 5. Deliver cargo
+        yield { action: 'deliver', target: parcelId };
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="recipe-coop" class="tab-content">
+                    <div class="terminal-window">
+                        <div class="terminal-header">
+                            <div class="terminal-dots">
+                                <div class="dot dot-red"></div>
+                                <div class="dot dot-yellow"></div>
+                                <div class="dot dot-green"></div>
+                            </div>
+                            <span class="terminal-title">RendezvousDrop.js</span>
+                        </div>
+                        <div class="terminal-body">
+                            <pre><code>RendezvousDrop: {
+    preconditions: (beliefs, coopId, x, y) => {
+        return beliefs.policy.activeCooperation?.coordinationId === coopId && beliefs.carrying.size > 0;
+    },
+    body: function* (beliefs, coopId, x, y) {
+        // 1. Move to rendezvous coordinates
+        yield* PlanLibrary.NavigateTo.body(beliefs, x, y);
+        // 2. Drop cargo
+        yield { action: 'putdown' };
+        // 3. Move to adjacent tile to clear drop spot
+        const escapeTile = beliefs.grid.findAdjacentClearTile(x, y);
+        yield* PlanLibrary.NavigateTo.body(beliefs, escapeTile.x, escapeTile.y);
+        // 4. Signal readiness to partner
+        yield { action: 'say', payload: { type: 'RELEASE_CARGO', coopId } };
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. Dynamic Replanning -->
+            <section id="dynamic-replanning">
+                <div class="section-header">
+                    <div class="section-num">5</div>
+                    <h2>Dynamic Replanning & Obstacle Avoidance</h2>
+                </div>
+                <p>In a real-world match, other agents or obstacles will frequently block your path. We implement a <strong>Three-Tier Reactive Replanning Hierarchy</strong> to handle collisions instantly without freezing:</p>
+
+                <div class="replanning-container">
+                    
+                    <div class="replan-card">
+                        <div class="replan-card-header">
+                            <div class="replan-num">1</div>
+                            <div class="replan-title">Tier 1: Local Waiting (Collision Back-off)</div>
+                        </div>
+                        <p style="margin-bottom:0; font-size:0.9rem;">If the next tile in the plan is occupied, the agent pauses (yields a wait command) for up to 2 ticks. Often, the blocking agent is just passing through and moves away, allowing the plan to resume without any recalculation lag.</p>
+                    </div>
+
+                    <div class="replan-card">
+                        <div class="replan-card-header">
+                            <div class="replan-num">2</div>
+                            <div class="replan-title">Tier 2: Local A* Re-routing (Bypass)</div>
+                        </div>
+                        <p style="margin-bottom:0; font-size:0.9rem;">If the obstacle remains stationary, the agent marks that specific tile as temporarily impassable and runs a local A* path query (< 1ms) to the current sub-goal. This dynamically routes the agent around the blocking node instantly.</p>
+                    </div>
+
+                    <div class="replan-card">
+                        <div class="replan-card-header">
+                            <div class="replan-num">3</div>
+                            <div class="replan-title">Tier 3: Macro PDDL Re-solving</div>
+                        </div>
+                        <p style="margin-bottom:0; font-size:0.9rem;">If the entire corridor is blocked by a pushable crate or the target parcel is taken by a competitor, the current plan is aborted. The agent compiles the new state and invokes the slow PDDL solver to generate a fresh sequence of crate pushes or select a new target.</p>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- 6. Modeling Special Missions -->
+            <section id="special-modeling">
+                <div class="section-header">
+                    <div class="section-num">6</div>
+                    <h2>Modeling Special Missions</h2>
+                </div>
+                <p>Special Missions are modeled inside the BDI execution loop by updating the agent's Belief Set and Policy parameters:</p>
+
+                <div class="card">
+                    <div class="card-title">Level 2 Persistent Rules Integration</div>
+                    <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem;">
+                        <li><strong>Stack Size Constraints</strong>: If the policy defines <code>requiredDeliveryStackSize = 3</code>, the delivery action in the plan is blocked until <code>carrying.size == 3</code>. The agent continues gathering parcels in the meantime.</li>
+                        <li><strong>Avoidance Tiles</strong>: Avoid tiles are injected with cost penalties (e.g. <code>+50</code>). The A* pathfinder automatically calculates paths routing around the tile, unless no other path exists and the parcel reward justifies crossing it.</li>
+                        <li><strong>Reward Filters</strong>: If a rule states <code>maxRewardLimit = 10</code>, parcels with rewards > 10 are flagged as inactive in beliefs, removing them from candidate desires.</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Level 3 Coordination Integration</div>
+                    <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem;">
+                        <li><strong>Rendezvous Contracts</strong>: An active contract <code>{ type: 'RENDEZVOUS', x, y }</code> is set. The BDI agent bypasses normal parcel collection, executes the <code>RendezvousDrop</code> plan, drops cargo, clears the tile, and signals completion.</li>
+                        <li><strong>Red Light, Green Light</strong>: Upon receiving a "RED_LIGHT" message, a policy flag <code>hold = true</code> is set. The execution loop intercepts all commands, forcing the physical agent to wait until a "GREEN_LIGHT" is received.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 7. LLM System Prompt Design -->
+            <section id="prompt-design">
+                <div class="section-header">
+                    <div class="section-num">7</div>
                     <h2>LLM System Prompt Design</h2>
                 </div>
                 <p>To guarantee robust operation and limit non-deterministic completions, the LLM agent uses a strict, instruction-driven system prompt and dynamic state updates.</p>
@@ -1151,10 +1498,10 @@ RESPONSE FORMATTING LIMITS
                 </div>
             </section>
 
-            <!-- 3. Tool Design -->
+            <!-- 8. Tool Design -->
             <section id="tool-design">
                 <div class="section-header">
-                    <div class="section-num">3</div>
+                    <div class="section-num">8</div>
                     <h2>Tool Design & API Requirements</h2>
                 </div>
                 <p>The LLM agent translates cognitive commands into structural actions by invoking specialized function declarations. Click each tool below to inspect its schema:</p>
@@ -1327,10 +1674,10 @@ RESPONSE FORMATTING LIMITS
                 </div>
             </section>
 
-            <!-- 4. State Representation & Comms -->
+            <!-- 9. State Representation & Comms -->
             <section id="state-comms">
                 <div class="section-header">
-                    <div class="section-num">4</div>
+                    <div class="section-num">9</div>
                     <h2>State Representation & Communication Architecture</h2>
                 </div>
                 <p>We evaluate two topological layouts for managing world state and execution flows between the agents:</p>
@@ -1441,48 +1788,10 @@ RESPONSE FORMATTING LIMITS
                 </table>
             </section>
 
-            <!-- 5. Policy Evaluation Engine -->
-            <section id="policy-engine">
-                <div class="section-header">
-                    <div class="section-num">5</div>
-                    <h2>Policy Evaluation Engine</h2>
-                </div>
-                <p>A <strong>Policy Evaluation Engine</strong> is a crucial intermediate layer. It sits between high-level cognitive desires (from the LLM or user rules) and low-level physical solvers (PDDL and A*), translating abstract restrictions into planning criteria.</p>
-
-                <div class="policy-flow">
-                    <div class="flow-step">
-                        <div class="flow-step-icon">1</div>
-                        <div class="flow-step-title">Desire / Rule Injection</div>
-                        <div class="flow-step-desc">LLM sets a policy like "Avoid coordinate (4,5) with penalty 1000"</div>
-                    </div>
-                    <div class="flow-arrow">➔</div>
-                    <div class="flow-step">
-                        <div class="flow-step-icon">2</div>
-                        <div class="flow-step-title">Policy Evaluation</div>
-                        <div class="flow-step-desc">Engine translates rule into soft graph weights or constraints</div>
-                    </div>
-                    <div class="flow-arrow">➔</div>
-                    <div class="flow-step">
-                        <div class="flow-step-icon">3</div>
-                        <div class="flow-step-title">Plan Compiler</div>
-                        <div class="flow-step-desc">A* and PDDL solver reads the modified graph & builds plans</div>
-                    </div>
-                </div>
-
-                <div class="card" style="margin-top: 1.5rem;">
-                    <div class="card-title">Key Core Functions</div>
-                    <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.95rem;">
-                        <li><strong>Decoupled Constraints</strong>: Keeps the planner clean of transient rules like stack sizes or specific delivery zone filters.</li>
-                        <li><strong>Soft Path Weights</strong>: Incorporates rules like "avoid coordinates near enemies" into routing costs rather than blocking the path completely.</li>
-                        <li><strong>Intention Commitment</strong>: Holds the agent accountable to cooperative contracts, ensuring it doesn't get distracted by nearby spawned items.</li>
-                    </ul>
-                </div>
-            </section>
-
-            <!-- 6. PDDL Modeling -->
+            <!-- 10. PDDL Modeling -->
             <section id="pddl-model">
                 <div class="section-header">
-                    <div class="section-num">6</div>
+                    <div class="section-num">10</div>
                     <h2>PDDL Modeling for Crate Movements</h2>
                 </div>
                 <p>Obstacle crates block travel paths but can be pushed. Pushing must respect a core restriction: <strong>crates can only be moved onto "crate move capable" tiles</strong>.</p>
