@@ -1147,6 +1147,13 @@
             border-color: var(--primary);
             outline: none;
         }
+        .form-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%239ca3af' d='M2 0L0 2h4zm0 5L0 3h4z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 8px 10px;
+        }
         .form-textarea {
             font-family: var(--font-mono);
             font-size: 0.8rem;
@@ -1336,6 +1343,9 @@
                         Connected to Deliveroo
                     </div>
                 </div>
+                <button class="theme-toggle-btn" id="clearCommentsBtn" onclick="clearAllComments()" style="background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.3); margin-bottom: 0.5rem;">
+                    Clear All Comments
+                </button>
                 <button class="theme-toggle-btn" id="themeToggle">
                     <span id="themeBtnText">Toggle Light Mode</span>
                 </button>
@@ -1359,25 +1369,27 @@
                 </div>
                 <p class="commentable" data-comment-id="overview-p1">The goal of this project is to build a highly cooperative, hybrid multi-agent delivery team operating inside the <strong>Deliveroo</strong> grid-world environment. The environment consists of a spatial grid with obstacles, spawn zones, delivery zones, moving packages, and blocking crates that can only be pushed onto specialized tiles.</p>
                 
+                <p class="commentable" data-comment-id="overview-p2"><strong>Spatial Directional Constraints (One-way Tiles)</strong>: The map features directional arrows (e.g. `↓`, `→`, `←`, `↑`) painted on specific tiles. These act as one-way gates, preventing movement from the pointed-to tile back onto the directional tile (moving against the arrow's direction is strictly blocked). For example, if a tile contains `↓` (pointing down), moving from the tile below it (the pointed tile) upwards onto the `↓` tile is prohibited. These invariants are represented as directed edges in A* routing and directed adjacency relations in PDDL.</p>
+
                 <div class="agent-deck">
                     <div class="agent-card pddl commentable" data-comment-id="agent-card-pddl">
                         <div>
                             <span class="agent-badge">Agent 1</span>
-                            <div class="agent-name">PDDL Agent</div>
-                            <div class="agent-desc">A deterministic, planner-driven physical agent focused on optimal, symbolic local pathfinding and task execution.</div>
+                            <div class="agent-name">PDDL Agent (Partner)</div>
+                            <div class="agent-desc">A physical planner and executor. To mitigate online solver latency, we avoid sending a raw tile-by-tile adjacency representation to PDDL. Instead, the PDDL solver is strictly leveraged for high-level <strong>Plan Selection</strong> (e.g. selecting target clusters or corridor-clearing pushes) and local A* pathfinding is used for step-by-step navigation.</div>
                         </div>
                         <ul class="agent-features">
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Compiles state to PDDL files
+                                Abstracted Cluster Adjacency mapping
                             </li>
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Performs A* & PDDL solves
+                                Multi-Priority Task Queue
                             </li>
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Directly pushes obstacle crates
+                                Executes Plan Preemption
                             </li>
                         </ul>
                     </div>
@@ -1385,28 +1397,28 @@
                     <div class="agent-card llm commentable" data-comment-id="agent-card-llm">
                         <div>
                             <span class="agent-badge">Agent 2</span>
-                            <div class="agent-name">LLM Agent</div>
-                            <div class="agent-desc">A cognitive, language-driven coordination agent acting as the strategic brain, handling admin requests and policy updates.</div>
+                            <div class="agent-name">LLM Agent (Master)</div>
+                            <div class="agent-desc">The master reasoning brain and coordinator. It intercepts natural language challenge instructions (Special Missions) from the Admin, executes the multi-turn agentic loop, evaluates math, and instructs the partner agent's movement and chat outputs.</div>
                         </div>
                         <ul class="agent-features">
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Evaluates algebraic equations
+                                System Prompt with XML Guardrails
                             </li>
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Directs cooperative contracts
+                                Multi-turn Agentic Math loops
                             </li>
                             <li class="agent-feature-item">
                                 <svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
-                                Dynamically modifies BDI rules
+                                Translates natural language to rules
                             </li>
                         </ul>
                     </div>
                 </div>
 
                 <h3 class="commentable" data-comment-id="missions-header">Special Mission Challenge Tiers</h3>
-                <p class="commentable" data-comment-id="missions-p">The system is built to intercept and handle specific, external challenge prompts ("Special Missions") of varying complexities:</p>
+                <p class="commentable" data-comment-id="missions-p">The system is built to intercept and handle highly generalized, dynamic challenge prompts ("Special Missions"). Since these challenges can contain highly arbitrary conditionals, loops, and math puzzles, we use a flexible rule evaluation engine that parses natural language specifications into dynamic executable structures (like JSON ASTs) capable of evaluating boolean expressions (e.g., `stack_size < reward`) at every tick:</p>
 
                 <div class="missions-grid">
                     <div class="mission-card lvl-1 commentable" data-comment-id="mission-card-lvl1">
@@ -1417,12 +1429,12 @@
                     <div class="mission-card lvl-2 commentable" data-comment-id="mission-card-lvl2">
                         <span class="mission-lvl">Level 2</span>
                         <div class="mission-title">Intermediate Missions</div>
-                        <div class="mission-desc">Persistent, non-atomic constraints active for the duration of the match. For example, stack size restrictions (delivering exactly 3 parcels at a time) or avoid tiles with point penalties.</div>
+                        <div class="mission-desc">Persistent, non-atomic constraints active for the duration of the match. Supports generic conditional operators (e.g., comparing stack size vs rewards) and avoidance penalties.</div>
                     </div>
                     <div class="mission-card lvl-3 commentable" data-comment-id="mission-card-lvl3">
                         <span class="mission-lvl">Level 3</span>
                         <div class="mission-title">Coordination Missions</div>
-                        <div class="mission-desc">Complex missions requiring active inter-agent communication. Examples include cooperative cargo handoffs (rendezvous exchanges) or synchronized "red light, green light" waiting.</div>
+                        <div class="mission-desc">Complex missions requiring active inter-agent communication, structural contracts, and semantic intent translation for signals (such as red-light/green-light).</div>
                     </div>
                 </div>
             </section>
@@ -1437,7 +1449,7 @@
 
                 <div class="card commentable" data-comment-id="rationale-card-split">
                     <div class="card-title">Why use a Hybrid LLM / PDDL Agent Split?</div>
-                    <p style="margin-bottom: 0;">LLMs are excellent at parsing fuzzy instructions, evaluating math, and reasoning about cooperative strategies, but they cannot act in real-time or solve micro-spatial movements deterministically. PDDL is an exact, symbolic solver, but cannot parse text or execute calculations. Combining them lets the LLM act as the "cognitive coordinator" and the PDDL/BDI logic act as the "physical planner".</p>
+                    <p style="margin-bottom: 0;">LLMs excel at parsing fuzzy instructions, evaluating math, and reasoning about cooperative strategies, but cannot act in real-time or navigate deterministically. PDDL is an exact, symbolic solver but cannot parse text or handle mathematical puzzles. Combining them lets the LLM act as the master coordinator (instructing the partner agent via game chat) while the PDDL solver functions as the physical macro-planner.</p>
                 </div>
 
                 <div class="card commentable" data-comment-id="rationale-card-policy">
@@ -1452,15 +1464,15 @@
                     <div class="section-num">3</div>
                     <h2>PDDL Slowness & Pathing Mitigation</h2>
                 </div>
-                <p class="commentable" data-comment-id="slowness-p1">The online PDDL solver is highly CPU-intensive and slow, often taking <strong>1–3 seconds</strong> to return a plan. In a dynamic, real-time grid-world, calling PDDL for every basic movement step causes the agent to lag, freeze, and fail.</p>
+                <p class="commentable" data-comment-id="slowness-p1">The online PDDL solver is highly CPU-intensive and slow, taking <strong>1–3 seconds</strong> to return a plan. We bypass this limitation by using the PDDL solver strictly for high-level **Plan Selection** and local crate-pushing, rather than tile-by-tile pathing.</p>
                 
                 <div class="card commentable" data-comment-id="slowness-card-sol">
-                    <div class="card-title">Our Solution: Macro vs. Micro Planning</div>
-                    <p>We restrict PDDL planner calls to <strong>Macro-Level Decisions</strong>, utilizing local <strong>A* pathfinding</strong> (< 1ms) and pre-compiled <strong>Plan Library Recipes</strong> for micro-execution. PDDL is ONLY called when:</p>
+                    <div class="card-title">Our Solution: Macro vs. Micro Planning (Map Clustering)</div>
+                    <p>Instead of sending a raw tile-by-tile representation to PDDL, the map is abstracted into **macro-clusters**. PDDL is responsible for high-level plan selection and solving crate-pushing sequences inside the cluster network. We run local **A* pathfinding** (< 1ms) and pre-compiled **Plan Library Recipes** for micro-execution. PDDL is ONLY called when:</p>
                     <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.95rem;">
-                        <li>A target parcel or delivery path is blocked by a crate, requiring push actions.</li>
+                        <li>A target path is blocked by a crate, requiring a sequence of push actions.</li>
                         <li>An agent needs to figure out how to push a crate onto a "crate-move-capable" tile to clear a corridor.</li>
-                        <li>Complex, maze-like obstacle configurations arise that A* cannot resolve.</li>
+                        <li>High-level cluster routing or task target re-selection (Plan Selection) is triggered.</li>
                     </ul>
                 </div>
             </section>
@@ -1469,9 +1481,11 @@
             <section id="plan-library">
                 <div class="section-header">
                     <div class="section-num">4</div>
-                    <h2>The Plan Library</h2>
+                    <h2>The Plan Library & Preemption</h2>
                 </div>
-                <p class="commentable" data-comment-id="planlib-p1">To avoid PDDL solver latency, the physical BDI agent utilizes a <strong>Plan Library</strong> of pre-defined recipes. These recipes execute instantly for standard, recurring tasks.</p>
+                <p class="commentable" data-comment-id="planlib-p1">To avoid PDDL solver latency, the physical BDI agent utilizes a <strong>Plan Library</strong> of pre-defined recipes. If a dynamic obstacle blocks movement during a recipe, it triggers Tier 1/2 reactive pathing. If a new task arrives during a recipe, or if the LLM agent initiates a cooperative parcel handoff contract, the agent coordinates via a prioritized queue. High-importance tasks preempt the current recipe, pushing its state onto a stack to resume once the higher-priority contract is closed.</p>
+ 
+                <p class="commentable" data-comment-id="planlib-preemption"><strong>Task Queue & Preemption (Cooperative Handoff Scenario)</strong>: The agent maintains a prioritized queue (Coop Contracts > Admin Moves > Default Parcel Delivery). When the BDI agent is executing a `NavigateTo` recipe to collect a standard parcel (Priority 3) and the LLM Master proposes a cooperative handoff (Priority 1) at location `(x, y)`, the BDI agent immediately accepts the proposal, pauses the current navigation generator, pushes it to a *Suspended Plan stack*, and executes the `RendezvousDrop` plan. Once the rendezvous is completed or closed, the BDI agent pops the suspended travel recipe from the stack and resumes navigation.</p>
 
                 <div class="tabs-header">
                     <button class="tab-btn active" onclick="switchTab(event, 'recipe-nav')">NavigateTo Recipe</button>
@@ -1580,8 +1594,8 @@
                 <div class="section-header">
                     <div class="section-num">5</div>
                     <h2>Dynamic Replanning & Obstacle Avoidance</h2>
+                    <p class="commentable" data-comment-id="replan-p1">In a real-world match, other agents or obstacles will frequently block your path. We implement a <strong>Three-Tier Reactive Replanning Hierarchy</strong>. The executor distinguishes between the tiers sequentially: (1) Tier 1 is selected when the blocking obstacle is transient (wait <= 2 ticks); (2) Tier 2 is selected if the wait exceeds 2 ticks but alternate path coordinates exist; (3) Tier 3 is selected when pathfinding returns `unreachable` or target objectives become invalid, forcing a macro replan.</p>
                 </div>
-                <p class="commentable" data-comment-id="replan-p1">In a real-world match, other agents or obstacles will frequently block your path. We implement a <strong>Three-Tier Reactive Replanning Hierarchy</strong> to handle collisions instantly without freezing:</p>
 
                 <div class="replanning-container">
                     
@@ -1590,7 +1604,7 @@
                             <div class="replan-num">1</div>
                             <div class="replan-title">Tier 1: Local Waiting (Collision Back-off)</div>
                         </div>
-                        <p style="margin-bottom:0; font-size:0.9rem;">If the next tile in the plan is occupied, the agent pauses (yields a wait command) for up to 2 ticks. Often, the blocking agent is just passing through and moves away, allowing the plan to resume without any recalculation lag.</p>
+                        <p style="margin-bottom:0; font-size:0.9rem;"><strong>Trigger:</strong> Next step in the active recipe is occupied. The agent pauses (yields a wait command) for up to 2 ticks. Often, the blocking agent is just passing through and moves away, allowing the plan to resume without any recalculation lag.</p>
                     </div>
 
                     <div class="replan-card commentable" data-comment-id="replan-card-tier2">
@@ -1598,15 +1612,15 @@
                             <div class="replan-num">2</div>
                             <div class="replan-title">Tier 2: Local A* Re-routing (Bypass)</div>
                         </div>
-                        <p style="margin-bottom:0; font-size:0.9rem;">If the obstacle remains stationary, the agent marks that specific tile as temporarily impassable and runs a local A* path query (< 1ms) to the current sub-goal. This dynamically routes the agent around the blocking node instantly.</p>
+                        <p style="margin-bottom:0; font-size:0.9rem;"><strong>Trigger:</strong> Wait time exceeds 2 ticks, but alternate paths to the sub-goal exist. The agent marks that specific tile as temporarily impassable and runs a local A* path query (< 1ms) to the current sub-goal. This dynamically routes the agent around the blocking node instantly.</p>
                     </div>
 
                     <div class="replan-card commentable" data-comment-id="replan-card-tier3">
                         <div class="replan-card-header">
                             <div class="replan-num">3</div>
-                            <div class="replan-title">Tier 3: Macro PDDL Re-solving</div>
+                            <div class="replan-title">Tier 3: Macro PDDL Re-solving & Realignment</div>
                         </div>
-                        <p style="margin-bottom:0; font-size:0.9rem;">If the entire corridor is blocked by a pushable crate or the target parcel is taken by a competitor, the current plan is aborted. The agent compiles the new state and invokes the slow PDDL solver to generate a fresh sequence of crate pushes or select a new target.</p>
+                        <p style="margin-bottom:0; font-size:0.9rem;"><strong>Trigger:</strong> Pathfinder returns `unreachable` (indicating a corridor blocked by a pushable crate) or the target parcel is deleted. The current plan is aborted. The agent compiles the new state and invokes the PDDL solver to generate a fresh sequence of crate pushes or select a new target.</p>
                     </div>
 
                 </div>
@@ -1621,19 +1635,21 @@
                 <p class="commentable" data-comment-id="modeling-p1">Special Missions are modeled inside the BDI execution loop by updating the agent's Belief Set and Policy parameters:</p>
 
                 <div class="card commentable" data-comment-id="modeling-card-lvl2">
-                    <div class="card-title">Level 2 Persistent Rules Integration</div>
+                    <div class="card-title">Level 2 Persistent Rules Integration (AST Engine)</div>
+                    <p style="margin-bottom: 1rem;">To support highly generalized logic statements, the Policy Engine parses rules into **Abstract Syntax Trees (ASTs)**. Conditional expressions evaluate live variables (e.g. <code>carrying.size</code>, <code>reward</code>, <code>steps</code>) using standard comparison and logical operators at every tick:</p>
                     <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem;">
-                        <li><strong>Stack Size Constraints</strong>: If the policy defines <code>requiredDeliveryStackSize = 3</code>, the delivery action in the plan is blocked until <code>carrying.size == 3</code>. The agent continues gathering parcels in the meantime.</li>
+                        <li><strong>Stack Size Constraints</strong>: If the policy defines <code>carrying.size < reward</code>, the delivery action in the plan is blocked until the condition is met.</li>
                         <li><strong>Avoidance Tiles</strong>: Avoid tiles are injected with cost penalties (e.g. <code>+50</code>). The A* pathfinder automatically calculates paths routing around the tile, unless no other path exists and the parcel reward justifies crossing it.</li>
                         <li><strong>Reward Filters</strong>: If a rule states <code>maxRewardLimit = 10</code>, parcels with rewards > 10 are flagged as inactive in beliefs, removing them from candidate desires.</li>
                     </ul>
                 </div>
 
                 <div class="card commentable" data-comment-id="modeling-card-lvl3">
-                    <div class="card-title">Level 3 Coordination Integration</div>
+                    <div class="card-title">Level 3 Coordination Integration (LLM Translation)</div>
+                    <p style="margin-bottom: 1rem;">The LLM Master acts as an **Intent & State Translator**, parsing arbitrary natural language signals. Rather than searching for exact string matches, the LLM semantically interprets statements (e.g. "You can now move" or "it is now red light") and evaluates complex riddles to toggle policy states:</p>
                     <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem;">
                         <li><strong>Rendezvous Contracts</strong>: An active contract <code>{ type: 'RENDEZVOUS', x, y }</code> is set. The BDI agent bypasses normal parcel collection, executes the <code>RendezvousDrop</code> plan, drops cargo, clears the tile, and signals completion.</li>
-                        <li><strong>Red Light, Green Light</strong>: Upon receiving a "RED_LIGHT" message, a policy flag <code>hold = true</code> is set. The execution loop intercepts all commands, forcing the physical agent to wait until a "GREEN_LIGHT" is received.</li>
+                        <li><strong>Signal & Riddle Interpretation</strong>: The LLM parses signals (e.g., "if 2+2 is 3 then it's red light" -> checks math -> determines it evaluates to false, so movement is not held; whereas "stop moving immediately" -> sets <code>hold = true</code>) causing the physical agent to wait until a resume signal is translated.</li>
                     </ul>
                 </div>
             </section>
@@ -1645,6 +1661,8 @@
                     <h2>LLM System Prompt Design</h2>
                 </div>
                 <p class="commentable" data-comment-id="prompt-p1">To guarantee robust operation and limit non-deterministic completions, the LLM agent uses a strict, instruction-driven system prompt and dynamic state updates.</p>
+ 
+                <p class="commentable" data-comment-id="prompt-guardrails"><strong>Prompt Engineering Guardrails</strong>: System instructions are structured using clear **XML tag boundaries** to separate rules from snapshots, mandate **Chain-of-Thought (CoT) reasoning** in a scratchpad before emitting tool calls, and include **few-shot demonstration pairs** showing how to solve coordinate math before making tool calls.</p>
 
                 <div class="tabs-header">
                     <button class="tab-btn active" onclick="switchTab(event, 'sys-prompt')">System Prompt</button>
@@ -1745,7 +1763,7 @@ RESPONSE FORMATTING LIMITS
                     <div class="section-num">8</div>
                     <h2>Tool Design & API Requirements</h2>
                 </div>
-                <p class="commentable" data-comment-id="tool-p1">The LLM agent translates cognitive commands into structural actions by invoking specialized function declarations. Click each tool below to inspect its schema:</p>
+                <p class="commentable" data-comment-id="tool-p1">The LLM agent translates cognitive commands into structural actions by invoking specialized function declarations. To ensure the LLM understands when to execute coordination versus execution, the JSON schemas include explicit multiagentic descriptions detailing their purposes (e.g. proposing contracts versus speaking messages). The parameters are defined in standard OpenAI-compatible tool schema format.</p>
 
                 <div class="tools-grid">
                     
@@ -1979,7 +1997,7 @@ RESPONSE FORMATTING LIMITS
                 </div>
 
                 <h3 class="commentable" data-comment-id="schema-header">P2P Collaboration Message Schema</h3>
-                <p class="commentable" data-comment-id="schema-p">To synchronize actions via chat and avoid deadlocks, the following JSON messaging protocol is defined:</p>
+                <p class="commentable" data-comment-id="schema-p">To synchronize actions via chat and avoid deadlocks, the following JSON messaging protocol is defined. Contracts transition through explicit, sequential lifecycle states (Proposed, Committed/Accepted, Arrived/Ready, Released, Closed). In addition to coordinates, they assign explicit roles (Dropper vs Picker) to prevent agents from blocking each other:</p>
 
                 <table>
                     <thead>
@@ -2003,27 +2021,27 @@ RESPONSE FORMATTING LIMITS
                         <tr class="commentable" data-comment-id="row-msg-propose">
                             <td class="msg-type">PROPOSE_CONTRACT</td>
                             <td><code>{ "type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y" }</code></td>
-                            <td>LLM Coordinator proposes a joint task (e.g. rendezvous at x,y).</td>
+                            <td>LLM Coordinator proposes a joint task (e.g. rendezvous at x,y). Sets state to **Proposed**.</td>
                         </tr>
                         <tr class="commentable" data-comment-id="row-msg-accept">
                             <td class="msg-type">ACCEPT_CONTRACT</td>
                             <td><code>{ "type": "ACCEPT_CONTRACT", "coopId" }</code></td>
-                            <td>PDDL agent accepts the proposal and switches its planning state.</td>
+                            <td>PDDL agent accepts the proposal and switches its planning state to **Committed**.</td>
                         </tr>
                         <tr class="commentable" data-comment-id="row-msg-ready">
                             <td class="msg-type">SIGNAL_READY</td>
                             <td><code>{ "type": "SIGNAL_READY", "coopId", "role" }</code></td>
-                            <td>Sent when an agent arrives at the target coordinate.</td>
+                            <td>Sent when an agent arrives at the target coordinate. Transition to **Arrived**. Dropper exits tile, Picker waits.</td>
                         </tr>
                         <tr class="commentable" data-comment-id="row-msg-release">
                             <td class="msg-type">RELEASE_CARGO</td>
                             <td><code>{ "type": "RELEASE_CARGO", "coopId" }</code></td>
-                            <td>Dropper signals that they dropped the parcel and cleared the tile.</td>
+                            <td>Dropper signals that they dropped the parcel and cleared the escape path. State transitions to **Released**.</td>
                         </tr>
                         <tr class="commentable" data-comment-id="row-msg-close">
                             <td class="msg-type">CLOSE_CONTRACT</td>
                             <td><code>{ "type": "CLOSE_CONTRACT", "coopId" }</code></td>
-                            <td>Handoff is complete, both return to standard operations.</td>
+                            <td>Handoff is complete, state is **Closed**. Both return to standard operations.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -2033,10 +2051,12 @@ RESPONSE FORMATTING LIMITS
             <section id="pddl-model">
                 <div class="section-header">
                     <div class="section-num">10</div>
-                    <h2>PDDL Modeling for Crate Movements</h2>
+                    <h2>PDDL Modeling & Deadlock Avoidance</h2>
                 </div>
                 <p class="commentable" data-comment-id="pddl-p1">Obstacle crates block travel paths but can be pushed. Pushing must respect a core restriction: <strong>crates can only be moved onto "crate move capable" tiles</strong>.</p>
                 
+                <p class="commentable" data-comment-id="deadlock-avoidance"><strong>Deadlock Avoidance Strategies</strong>: To prevent grid collisions, BDI agents execute a P2P path reservation protocol, broadcasting their intended path sequence on each step. If a path overlap is detected, the agent with lower priority yields (moves to a neighbor tile or waits). In rendezvous contracts, clear Role Assignments (Dropper drops cargo and steps back; Picker waits outside and steps in) and Escape Path invariants prevent deadlocking in narrow corridors. If no escape path exists, the contract is aborted, and agents resolve the deadlock reactively.</p>
+
                 <div class="terminal-window commentable" data-comment-id="code-pddl-domain">
                     <div class="terminal-header">
                         <div class="terminal-dots">
@@ -2137,13 +2157,23 @@ RESPONSE FORMATTING LIMITS
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">API Authorization Key (Optional)</label>
-                            <input type="password" id="llmKey" class="form-input" placeholder="Enter API key if required...">
+                            <label class="form-label">API Authorization Key (Loaded from .env)</label>
+                            <div style="display: flex; gap: 0.5rem; width: 100%;">
+                                <input type="password" id="llmKey" class="form-input" placeholder="Loading key..." style="flex-grow: 1;">
+                                <button type="button" class="btn btn-secondary" id="toggleKeyVisibilityBtn" onclick="toggleKeyVisibility()" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; width: auto; flex-shrink: 0; white-space: nowrap;">👁️ Show</button>
+                                <button type="button" class="btn btn-secondary" onclick="fetchServerConfig()" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; width: auto; flex-shrink: 0; white-space: nowrap;">🔄 Load Env</button>
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Model Identifier</label>
-                            <input type="text" id="llmModel" class="form-input" value="llama-3.3-70b-lmstudio">
+                            <label class="form-label">Model Selection</label>
+                            <select id="llmModelSelect" class="form-input form-select" onchange="handleModelDropdownChange()">
+                                <option value="llama-3.3-70b-lmstudio" selected>llama-3.3-70b-lmstudio (LM Studio)</option>
+                                <option value="gpt-4o-mini">gpt-4o-mini (OpenAI)</option>
+                                <option value="gemini-1.5-flash">gemini-1.5-flash (Gemini)</option>
+                                <option value="custom">Custom Model...</option>
+                            </select>
+                            <input type="text" id="llmModelCustom" class="form-input" style="display:none; margin-top: 0.5rem;" placeholder="Enter custom model ID...">
                         </div>
 
                         <div class="form-group">
@@ -2190,6 +2220,81 @@ RESPONSE FORMATTING LIMITS
 
     <!-- JavaScript Interactions -->
     <script>
+        // --- Hot Reload Client Logic ---
+        const reloadSource = new EventSource('/api/reload');
+        reloadSource.onmessage = (event) => {
+            if (event.data === 'reload') {
+                console.log('[hot-reload] documentation.html changed! Refreshing page...');
+                window.location.reload();
+            }
+        };
+
+        // --- Load server configuration on startup ---
+        async function fetchServerConfig() {
+            try {
+                const res = await fetch('/api/config');
+                if (res.ok) {
+                    const config = await res.json();
+                    if (config.baseURL) document.getElementById('llmHost').value = config.baseURL;
+                    if (config.apiKey) {
+                        const maskedKey = config.apiKey.length > 8 
+                            ? config.apiKey.substring(0, 4) + '...' + config.apiKey.substring(config.apiKey.length - 4) 
+                            : '••••••••';
+                        document.getElementById('llmKey').value = config.apiKey;
+                        document.getElementById('llmKey').placeholder = maskedKey;
+                    }
+                    
+                    // Match model selection
+                    const select = document.getElementById('llmModelSelect');
+                    let matched = false;
+                    for (let option of select.options) {
+                        if (option.value === config.model) {
+                            select.value = config.model;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched && config.model) {
+                        select.value = 'custom';
+                        handleModelDropdownChange();
+                        document.getElementById('llmModelCustom').value = config.model;
+                    }
+                }
+            } catch (err) {
+                console.error("[config-load-error]", err);
+            }
+        }
+
+        function handleModelDropdownChange() {
+            const select = document.getElementById('llmModelSelect');
+            const customInput = document.getElementById('llmModelCustom');
+            if (select.value === 'custom') {
+                customInput.style.display = 'block';
+            } else {
+                customInput.style.display = 'none';
+            }
+        }
+
+        function toggleKeyVisibility() {
+            const keyInput = document.getElementById('llmKey');
+            const toggleBtn = document.getElementById('toggleKeyVisibilityBtn');
+            if (keyInput.type === 'password') {
+                keyInput.type = 'text';
+                toggleBtn.innerText = '🔒 Hide';
+            } else {
+                keyInput.type = 'password';
+                toggleBtn.innerText = '👁️ Show';
+            }
+        }
+
+        function getActiveModelId() {
+            const select = document.getElementById('llmModelSelect');
+            if (select.value === 'custom') {
+                return document.getElementById('llmModelCustom').value.trim();
+            }
+            return select.value;
+        }
+
         // --- Tab switcher logic ---
         function switchTab(event, tabId) {
             const tabs = event.target.parentElement.querySelectorAll('.tab-btn');
@@ -2276,12 +2381,10 @@ RESPONSE FORMATTING LIMITS
         }
 
         function renderAllComments() {
-            // Scan all elements with data-comment-id
             document.querySelectorAll('.commentable').forEach(element => {
                 const elementId = element.getAttribute('data-comment-id');
                 if (!elementId) return;
 
-                // Ensure comment indicator button exists
                 let btn = element.querySelector('.comment-indicator-btn');
                 if (!btn) {
                     btn = document.createElement('span');
@@ -2294,9 +2397,7 @@ RESPONSE FORMATTING LIMITS
                         toggleInlineComments(elementId, element);
                     });
                     
-                    // Specific append logic depending on element type
                     if (element.tagName === 'TR') {
-                        // Append to the last column cell, or append to row
                         const lastCell = element.cells[element.cells.length - 1];
                         lastCell.appendChild(btn);
                     } else {
@@ -2304,7 +2405,6 @@ RESPONSE FORMATTING LIMITS
                     }
                 }
 
-                // Update indicator badge
                 const count = (globalComments[elementId] || []).length;
                 if (count > 0) {
                     btn.classList.add('has-notes');
@@ -2314,7 +2414,6 @@ RESPONSE FORMATTING LIMITS
                     btn.innerHTML = ` 💬`;
                 }
 
-                // If comment box is open, re-render its list
                 const box = document.getElementById(`inline-comments-box-${elementId}`);
                 if (box) {
                     renderInlineCommentsList(elementId, box);
@@ -2342,9 +2441,7 @@ RESPONSE FORMATTING LIMITS
                 </div>
             `;
 
-            // Insert immediately after the commented element
             if (element.tagName === 'TR') {
-                // If it's a table row, insert a new row spanning all columns containing the box
                 const tr = document.createElement('tr');
                 tr.id = `tr-comments-box-${elementId}`;
                 const td = document.createElement('td');
@@ -2375,15 +2472,55 @@ RESPONSE FORMATTING LIMITS
                 const dateObj = new Date(comment.timestamp);
                 const dateStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + dateObj.toLocaleDateString();
 
+                const shortId = comment.id.length > 8 ? comment.id.substring(comment.id.length - 8) : comment.id;
+
                 item.innerHTML = `
                     <div class="comment-meta">
-                        <span>Note ID: ${comment.id.substring(8)}</span>
+                        <span>Note ID: ${shortId}</span>
                         <span>${dateStr}</span>
                     </div>
-                    <div class="comment-text">${escapeHtml(comment.text)}</div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+                        <div class="comment-text" style="flex-grow: 1;">${escapeHtml(comment.text)}</div>
+                        <button class="delete-comment-btn" onclick="deleteComment('${elementId}', '${comment.id}')" style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 0.85rem; padding: 0; line-height: 1;" title="Delete comment">🗑️</button>
+                    </div>
                 `;
                 list.appendChild(item);
             });
+        }
+
+        async function deleteComment(sectionId, commentId) {
+            if (!confirm("Are you sure you want to delete this comment?")) return;
+            try {
+                const res = await fetch('/api/comments/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sectionId, commentId })
+                });
+                if (res.ok) {
+                    await loadComments();
+                }
+            } catch (err) {
+                console.error("Failed to delete comment", err);
+            }
+        }
+
+        async function clearAllComments() {
+            if (!confirm("Are you sure you want to clear ALL comments? This will wipe out all feedback and cannot be undone.")) return;
+            try {
+                const res = await fetch('/api/comments/clear', {
+                    method: 'POST'
+                });
+                if (res.ok) {
+                    // Close all comment boxes
+                    document.querySelectorAll('.inline-comments-box').forEach(box => {
+                        box.style.display = 'none';
+                    });
+                    await loadComments();
+                    alert("All comments cleared successfully!");
+                }
+            } catch (err) {
+                console.error("Failed to clear comments", err);
+            }
         }
 
         async function submitInlineComment(elementId) {
@@ -2419,7 +2556,6 @@ RESPONSE FORMATTING LIMITS
 
         // --- LLM Sandbox & Prompt Playground Logic ---
         
-        // Default tools array matches specification tool designs
         const SANDBOX_TOOLS = [
             {
                 type: "function",
@@ -2516,12 +2652,9 @@ RESPONSE FORMATTING LIMITS
             }
         ];
 
-        // Safe JavaScript client-side math evaluator
         function safeEvaluateMath(expression) {
-            // Clean up: only allow digits, arithmetic symbols, parentheses and spaces
             const sanitized = expression.replace(/[^0-9+\-*/().\s]/g, '');
             try {
-                // Evaluate formula cleanly
                 const val = new Function(`return (${sanitized})`)();
                 return typeof val === 'number' ? val : 'Error: Invalid math output';
             } catch (e) {
@@ -2529,9 +2662,7 @@ RESPONSE FORMATTING LIMITS
             }
         }
 
-        // Load predefined challenge templates into form inputs
         function loadTestCase(caseId) {
-            const systemPromptArea = document.getElementById('sandboxSystemPrompt');
             const userTaskArea = document.getElementById('sandboxUserTask');
 
             if (caseId === 1) {
@@ -2588,7 +2719,6 @@ RESPONSE FORMATTING LIMITS
             }
         }
 
-        // Multi-turn Agent Loop Simulator
         async function runAgentSandbox() {
             if (isSandboxRunning) return;
             isSandboxRunning = true;
@@ -2599,9 +2729,16 @@ RESPONSE FORMATTING LIMITS
 
             const baseURL = document.getElementById('llmHost').value.trim();
             const apiKey = document.getElementById('llmKey').value.trim();
-            const model = document.getElementById('llmModel').value.trim();
+            const model = getActiveModelId();
             const systemPrompt = document.getElementById('sandboxSystemPrompt').value;
             const userTask = document.getElementById('sandboxUserTask').value.trim();
+
+            if (!model) {
+                appendLog("❌ Error: Model Identifier cannot be empty.", 'error');
+                isSandboxRunning = false;
+                updateButtons();
+                return;
+            }
 
             if (!userTask) {
                 appendLog("❌ Error: Target task instruction cannot be empty.", 'error');
@@ -2613,7 +2750,6 @@ RESPONSE FORMATTING LIMITS
             appendLog("🚀 Starting Agent Sandbox Loop...", 'system');
             appendLog(`Target endpoint: ${baseURL} | Model: ${model}`, 'info');
 
-            // Initialize chat history
             let history = [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userTask }
@@ -2659,26 +2795,21 @@ RESPONSE FORMATTING LIMITS
 
                     const message = choice.message;
                     
-                    // Log Assistant thought output
                     if (message.content) {
                         appendLog(`🤖 Thought: ${message.content}`, 'thought');
                     }
 
-                    // Handle tool calls
                     if (message.tool_calls && message.tool_calls.length > 0) {
                         appendLog(`🔧 LLM requested tool execution (${message.tool_calls.length} calls in parallel):`, 'tool-call');
                         
-                        // Push assistant message with tool calls to history
                         history.push(message);
 
-                        // Process tool calls
                         for (const toolCall of message.tool_calls) {
                             const name = toolCall.function.name;
                             const args = JSON.parse(toolCall.function.arguments);
                             
                             appendLog(`  - Call ID: ${toolCall.id} | Function: ${name}(${JSON.stringify(args)})`, 'tool-call');
 
-                            // Execute mock logics
                             let result = '';
                             if (name === 'evaluate_math_expression') {
                                 const expr = args.expression;
@@ -2702,7 +2833,6 @@ RESPONSE FORMATTING LIMITS
                                 appendLog(`  ❌ Error: Unknown function call request`, 'error');
                             }
 
-                            // Append tool response to chat history
                             history.push({
                                 role: 'tool',
                                 tool_call_id: toolCall.id,
@@ -2712,14 +2842,12 @@ RESPONSE FORMATTING LIMITS
                         }
 
                     } else {
-                        // If no tool calls requested, we reached a leaf output node
                         appendLog(`🏁 Final Response: ${message.content || '[Blank Response]'}`, 'final');
                         loopActive = false;
                     }
 
                 } catch (err) {
                     if (err.name === 'AbortError') {
-                        // Handled by stop button
                         return;
                     }
                     appendLog(`❌ Sandbox Error: ${err.message}`, 'error');
@@ -2737,9 +2865,11 @@ RESPONSE FORMATTING LIMITS
 
         // Initialize elements on load
         window.addEventListener('DOMContentLoaded', () => {
-            loadComments();
-            restoreDefaultSystemPrompt();
-            loadTestCase(1); // load math case by default
+            fetchServerConfig().then(() => {
+                loadComments();
+                restoreDefaultSystemPrompt();
+                loadTestCase(1);
+            });
         });
     </script>
 </body>
