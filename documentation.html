@@ -998,6 +998,94 @@
             font-size: 1.05rem;
         }
 
+        /* --- Comments Widgets --- */
+        .comments-widget {
+            margin-top: 1.5rem;
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.75rem 1.25rem;
+            border-left: 2px solid var(--primary);
+        }
+        .comments-toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-family: var(--font-heading);
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: color var(--transition-fast);
+        }
+        .comments-toggle-btn:hover {
+            color: var(--primary);
+        }
+        .comments-drawer {
+            margin-top: 1rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 1rem;
+        }
+        .comments-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .comment-item {
+            font-size: 0.85rem;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.6rem 0.8rem;
+        }
+        .comment-meta {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .comment-text {
+            color: var(--text-main);
+            word-break: break-word;
+        }
+        .comment-input-area {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .comment-input {
+            flex-grow: 1;
+            padding: 0.5rem;
+            background: var(--bg-page);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 6px;
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+        }
+        .comment-input:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+        .comment-submit-btn {
+            background: var(--primary);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: var(--font-heading);
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: opacity var(--transition-fast);
+        }
+        .comment-submit-btn:hover {
+            opacity: 0.9;
+        }
+
         /* Responsive Layout adjustments */
         @media (max-width: 1024px) {
             .app-container {
@@ -1184,6 +1272,17 @@
                         <div class="mission-desc">Complex missions requiring active inter-agent communication. Examples include cooperative cargo handoffs (rendezvous exchanges) or synchronized "red light, green light" waiting.</div>
                     </div>
                 </div>
+
+                <div class="comments-widget" data-section="overview">
+                    <button class="comments-toggle-btn" onclick="toggleComments('overview')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('overview')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 2. Choices & Rationale -->
@@ -1203,6 +1302,17 @@
                     <div class="card-title">Why decouple the Policy Engine from the Planner?</div>
                     <p style="margin-bottom: 0;">If rules like "avoid tile (3,4)" or "wait for 3 parcels" were compiled directly into PDDL state descriptions, every rule update would require a full planner call. By pulling rules into a separate Policy Engine, we can alter path costs (A*) and block delivery goals on the fly, entirely bypassing the planner for rule modifications.</p>
                 </div>
+
+                <div class="comments-widget" data-section="choices-rationale">
+                    <button class="comments-toggle-btn" onclick="toggleComments('choices-rationale')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('choices-rationale')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 3. PDDL Slowness Mitigation -->
@@ -1221,6 +1331,17 @@
                         <li>An agent needs to figure out how to push a crate onto a "crate-move-capable" tile to clear a corridor.</li>
                         <li>Complex, maze-like obstacle configurations arise that A* cannot resolve.</li>
                     </ul>
+                </div>
+
+                <div class="comments-widget" data-section="slowness-mitigation">
+                    <button class="comments-toggle-btn" onclick="toggleComments('slowness-mitigation')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('slowness-mitigation')">Save</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -1332,6 +1453,17 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="comments-widget" data-section="plan-library">
+                    <button class="comments-toggle-btn" onclick="toggleComments('plan-library')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('plan-library')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 5. Dynamic Replanning -->
@@ -1369,6 +1501,17 @@
                     </div>
 
                 </div>
+
+                <div class="comments-widget" data-section="dynamic-replanning">
+                    <button class="comments-toggle-btn" onclick="toggleComments('dynamic-replanning')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('dynamic-replanning')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 6. Modeling Special Missions -->
@@ -1394,6 +1537,17 @@
                         <li><strong>Rendezvous Contracts</strong>: An active contract <code>{ type: 'RENDEZVOUS', x, y }</code> is set. The BDI agent bypasses normal parcel collection, executes the <code>RendezvousDrop</code> plan, drops cargo, clears the tile, and signals completion.</li>
                         <li><strong>Red Light, Green Light</strong>: Upon receiving a "RED_LIGHT" message, a policy flag <code>hold = true</code> is set. The execution loop intercepts all commands, forcing the physical agent to wait until a "GREEN_LIGHT" is received.</li>
                     </ul>
+                </div>
+
+                <div class="comments-widget" data-section="special-modeling">
+                    <button class="comments-toggle-btn" onclick="toggleComments('special-modeling')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('special-modeling')">Save</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -1493,6 +1647,17 @@ RESPONSE FORMATTING LIMITS
     "crate_capable_tiles": ["1,1", "1,2", "4,6", "4,7", "5,6"]
   }
 }</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comments-widget" data-section="prompt-design">
+                    <button class="comments-toggle-btn" onclick="toggleComments('prompt-design')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('prompt-design')">Save</button>
                         </div>
                     </div>
                 </div>
@@ -1672,6 +1837,17 @@ RESPONSE FORMATTING LIMITS
                     </div>
 
                 </div>
+
+                <div class="comments-widget" data-section="tool-design">
+                    <button class="comments-toggle-btn" onclick="toggleComments('tool-design')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('tool-design')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 9. State Representation & Comms -->
@@ -1786,6 +1962,17 @@ RESPONSE FORMATTING LIMITS
                         </tr>
                     </tbody>
                 </table>
+
+                <div class="comments-widget" data-section="state-comms">
+                    <button class="comments-toggle-btn" onclick="toggleComments('state-comms')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('state-comms')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- 10. PDDL Modeling -->
@@ -1874,6 +2061,17 @@ RESPONSE FORMATTING LIMITS
                     <div class="card-title">Problem Compiler Generation Rules</div>
                     <p style="margin-bottom: 0;">During every sensory planning frame, the physical BDI agent compiles the local map features. If a tile is flagged by the server map as a crate-capable movement tile (e.g. <code>CRATE_MOVE</code>), a corresponding <code>(can-hold-crate tile)</code> fact is injected into the initial state. The solver can then evaluate pushing strategies safely.</p>
                 </div>
+
+                <div class="comments-widget" data-section="pddl-model">
+                    <button class="comments-toggle-btn" onclick="toggleComments('pddl-model')">💬 Comments (<span class="comment-count">0</span>)</button>
+                    <div class="comments-drawer" style="display:none;">
+                        <div class="comments-list"></div>
+                        <div class="comment-input-area">
+                            <input type="text" class="comment-input" placeholder="Type a note or feedback...">
+                            <button class="comment-submit-btn" onclick="submitComment('pddl-model')">Save</button>
+                        </div>
+                    </div>
+                </div>
             </section>
 
         </main>
@@ -1949,6 +2147,92 @@ RESPONSE FORMATTING LIMITS
                     item.classList.add('active');
                 }
             });
+        });
+
+        // --- Comments Management Logic ---
+        let globalComments = {};
+
+        async function loadComments() {
+            try {
+                const res = await fetch('/api/comments');
+                if (res.ok) {
+                    globalComments = await res.json();
+                    renderAllComments();
+                }
+            } catch (err) {
+                console.error("Failed to load comments", err);
+            }
+        }
+
+        function renderAllComments() {
+            document.querySelectorAll('.comments-widget').forEach(widget => {
+                const sectionId = widget.getAttribute('data-section');
+                const list = widget.querySelector('.comments-list');
+                const countSpan = widget.querySelector('.comment-count');
+                const sectionComments = globalComments[sectionId] || [];
+                
+                countSpan.innerText = sectionComments.length;
+                list.innerHTML = '';
+                
+                sectionComments.forEach(comment => {
+                    const item = document.createElement('div');
+                    item.className = 'comment-item';
+                    
+                    const dateObj = new Date(comment.timestamp);
+                    const dateStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + dateObj.toLocaleDateString();
+                    
+                    item.innerHTML = `
+                        <div class="comment-meta">
+                            <span>Note ID: ${comment.id.substring(8)}</span>
+                            <span>${dateStr}</span>
+                        </div>
+                        <div class="comment-text">${escapeHtml(comment.text)}</div>
+                    `;
+                    list.appendChild(item);
+                });
+            });
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function toggleComments(sectionId) {
+            const widget = document.querySelector(`.comments-widget[data-section="${sectionId}"]`);
+            const drawer = widget.querySelector('.comments-drawer');
+            drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function submitComment(sectionId) {
+            const widget = document.querySelector(`.comments-widget[data-section="${sectionId}"]`);
+            const input = widget.querySelector('.comment-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            try {
+                const res = await fetch('/api/comments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sectionId, text })
+                });
+
+                if (res.ok) {
+                    input.value = '';
+                    await loadComments();
+                }
+            } catch (err) {
+                console.error("Failed to submit comment", err);
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadComments();
         });
     </script>
 </body>
