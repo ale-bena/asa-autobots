@@ -15,7 +15,7 @@ if (!fs.existsSync(COMMENTS_FILE)) {
     fs.writeFileSync(COMMENTS_FILE, JSON.stringify({}, null, 2));
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     // Enable CORS for development convenience
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -91,6 +91,61 @@ const server = http.createServer((req, res) => {
             } catch (err) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Malformed JSON payload' }));
+            }
+        });
+        return;
+    }
+
+    // API: POST /api/chat (LLM Proxy)
+    if (parsedUrl.pathname === '/api/chat' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+        
+        req.on('end', async () => {
+            try {
+                const { baseURL, apiKey, model, messages, tools } = JSON.parse(body);
+                
+                if (!baseURL || !model || !messages) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required LLM parameters (baseURL, model, messages)' }));
+                    return;
+                }
+
+                // Prepare request parameters for the target LLM server
+                const llmHeaders = {
+                    'Content-Type': 'application/json',
+                };
+                if (apiKey) {
+                    llmHeaders['Authorization'] = `Bearer ${apiKey}`;
+                }
+
+                const requestBody = {
+                    model,
+                    messages
+                };
+                if (tools && tools.length > 0) {
+                    requestBody.tools = tools;
+                }
+
+                // Native node fetch proxying
+                const targetUrl = baseURL.endsWith('/') ? `${baseURL}chat/completions` : `${baseURL}/chat/completions`;
+                const llmResponse = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: llmHeaders,
+                    body: JSON.stringify(requestBody)
+                });
+
+                const responseData = await llmResponse.json();
+                
+                res.writeHead(llmResponse.status, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(responseData));
+
+            } catch (err) {
+                console.error("[proxy-error]", err);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Failed proxying request to LLM provider', details: err.message }));
             }
         });
         return;

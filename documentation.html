@@ -1086,6 +1086,133 @@
             opacity: 0.9;
         }
 
+        /* --- LLM Sandbox Layout --- */
+        .sandbox-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }
+        .sandbox-panel {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-label {
+            font-family: var(--font-heading);
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+        .form-input {
+            padding: 0.6rem 0.8rem;
+            background-color: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            width: 100%;
+        }
+        .form-input:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+        .form-textarea {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            min-height: 120px;
+            resize: vertical;
+        }
+        .test-cases-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .test-case-chip {
+            background-color: var(--glass-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 0.35rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        .test-case-chip:hover {
+            border-color: var(--primary);
+            color: var(--text-main);
+        }
+        .sandbox-buttons {
+            display: flex;
+            gap: 0.75rem;
+        }
+        .btn {
+            flex: 1;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            font-family: var(--font-heading);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            text-align: center;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: var(--shadow-glow);
+        }
+        .btn-primary:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+        .btn-secondary {
+            background: var(--glass-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+        .btn-secondary:hover {
+            background-color: var(--border-color);
+        }
+        
+        /* Terminal Log styles */
+        .terminal-log {
+            background-color: #030509;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            min-height: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .log-line {
+            line-height: 1.5;
+        }
+        .log-tick { color: var(--text-muted); font-weight: bold; }
+        .log-system { color: var(--accent-cyan); }
+        .log-thought { color: #818cf8; }
+        .log-tool-call { color: #f472b6; font-weight: bold; }
+        .log-tool-exec { color: var(--accent-green); }
+        .log-error { color: #ef4444; font-weight: bold; }
+        .log-info { color: var(--accent-orange); }
+        .log-final { color: #fdfdfd; background-color: rgba(99, 102, 241, 0.2); padding: 0.25rem 0.5rem; border-radius: 4px; display: inline-block; }
+
         /* Responsive Layout adjustments */
         @media (max-width: 1024px) {
             .app-container {
@@ -1120,6 +1247,9 @@
             .flow-arrow {
                 transform: rotate(90deg);
                 padding: 0.5rem 0;
+            }
+            .sandbox-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -1171,6 +1301,9 @@
                     </li>
                     <li class="nav-item" data-sec="pddl-model">
                         <a href="#pddl-model">PDDL Crate Modeling</a>
+                    </li>
+                    <li class="nav-item" data-sec="llm-playground">
+                        <a href="#llm-playground" style="color: var(--secondary); font-weight: bold;">⚡ LLM Playground Sandbox</a>
                     </li>
                 </ul>
             </div>
@@ -2074,6 +2207,74 @@ RESPONSE FORMATTING LIMITS
                 </div>
             </section>
 
+            <!-- 11. LLM Sandbox Playground -->
+            <section id="llm-playground">
+                <div class="section-header">
+                    <div class="section-num">11</div>
+                    <h2>⚡ LLM Coordinator Sandbox & Prompt Playground</h2>
+                </div>
+                <p>Simulate and test multi-turn agent loops. Check how different LLM models interpret system prompts, make reasoning decisions, evaluate coordinates, and utilize tools before deploying files.</p>
+
+                <div class="sandbox-grid">
+                    
+                    <!-- Sandbox Controls Panel -->
+                    <div class="sandbox-panel">
+                        <div class="card-title">⚙️ Sandbox Configurations</div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">LLM Provider Host URL</label>
+                            <input type="text" id="llmHost" class="form-input" value="https://llm.bears.disi.unitn.it/v1">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">API Authorization Key (Optional)</label>
+                            <input type="password" id="llmKey" class="form-input" placeholder="Enter API key if required...">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Model Identifier</label>
+                            <input type="text" id="llmModel" class="form-input" value="llama-3.3-70b-lmstudio">
+                        </div>
+
+                        <div class="form-group">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <label class="form-label">System Instructions Prompt</label>
+                                <button class="copy-btn" onclick="restoreDefaultSystemPrompt()" style="font-size:0.7rem;">Restore Default</button>
+                            </div>
+                            <textarea id="sandboxSystemPrompt" class="form-input form-textarea" placeholder="Enter system instructions..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Quick Challenge Templates</label>
+                            <div class="test-cases-row">
+                                <button class="test-case-chip" onclick="loadTestCase(1)">📐 Coordinate Math</button>
+                                <button class="test-case-chip" onclick="loadTestCase(2)">🛡️ Apply Policy Rules</button>
+                                <button class="test-case-chip" onclick="loadTestCase(3)">🤝 Rendezvous Contract</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">User Target Task (Instruction)</label>
+                            <textarea id="sandboxUserTask" class="form-input" style="min-height:80px; font-family:var(--font-body);" placeholder="Type a task command..."></textarea>
+                        </div>
+
+                        <div class="sandbox-buttons">
+                            <button id="btnStartSandbox" class="btn btn-primary" onclick="runAgentSandbox()">Execute Sandbox Loop</button>
+                            <button id="btnStopSandbox" class="btn btn-secondary" style="display:none;" onclick="stopAgentSandbox()">Stop Agent</button>
+                        </div>
+                    </div>
+
+                    <!-- Live Log Terminal Panel -->
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div class="card-title">🖥️ Live Agent Reasoning Console</div>
+                        <div id="sandboxConsole" class="terminal-log">
+                            <div class="log-line log-system">System ready. Click "Execute Sandbox Loop" to begin simulation.</div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -2230,9 +2431,329 @@ RESPONSE FORMATTING LIMITS
             }
         }
 
-        // Initialize on load
+        // --- LLM Sandbox & Prompt Playground Logic ---
+        
+        // Default tools array matches specification tool designs
+        const SANDBOX_TOOLS = [
+            {
+                type: "function",
+                function: {
+                    name: "evaluate_math_expression",
+                    description: "Evaluates arithmetic formula string (e.g. '20 * 2', '2 * 4', '40 + 8') programmatically and returns the computed numeric value. Use this first before any navigation tool if parameters contain calculations.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            expression: {
+                                type: "string",
+                                description: "The mathematical expression to evaluate."
+                            }
+                        },
+                        required: ["expression"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "move_agent_to_coordinate",
+                    description: "Directs a physical agent to route to target coordinates. Use evaluated numeric values.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            agentId: { type: "string" },
+                            x: { type: "number" },
+                            y: { type: "number" }
+                        },
+                        required: ["agentId", "x", "y"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "apply_agent_rules",
+                    description: "Modifies policy guidelines for an agent (avoid-tiles, stack size thresholds).",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            agentId: { type: "string" },
+                            rules: {
+                                type: "object",
+                                properties: {
+                                    avoidTiles: { type: "array", items: { type: "string" } },
+                                    maxRewardLimit: { type: "number" }
+                                }
+                            }
+                        },
+                        required: ["agentId", "rules"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "cooperate_with_agent",
+                    description: "Instructs partner agent to participate in coordination contracts (e.g. Rendezvous, wait signal).",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            agentId: { type: "string" },
+                            contract: {
+                                type: "object",
+                                properties: {
+                                    coordinationId: { type: "string" },
+                                    type: { type: "string", enum: ["RENDEZVOUS", "CLEAR_PATH"] },
+                                    x: { type: "number" },
+                                    y: { type: "number" }
+                                },
+                                required: ["coordinationId", "type"]
+                            }
+                        },
+                        required: ["agentId", "contract"]
+                    }
+                }
+            },
+            {
+                type: "function",
+                function: {
+                    name: "instruct_agent_to_say",
+                    description: "Instructs physical agent to say text message publicly in game chat.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            agentId: { type: "string" },
+                            message: { type: "string" }
+                        },
+                        required: ["agentId", "message"]
+                    }
+                }
+            }
+        ];
+
+        // Safe JavaScript client-side math evaluator
+        function safeEvaluateMath(expression) {
+            // Clean up: only allow digits, arithmetic symbols, parentheses and spaces
+            const sanitized = expression.replace(/[^0-9+\-*/().\s]/g, '');
+            try {
+                // Evaluate formula cleanly
+                const val = new Function(`return (${sanitized})`)();
+                return typeof val === 'number' ? val : 'Error: Invalid math output';
+            } catch (e) {
+                return "Error: Arithmetic error";
+            }
+        }
+
+        // Load predefined challenge templates into form inputs
+        function loadTestCase(caseId) {
+            const systemPromptArea = document.getElementById('sandboxSystemPrompt');
+            const userTaskArea = document.getElementById('sandboxUserTask');
+
+            if (caseId === 1) {
+                userTaskArea.value = "Coordinate pathing for partner 'agent_pddl_1' to target rendezvous at x = 20 * 2, y = 2 * 4. The mission reward is the sum of the coordinates (40 + 8). Solve the math first. If the reward is positive, proceed with coordinate math and call cooperate_with_agent. Otherwise abort.";
+            } else if (caseId === 2) {
+                userTaskArea.value = "We need to set up path guards. Apply policy rules to block 'agent_pddl_1' from entering coordinates 3,5 and 4,5, and restrict max parcel reward size to 15. Make sure both rules are set.";
+            } else if (caseId === 3) {
+                userTaskArea.value = "Set up a rendezvous exchange with agent 'agent_pddl_1' at coordinate 10,12. Propose contract ID 'coop_rendezvous_99'.";
+            }
+        }
+
+        function restoreDefaultSystemPrompt() {
+            const systemPromptArea = document.getElementById('sandboxSystemPrompt');
+            const defaultPrompt = document.getElementById('systemPromptContent').innerText;
+            systemPromptArea.value = defaultPrompt;
+        }
+
+        let isSandboxRunning = false;
+        let sandboxAbortController = null;
+
+        function appendLog(text, type = 'system') {
+            const consoleEl = document.getElementById('sandboxConsole');
+            const line = document.createElement('div');
+            line.className = `log-line log-${type}`;
+            line.innerText = text;
+            consoleEl.appendChild(line);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('sandboxConsole').innerHTML = '';
+        }
+
+        function stopAgentSandbox() {
+            if (sandboxAbortController) {
+                sandboxAbortController.abort();
+            }
+            appendLog("⏹️ Execution aborted by user.", 'error');
+            isSandboxRunning = false;
+            updateButtons();
+        }
+
+        function updateButtons() {
+            const btnStart = document.getElementById('btnStartSandbox');
+            const btnStop = document.getElementById('btnStopSandbox');
+            if (isSandboxRunning) {
+                btnStart.innerText = "Running Sandbox Loop...";
+                btnStart.disabled = true;
+                btnStop.style.display = "inline-block";
+            } else {
+                btnStart.innerText = "Execute Sandbox Loop";
+                btnStart.disabled = false;
+                btnStop.style.display = "none";
+            }
+        }
+
+        // Multi-turn Agent Loop Simulator
+        async function runAgentSandbox() {
+            if (isSandboxRunning) return;
+            isSandboxRunning = true;
+            updateButtons();
+            clearLog();
+            
+            sandboxAbortController = new AbortController();
+
+            const baseURL = document.getElementById('llmHost').value.trim();
+            const apiKey = document.getElementById('llmKey').value.trim();
+            const model = document.getElementById('llmModel').value.trim();
+            const systemPrompt = document.getElementById('sandboxSystemPrompt').value;
+            const userTask = document.getElementById('sandboxUserTask').value.trim();
+
+            if (!userTask) {
+                appendLog("❌ Error: Target task instruction cannot be empty.", 'error');
+                isSandboxRunning = false;
+                updateButtons();
+                return;
+            }
+
+            appendLog("🚀 Starting Agent Sandbox Loop...", 'system');
+            appendLog(`Target endpoint: ${baseURL} | Model: ${model}`, 'info');
+
+            // Initialize chat history
+            let history = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userTask }
+            ];
+
+            let tick = 0;
+            const maxTicks = 8;
+            let loopActive = true;
+
+            while (loopActive && tick < maxTicks) {
+                tick++;
+                appendLog(`\n[Tick ${tick}] Contacting LLM API...`, 'tick');
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            baseURL,
+                            apiKey,
+                            model,
+                            messages: history,
+                            tools: SANDBOX_TOOLS
+                        }),
+                        signal: sandboxAbortController.signal
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.error || `HTTP error ${response.status}`);
+                    }
+
+                    const responseData = await response.json();
+                    
+                    if (responseData.error) {
+                        throw new Error(responseData.error.message || JSON.stringify(responseData.error));
+                    }
+
+                    const choice = responseData.choices && responseData.choices[0];
+                    if (!choice) {
+                        throw new Error("Empty choice returned from LLM provider");
+                    }
+
+                    const message = choice.message;
+                    
+                    // Log Assistant thought output
+                    if (message.content) {
+                        appendLog(`🤖 Thought: ${message.content}`, 'thought');
+                    }
+
+                    // Handle tool calls
+                    if (message.tool_calls && message.tool_calls.length > 0) {
+                        appendLog(`🔧 LLM requested tool execution (${message.tool_calls.length} calls in parallel):`, 'tool-call');
+                        
+                        // Push assistant message with tool calls to history
+                        history.push(message);
+
+                        // Process tool calls
+                        for (const toolCall of message.tool_calls) {
+                            const name = toolCall.function.name;
+                            const args = JSON.parse(toolCall.function.arguments);
+                            
+                            appendLog(`  - Call ID: ${toolCall.id} | Function: ${name}(${JSON.stringify(args)})`, 'tool-call');
+
+                            // Execute mock logics
+                            let result = '';
+                            if (name === 'evaluate_math_expression') {
+                                const expr = args.expression;
+                                const mathVal = safeEvaluateMath(expr);
+                                result = mathVal.toString();
+                                appendLog(`  ⚙️ Executing Local Math Parser: "${expr}" -> Computed: ${result}`, 'tool-exec');
+                            } else if (name === 'move_agent_to_coordinate') {
+                                result = JSON.stringify({ success: true, message: `Physical agent ${args.agentId} moving to coordinate (${args.x}, ${args.y})` });
+                                appendLog(`  🚶 Action: Routing physical agent ${args.agentId} to (${args.x}, ${args.y})... success`, 'tool-exec');
+                            } else if (name === 'apply_agent_rules') {
+                                result = JSON.stringify({ success: true, message: "Policies injected into active BDI engine" });
+                                appendLog(`  🛡️ Action: Injected avoid rules & limit modifiers into partner agent belief base`, 'tool-exec');
+                            } else if (name === 'cooperate_with_agent') {
+                                result = JSON.stringify({ success: true, message: `Coordination contract '${args.contract.coordinationId}' of type '${args.contract.type}' proposed` });
+                                appendLog(`  🤝 Action: Sent contract proposal to partner agent in chat`, 'tool-exec');
+                            } else if (name === 'instruct_agent_to_say') {
+                                result = JSON.stringify({ success: true, status: "Message sent in game chat" });
+                                appendLog(`  💬 Action: Physical agent instructed to speak: "${args.message}"`, 'tool-exec');
+                            } else {
+                                result = JSON.stringify({ error: "Unknown sandbox tool declaration" });
+                                appendLog(`  ❌ Error: Unknown function call request`, 'error');
+                            }
+
+                            // Append tool response to chat history
+                            history.push({
+                                role: 'tool',
+                                tool_call_id: toolCall.id,
+                                name: name,
+                                content: result
+                            });
+                        }
+
+                    } else {
+                        // If no tool calls requested, we reached a leaf output node
+                        appendLog(`🏁 Final Response: ${message.content || '[Blank Response]'}`, 'final');
+                        loopActive = false;
+                    }
+
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        // Handled by stop button
+                        return;
+                    }
+                    appendLog(`❌ Sandbox Error: ${err.message}`, 'error');
+                    loopActive = false;
+                }
+            }
+
+            if (tick >= maxTicks && loopActive) {
+                appendLog("⚠️ Sandbox loop terminated: exceeded maximum loop iteration ticks.", 'info');
+            }
+
+            isSandboxRunning = false;
+            updateButtons();
+        }
+
+        // Initialize elements on load
         window.addEventListener('DOMContentLoaded', () => {
             loadComments();
+            restoreDefaultSystemPrompt();
+            loadTestCase(1); // load coordinate math by default
         });
     </script>
 </body>
