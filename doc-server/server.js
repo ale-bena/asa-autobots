@@ -15,7 +15,10 @@ const __dirname = path.dirname(__filename);
 const PORT = 3000;
 const COMMENTS_FILE = path.join(__dirname, 'comments.json');
 const TEMPLATE_FILE = path.join(__dirname, 'template.html');
-const WORKSPACE_DIR = path.join(__dirname, '..');
+let WORKSPACE_DIR = path.join(__dirname, '..');
+if (path.basename(WORKSPACE_DIR) === 'asa-autobots' || fs.existsSync(path.join(WORKSPACE_DIR, '..', 'collab-agent-team'))) {
+    WORKSPACE_DIR = path.join(WORKSPACE_DIR, '..');
+}
 
 function getProjectDir(projectId) {
     const internalPath = path.join(__dirname, 'projects', projectId);
@@ -131,11 +134,13 @@ function isGitProject(projectId) {
 
 function getProjects() {
     const projects = new Set();
+    const excludedProjects = ['collab-agent-team', 'collab-agent', 'doc-server'];
 
     // 1. Add projects from collab-agent-team/projects/
     const internalProjectsDir = path.join(__dirname, 'projects');
     if (fs.existsSync(internalProjectsDir)) {
         fs.readdirSync(internalProjectsDir).forEach(file => {
+            if (excludedProjects.includes(file)) return;
             const fullPath = path.join(internalProjectsDir, file);
             if (fs.statSync(fullPath).isDirectory()) {
                 const docsPath = path.join(fullPath, 'docs');
@@ -149,6 +154,7 @@ function getProjects() {
     // 2. Add projects from WORKSPACE_DIR siblings
     if (fs.existsSync(WORKSPACE_DIR)) {
         fs.readdirSync(WORKSPACE_DIR).forEach(file => {
+            if (excludedProjects.includes(file)) return;
             const fullPath = path.join(WORKSPACE_DIR, file);
             if (!fs.statSync(fullPath).isDirectory()) return;
             
@@ -1226,6 +1232,10 @@ function setupBidirectionalSync() {
     console.log(`[sync-service] Initializing bidirectional sync between collab-agent-team/projects/asa-autobots and asa-autobots...`);
 
     const syncPath = (relPath, sourceOfEvent) => {
+        if (relPath.split(path.sep).includes('doc-server')) {
+            return;
+        }
+
         const base = path.basename(relPath);
         const isDocFolder = relPath.startsWith('docs' + path.sep) || relPath.startsWith('docs/');
         const allowedFiles = ['policy_builder.html', 'map_creator.html', 'system_spec.md'];
@@ -1305,7 +1315,7 @@ function setupBidirectionalSync() {
         for (const entry of entries) {
             const rel = currentSub ? path.join(currentSub, entry.name) : entry.name;
             if (entry.isDirectory()) {
-                if (entry.name !== 'node_modules' && entry.name !== '.git') {
+                if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'doc-server') {
                     walkAndSync(dir, rel);
                 }
             } else {
@@ -1330,10 +1340,98 @@ function setupBidirectionalSync() {
     });
 }
 
+function setupDocServerSync() {
+    // If we are already running inside doc-server, do not start sync daemon to prevent loops
+    if (__dirname.includes(path.join('asa-autobots', 'doc-server'))) {
+        console.log(`[sync-service] Running inside doc-server. Master sync daemon is disabled.`);
+        return;
+    }
+
+    const sourceDir = __dirname;
+    const targetDir = path.join(WORKSPACE_DIR, 'asa-autobots', 'doc-server');
+    if (!fs.existsSync(sourceDir) || !fs.existsSync(targetDir)) return;
+
+    console.log(`[sync-service] Initializing real-time master sync from collab-agent-team/ to asa-autobots/doc-server/...`);
+
+    const syncFile = (relPath) => {
+        if (relPath.includes('node_modules') || relPath.includes('.git') || relPath.split(path.sep).includes('doc-server')) {
+            return;
+        }
+
+        const srcPath = path.join(sourceDir, relPath);
+        const destPath = path.join(targetDir, relPath);
+
+        try {
+            const existsSrc = fs.existsSync(srcPath);
+            const existsDest = fs.existsSync(destPath);
+
+            if (!existsSrc) {
+                if (existsDest) {
+                    const stat = fs.statSync(destPath);
+                    if (stat.isFile()) fs.unlinkSync(destPath);
+                    else if (stat.isDirectory()) fs.rmSync(destPath, { recursive: true, force: true });
+                    console.log(`[sync-service] Deleted in doc-server: ${relPath}`);
+                }
+                return;
+            }
+
+            const statSrc = fs.statSync(srcPath);
+            if (statSrc.isFile()) {
+                if (existsDest) {
+                    const statDest = fs.statSync(destPath);
+                    if (statSrc.size === statDest.size && Math.abs(statSrc.mtimeMs - statDest.mtimeMs) < 1000) {
+                        return; // already synced
+                    }
+                }
+
+                const parent = path.dirname(destPath);
+                if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true });
+                fs.copyFileSync(srcPath, destPath);
+                fs.utimesSync(destPath, statSrc.atime, statSrc.mtime);
+                console.log(`[sync-service] Synced file to doc-server: ${relPath}`);
+            }
+        } catch (err) {
+            console.error(`[sync-error] Failed syncing file ${relPath} to doc-server:`, err);
+        }
+    };
+
+    const walkAndSync = (dir, currentSub = '') => {
+        const fullDir = path.join(dir, currentSub);
+        if (!fs.existsSync(fullDir)) return;
+        const entries = fs.readdirSync(fullDir, { withFileTypes: true });
+        for (const entry of entries) {
+            const rel = currentSub ? path.join(currentSub, entry.name) : entry.name;
+            if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== 'doc-server') {
+                    walkAndSync(dir, rel);
+                }
+            } else {
+                syncFile(rel);
+            }
+        }
+    };
+
+    try {
+        walkAndSync(sourceDir);
+    } catch (err) {
+        console.error(`[sync-error] Initial walk to doc-server failed:`, err);
+    }
+
+    fs.watch(sourceDir, { recursive: true }, (eventType, filename) => {
+        if (filename) syncFile(filename);
+    });
+}
+
 try {
     setupBidirectionalSync();
 } catch (e) {
     console.error("[sync-error] Failed starting bidirectional sync service:", e);
+}
+
+try {
+    setupDocServerSync();
+} catch (e) {
+    console.error("[sync-error] Failed starting master sync daemon:", e);
 }
 
 server.listen(PORT, () => {

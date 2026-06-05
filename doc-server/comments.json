@@ -31,5 +31,96 @@
       "timestamp": "2026-06-04T18:39:45.693Z",
       "text": "also with this in mind is it better to have separate scripts for the agents and a script for the state handler or evaluation engine which can be queried for the information or is it better to duplicate it and sync it? I don't know which would be best for access and ease of use"
     }
+  ],
+  "mission-card-lvl1": [
+    {
+      "id": "1780672381775",
+      "timestamp": "2026-06-05T15:13:01.775Z",
+      "text": "can this also be modeled like the previous one"
+    }
+  ],
+  "schema-parsing-details": [
+    {
+      "id": "1780672416932",
+      "timestamp": "2026-06-05T15:13:36.932Z",
+      "text": "can you expand and give a more in depth description and implementation design of this evaluation engine"
+    }
+  ],
+  "rationale-card-policy": [
+    {
+      "id": "1780672438602",
+      "timestamp": "2026-06-05T15:13:58.602Z",
+      "text": "can you also expand on the policy evaluator"
+    }
+  ],
+  "deadlock-avoidance": [
+    {
+      "id": "1780674310913",
+      "timestamp": "2026-06-05T15:45:10.913Z",
+      "text": "for path overlap you need to have a \"future overlap prediction\" because imagine we overlap, but I reach the overlap in 3 moves while you reach it in 30, yeah there may be an overlap but it is highly unlikely sice by the time you'd get there I'd have already gone away, also this shouldn't compromise other pathing"
+    }
+  ],
+  "sandbox-ctrls": [
+    {
+      "id": "1780674364424",
+      "timestamp": "2026-06-05T15:46:04.424Z",
+      "text": "instead of changing between direct messaging and agentic loop from the top I want it near where the button to send is placed since the actual content doesn't change that much"
+    }
+  ],
+  "map-spec": [
+    {
+      "id": "1780674431210",
+      "timestamp": "2026-06-05T15:47:11.210Z",
+      "text": "note that this needs to be updated to what has been described in the documentation part"
+    }
+  ],
+  "overview-p1": [
+    {
+      "id": "1780674455000",
+      "timestamp": "2026-06-05T15:47:35.000Z",
+      "text": "note that these sections need to expand on and be updated to what is being described in the documentation section"
+    }
+  ],
+  "beliefs-spec": [
+    {
+      "id": "1780674500133",
+      "timestamp": "2026-06-05T15:48:20.133Z",
+      "text": "expand on the design of the policy rules as them just having a tile avoidance and rewards threshold doesn't allow for flexibility"
+    }
+  ],
+  "asa-autobots:2-design:code-53hanp": [
+    {
+      "id": "1780674546005",
+      "timestamp": "2026-06-05T15:49:06.005Z",
+      "text": "formatting is off"
+    }
+  ],
+  "asa-autobots:2-design:code-svstuo": [
+    {
+      "id": "1780674553472",
+      "timestamp": "2026-06-05T15:49:13.472Z",
+      "text": "formatting is off"
+    }
+  ],
+  "p2p-manager-code": [
+    {
+      "id": "1780674601802",
+      "timestamp": "2026-06-05T15:50:01.802Z",
+      "text": "instead of parsing with regexes the p2p messaging should be handled in json and therefore can be parsed to correctly match and reason about the intentions"
+    }
+  ],
+  "p2p-state-analysis": [
+    {
+      "id": "1780674812632",
+      "timestamp": "2026-06-05T15:53:32.632Z",
+      "text": "also note that for the llm side of reasoning we want to only accept llm answers that match our format, that being for now json as it's easily parsable and checkable, for this reason the prompt needs to explicitly instrucut on how the message should be created and what their structure should look like. For these reasons we from the parsing side we should discard invalid answers, create some knowledge on how the llm should fix them, for example giving it the parsing error and add it to the list of history and ask it for a new answer"
+    }
+  ],
+  "asa-autobots:3-system-spec:code-5rv572": [
+    {
+      "id": "1780674833187",
+      "timestamp": "2026-06-05T15:53:53.187Z",
+      "text": "this graph hasn't been loaded correctly or parsed as intended"
+    }
   ]
 }
