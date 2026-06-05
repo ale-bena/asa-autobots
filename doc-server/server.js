@@ -33,7 +33,7 @@ function getProjectDocsDir(projectId) {
 }
 
 function getProjectToolPath(projectId, toolFilename) {
-    return path.join(getProjectDir(projectId), toolFilename);
+    return path.join(getProjectDir(projectId), 'tools', toolFilename);
 }
 
 // ============================================================
@@ -1083,33 +1083,36 @@ const server = http.createServer(async (req, res) => {
         docId = parts[3];
         if (docId.endsWith('.md')) docId = docId.slice(0, -3);
 
-        if (docId === 'policy-builder') {
-            const filePath = getProjectToolPath(projectId, 'policy_builder.html');
+        if (docId === 'policy-builder' || docId === 'map-creator') {
+            const toolFilename = docId === 'policy-builder' ? 'policy_builder.html' : 'map_creator.html';
+            const filePath = getProjectToolPath(projectId, toolFilename);
             if (fs.existsSync(filePath)) {
-                fs.readFile(filePath, 'utf8', (err, data) => {
+                fs.readFile(filePath, 'utf8', (err, toolHtml) => {
                     if (err) {
                         res.writeHead(500, { 'Content-Type': 'text/plain' });
-                        res.end('Error loading Policy Builder');
+                        res.end(`Error loading ${docId === 'policy-builder' ? 'Policy Builder' : 'Map Creator'}`);
                         return;
                     }
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end(data);
-                });
-                return;
-            }
-        }
+                    fs.readFile(TEMPLATE_FILE, 'utf8', (templateErr, templateContent) => {
+                        if (templateErr) {
+                            res.writeHead(500, { 'Content-Type': 'text/plain' });
+                            res.end('Error loading template file');
+                            return;
+                        }
 
-        if (docId === 'map-creator') {
-            const filePath = getProjectToolPath(projectId, 'map_creator.html');
-            if (fs.existsSync(filePath)) {
-                fs.readFile(filePath, 'utf8', (err, data) => {
-                    if (err) {
-                        res.writeHead(500, { 'Content-Type': 'text/plain' });
-                        res.end('Error loading Map Creator');
-                        return;
-                    }
-                    res.writeHead(200, { 'Content-Type': 'text/html' });
-                    res.end(data);
+                        const sidebarHtml = getSidebarHtml(projectId, docId);
+                        const projectSelectorHtml = getProjectSelectorHtml(projectId);
+                        const projectName = projectId.replace(/-/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+                        let finalContent = templateContent
+                            .replace('{{CONTENT}}', () => toolHtml)
+                            .replace('{{SIDEBAR}}', () => sidebarHtml)
+                            .replace('{{PROJECT_SELECTOR}}', () => projectSelectorHtml)
+                            .replace('{{PROJECT_NAME}}', () => projectName);
+
+                        res.writeHead(200, { 'Content-Type': 'text/html' });
+                        res.end(finalContent);
+                    });
                 });
                 return;
             }

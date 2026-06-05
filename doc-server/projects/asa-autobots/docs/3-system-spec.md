@@ -1,94 +1,165 @@
-# Deliveroo Multi-Agent System: Core Specifications
+<main class="main-panel">
+<header style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border-color); padding-bottom: 1.5rem; margin-bottom: 3rem;">
+<div>
+<div class="badge-header">System Specifications</div>
+<h1>📋 Deliveroo Multi-Agent System: Core Specifications</h1>
+<div class="subtitle">Complete system design, protocols, modeling structures, and prompt guardrails.</div>
+</div>
+<div>
+<button class="btn btn-secondary" onclick="clearAllComments()" style="font-size:0.75rem; border-color: rgba(239, 68, 68, 0.2); color: #ef4444; background: rgba(239, 68, 68, 0.05);">🧹 Clear Annotations</button>
+</div>
+</header>
 
+<p class="commentable" data-comment-id="system-spec-intro">
 This reference document compiles the complete system design, protocols, modeling structures, and prompt guardrails for the Deliveroo Multi-Agent System (MAS). It serves as the baseline for implementation tasks.
+</p>
 
----
-
-## 1. System Architecture
-
+<!-- 1. System Architecture -->
+<section id="system-architecture">
+<div class="section-header">
+<div class="section-num">1</div>
+<h2>System Architecture</h2>
+</div>
+<p class="commentable" data-comment-id="arch-desc">
 The team implements a decentralized Peer-to-Peer (P2P) coordinate framework operating over standard game socket chat logs.
+</p>
 
 ```mermaid
 graph LR
-    LLM_Master[Agent 2: LLM Master] <-->|P2P JSON Chat| BDI_Executor[Agent 1: BDI Partner]
-    LLM_Master -->|Web API| LLM_Service[LLM Service]
-    BDI_Executor -->|Fast Local Pathing| AStar[A* Graph Search]
-    BDI_Executor -->|Macro Corridor clearing| PDDL_Solver[PDDL Solver]
+    LLM_Master["Agent 2: LLM Master"] <-->|P2P JSON Chat| BDI_Executor["Agent 1: BDI Partner"]
+    LLM_Master -->|Web API| LLM_Service["LLM Service"]
+    BDI_Executor -->|Fast Local Pathing| AStar["A* Graph Search"]
+    BDI_Executor -->|Macro Corridor clearing| PDDL_Solver["PDDL Solver"]
 ```
 
-### Roles and Authority
-- **Agent 2 (LLM Master / Coordinator)**: Intercepts natural language and mathematical challenge prompts. Translates these challenges into active policy guidelines or rendezvous proposals. Commands the partner agent via game chat.
-- **Agent 1 (BDI Executor / Partner)**: Focuses on physical movement. It maintains a priority task queue and checks plan library preconditions. It resolves navigation using A* and calls PDDL for push-crate actions in blocked hallways.
+<h3>Roles and Authority</h3>
+<ul>
+<li class="commentable" data-comment-id="role-master"><strong>Agent 2 (LLM Master / Coordinator)</strong>: Intercepts natural language and mathematical challenge prompts. Translates these challenges into active policy guidelines or rendezvous proposals. Commands the partner agent via game chat.</li>
+<li class="commentable" data-comment-id="role-partner"><strong>Agent 1 (BDI Executor / Partner)</strong>: Focuses on physical movement. It maintains a priority task queue and checks plan library preconditions. It resolves navigation using A* and calls PDDL for push-crate actions in blocked hallways.</li>
+</ul>
+</section>
 
----
-
-## 2. BDI Plan Library Recipes
-
+<!-- 2. BDI Plan Library Recipes -->
+<section id="bdi-plan-library">
+<div class="section-header">
+<div class="section-num">2</div>
+<h2>BDI Plan Library Recipes</h2>
+</div>
+<p class="commentable" data-comment-id="bdi-desc">
 Pre-compiled execution plans represented as generator functions:
+</p>
 
-### 2.1. NavigateTo
-Routes an agent to coordinates while respecting active policy constraints (avoided cells, directional arrows).
-```javascript
-function* NavigateTo(beliefs, targetX, targetY) {
+<h3>2.1. NavigateTo</h3>
+<p class="commentable" data-comment-id="nav-to-desc">Routes an agent to coordinates while respecting active policy constraints (avoided cells, directional arrows).</p>
+<pre><code class="language-javascript">function* NavigateTo(beliefs, targetX, targetY) {
     const path = beliefs.grid.findAStarPath(
         beliefs.me.x, beliefs.me.y, targetX, targetY, beliefs.policy
     );
     for (const step of path) {
         yield { action: 'move', target: step };
     }
-}
-```
+}</code></pre>
 
-### 2.2. CollectAndDeliver
-Navigates to pick up a parcel and delivers it to the nearest valid delivery zone.
-```javascript
-function* CollectAndDeliver(beliefs, parcelId) {
+<h3>2.2. CollectAndDeliver</h3>
+<p class="commentable" data-comment-id="collect-deliver-desc">Navigates to pick up a parcel and delivers it to the nearest valid delivery zone.</p>
+<pre><code class="language-javascript">function* CollectAndDeliver(beliefs, parcelId) {
     const parcel = beliefs.parcels.get(parcelId);
     yield* NavigateTo(beliefs, parcel.x, parcel.y);
     yield { action: 'pickup', target: parcelId };
     const zone = beliefs.grid.findNearestDelivery(beliefs.me.x, beliefs.me.y, beliefs.policy);
     yield* NavigateTo(beliefs, zone.x, zone.y);
     yield { action: 'deliver', target: parcelId };
-}
-```
+}</code></pre>
 
-### 2.3. RendezvousDrop
-Navigates to a target, drops the parcel, backs off to a neighboring clear tile to establish an escape path, and speaks `RELEASE_CARGO`.
-```javascript
-function* RendezvousDrop(beliefs, coopId, x, y) {
+<h3>2.3. RendezvousDrop</h3>
+<p class="commentable" data-comment-id="rendezvous-drop-desc">Navigates to a target, drops the parcel, backs off to a neighboring clear tile to establish an escape path, and speaks <code>RELEASE_CARGO</code>.</p>
+<pre><code class="language-javascript">function* RendezvousDrop(beliefs, coopId, x, y) {
     yield* NavigateTo(beliefs, x, y);
     yield { action: 'putdown' };
     const escape = beliefs.grid.findAdjacentClearTile(x, y);
     yield* NavigateTo(beliefs, escape.x, escape.y);
     yield { action: 'say', payload: { type: 'RELEASE_CARGO', coopId } };
-}
-```
+}</code></pre>
+</section>
 
----
-
-## 3. P2P Message Schema
-
+<!-- 3. P2P Message Schema -->
+<section id="p2p-message-schema">
+<div class="section-header">
+<div class="section-num">3</div>
+<h2>P2P Message Schema</h2>
+</div>
+<p class="commentable" data-comment-id="p2p-desc">
 Messages are serialized JSON strings sent over the standard game chat.
+</p>
 
-| Message Type | JSON Payload | Description / Usage |
-| :--- | :--- | :--- |
-| `PING` | `{"type": "PING"}` | Heartbeat verification. |
-| `PONG` | `{"type": "PONG", "payload": {"x", "y", "score"}}` | Status response containing coordinates. |
-| `PROPOSE_CONTRACT` | `{"type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y"}` | Proposes a handoff or corridor clearing task. |
-| `ACCEPT_CONTRACT` | `{"type": "ACCEPT_CONTRACT", "coopId"}` | Executor accepts contract and suspends current actions. |
-| `SIGNAL_READY` | `{"type": "SIGNAL_READY", "coopId", "role"}` | Sent when dropper or picker arrives at coordinates. |
-| `RELEASE_CARGO` | `{"type": "RELEASE_CARGO", "coopId"}` | Dropper has cleared the tile; Picker may step forward. |
-| `CLOSE_CONTRACT` | `{"type": "CLOSE_CONTRACT", "coopId"}` | Handoff complete; returns both to standard queues. |
-| `LOCK_TARGET` | `{"type": "LOCK_TARGET", "targetId"}` | Target parcel lock to prevent duplicate pathing. |
-| `RELEASE_TARGET` | `{"type": "RELEASE_TARGET", "targetId"}` | Releases a locked target. |
+<table>
+<thead>
+<tr>
+<th>Message Type</th>
+<th>JSON Payload</th>
+<th>Description / Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="commentable" data-comment-id="msg-ping">
+<td><code>PING</code></td>
+<td><code>{"type": "PING"}</code></td>
+<td>Heartbeat verification.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-pong">
+<td><code>PONG</code></td>
+<td><code>{"type": "PONG", "payload": {"x", "y", "score"}}</code></td>
+<td>Status response containing coordinates.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-propose">
+<td><code>PROPOSE_CONTRACT</code></td>
+<td><code>{"type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y"}</code></td>
+<td>Proposes a handoff or corridor clearing task.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-accept">
+<td><code>ACCEPT_CONTRACT</code></td>
+<td><code>{"type": "ACCEPT_CONTRACT", "coopId"}</code></td>
+<td>Executor accepts contract and suspends current actions.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-ready">
+<td><code>SIGNAL_READY</code></td>
+<td><code>{"type": "SIGNAL_READY", "coopId", "role"}</code></td>
+<td>Sent when dropper or picker arrives at coordinates.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-release">
+<td><code>RELEASE_CARGO</code></td>
+<td><code>{"type": "RELEASE_CARGO", "coopId"}</code></td>
+<td>Dropper has cleared the tile; Picker may step forward.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-close">
+<td><code>CLOSE_CONTRACT</code></td>
+<td><code>{"type": "CLOSE_CONTRACT", "coopId"}</code></td>
+<td>Handoff complete; returns both to standard queues.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-lock">
+<td><code>LOCK_TARGET</code></td>
+<td><code>{"type": "LOCK_TARGET", "targetId"}</code></td>
+<td>Target parcel lock to prevent duplicate pathing.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-release-target">
+<td><code>RELEASE_TARGET</code></td>
+<td><code>{"type": "RELEASE_TARGET", "targetId"}</code></td>
+<td>Releases a locked target.</td>
+</tr>
+</tbody>
+</table>
+</section>
 
----
-
-## 4. AST Policy Rules Schema
-
-Level 2 challenge restrictions are applied to Agent 1 via the tool call `apply_agent_rules(agentId, rules)`:
-```json
-{
+<!-- 4. AST Policy Rules Schema -->
+<section id="ast-policy-rules">
+<div class="section-header">
+<div class="section-num">4</div>
+<h2>AST Policy Rules Schema</h2>
+</div>
+<p class="commentable" data-comment-id="ast-desc">
+Level 2 challenge restrictions are applied to Agent 1 via the tool call <code>apply_agent_rules(agentId, rules)</code>:
+</p>
+<pre><code class="language-json">{
   "avoidTiles": ["x,y"],
   "maxRewardLimit": 100,
   "minRewardThreshold": 5,
@@ -99,40 +170,59 @@ Level 2 challenge restrictions are applied to Agent 1 via the tool call `apply_a
   "bonusRules": [
     { "condition": "x == 2 && y == 3", "bonus": 100 }
   ]
-}
-```
+}</code></pre>
+</section>
 
----
+<!-- 5. PDDL Modeling (Corridor Clearing) -->
+<section id="pddl-modeling">
+<div class="section-header">
+<div class="section-num">5</div>
+<h2>PDDL Modeling (Corridor Clearing)</h2>
+</div>
+<p class="commentable" data-comment-id="pddl-desc">
+Crate movements are strictly restricted: <strong>crates can only be moved onto "crate move capable" tiles</strong> (e.g. <code>CRATE_MOVE</code> and <code>CRATE_SPAWN</code> cells).
+</p>
 
-## 5. PDDL Modeling (Corridor Clearing)
+<h3>5.1. Predicates</h3>
+<ul>
+<li class="commentable" data-comment-id="pred-adj"><code>(adjacent t1 t2)</code>: Directed adjacency pathing (respects one-way arrows).</li>
+<li class="commentable" data-comment-id="pred-push"><code>(push-dir t1 t2 t3)</code>: Collinear push relation.</li>
+<li class="commentable" data-comment-id="pred-hold"><code>(can-hold-crate t)</code>: True only for crate-capable tiles.</li>
+<li class="commentable" data-comment-id="pred-clear"><code>(clear t)</code>: Tile is unoccupied by agents or crates.</li>
+</ul>
 
-Crate movements are strictly restricted: **crates can only be moved onto "crate move capable" tiles** (e.g. `CRATE_MOVE` and `CRATE_SPAWN` cells).
+<h3>5.2. Core Actions</h3>
+<ul>
+<li class="commentable" data-comment-id="act-move"><code>move(?a - agent, ?from - tile, ?to - tile)</code></li>
+<li class="commentable" data-comment-id="act-push"><code>push-crate(?a - agent, ?c - crate, ?from - tile, ?to - tile, ?next - tile)</code>: Enforces <code>(can-hold-crate ?next)</code>.</li>
+</ul>
+</section>
 
-### 5.1. Predicates
-- `(adjacent t1 t2)`: Directed adjacency pathing (respects one-way arrows).
-- `(push-dir t1 t2 t3)`: Collinear push relation.
-- `(can-hold-crate t)`: True only for crate-capable tiles.
-- `(clear t)`: Tile is unoccupied by agents or crates.
-
-### 5.2. Core Actions
-- `move(?a - agent, ?from - tile, ?to - tile)`
-- `push-crate(?a - agent, ?c - crate, ?from - tile, ?to - tile, ?next - tile)`: Enforces `(can-hold-crate ?next)`.
-
----
-
-## 6. LLM Coordinator Prompt Structure
-
+<!-- 6. LLM Coordinator Prompt Structure -->
+<section id="llm-coordinator-prompt">
+<div class="section-header">
+<div class="section-num">6</div>
+<h2>LLM Coordinator Prompt Structure</h2>
+</div>
+<p class="commentable" data-comment-id="llm-prompt-desc">
 The coordinator relies on formatting constraints and XML tag isolation:
+</p>
 
-### 6.1. System Instructions
-- Mandates Chain-of-Thought (CoT) reasoning before emitting tool calls.
-- Enforces strict arithmetic resolution via `evaluate_math_expression` first.
-- Requires raw, preamble-free replies for direct questions.
-- Enforces single, sequential tool calls per turn (parallel tool calling is strictly prohibited).
+<h3>6.1. System Instructions</h3>
+<ul>
+<li class="commentable" data-comment-id="sys-cot">Mandates Chain-of-Thought (CoT) reasoning before emitting tool calls.</li>
+<li class="commentable" data-comment-id="sys-math">Enforces strict arithmetic resolution via <code>evaluate_math_expression</code> first.</li>
+<li class="commentable" data-comment-id="sys-preamble">Requires raw, preamble-free replies for direct questions.</li>
+<li class="commentable" data-comment-id="sys-sequential">Enforces single, sequential tool calls per turn (parallel tool calling is strictly prohibited).</li>
+</ul>
 
-### 6.2. Coordinator Tool Manifest
-- `evaluate_math_expression(expression)`
-- `move_agent_to_coordinate(agentId, x, y)`
-- `apply_agent_rules(agentId, rules)`
-- `cooperate_with_agent(agentId, contract)`
-- `instruct_agent_to_say(agentId, message)`
+<h3>6.2. Coordinator Tool Manifest</h3>
+<ul>
+<li class="commentable" data-comment-id="tool-math"><code>evaluate_math_expression(expression)</code></li>
+<li class="commentable" data-comment-id="tool-move"><code>move_agent_to_coordinate(agentId, x, y)</code></li>
+<li class="commentable" data-comment-id="tool-rules"><code>apply_agent_rules(agentId, rules)</code></li>
+<li class="commentable" data-comment-id="tool-coop"><code>cooperate_with_agent(agentId, contract)</code></li>
+<li class="commentable" data-comment-id="tool-say"><code>instruct_agent_to_say(agentId, message)</code></li>
+</ul>
+</section>
+</main>

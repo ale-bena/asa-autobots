@@ -1385,6 +1385,7 @@
             to { transform: translateY(0); opacity: 1; }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@9.4.3/dist/mermaid.min.js"></script>
 </head>
 <body>
 
@@ -2535,6 +2536,19 @@
 
         // Initialize elements on load
         window.addEventListener('DOMContentLoaded', () => {
+            // Render Mermaid graphs if present
+            document.querySelectorAll('pre code.language-mermaid').forEach((codeEl) => {
+                const preEl = codeEl.parentElement;
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = codeEl.textContent;
+                preEl.parentElement.replaceChild(mermaidDiv, preEl);
+            });
+            if (window.mermaid) {
+                mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+                mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+            }
+
             initializeCommentableElements(); buildHeadingNavigation();
             fetchServerConfig().then(() => {
                 loadComments();

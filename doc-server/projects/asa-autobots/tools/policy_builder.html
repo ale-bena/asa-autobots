@@ -1,798 +1,622 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Policy Builder & Tester - Doc Hub</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --font-heading: 'Outfit', sans-serif;
-            --font-body: 'Plus Jakarta Sans', sans-serif;
-            --font-mono: 'JetBrains Mono', monospace;
+<style>
+    /* Tool-specific Layout */
+    .tool-layout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2.5rem;
+        width: 100%;
+        margin-top: 1.5rem;
+    }
 
-            --bg-page: #0b0f19;
-            --bg-card: rgba(17, 24, 39, 0.7);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
+    .policy-builder-container {
+        flex: 1 1 500px;
+        display: flex;
+        flex-direction: column;
+    }
 
-            --primary: #6366f1;
-            --primary-glow: rgba(99, 102, 241, 0.15);
-            --secondary: #a855f7;
-            --accent-cyan: #06b6d4;
-            --accent-green: #10b981;
-            --accent-orange: #f97316;
-            --accent-red: #ef4444;
+    .policy-simulator-container {
+        flex: 1 1 400px;
+        display: flex;
+        flex-direction: column;
+    }
 
-            --transition-fast: 0.2s ease;
-        }
+    /* Form styling */
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+    label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 0.4rem;
+        letter-spacing: 0.05em;
+    }
 
-        body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: var(--font-body);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
+    .form-input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.75rem;
+        color: var(--text-main);
+        font-family: inherit;
+        font-size: 0.9rem;
+        transition: all var(--transition-fast);
+        outline: none;
+    }
 
-        /* Ambient Glow Backdrops */
-        .bg-glows {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-            overflow: hidden;
-        }
+    .form-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 10px var(--primary-glow);
+    }
 
-        .glow-1 {
-            position: absolute;
-            top: -10%;
-            left: -10%;
-            width: 50%;
-            height: 50%;
-            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0) 70%);
-            filter: blur(80px);
-        }
+    select.form-input {
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1rem;
+        padding-right: 2.5rem;
+    }
 
-        .glow-2 {
-            position: absolute;
-            bottom: -10%;
-            right: -10%;
-            width: 50%;
-            height: 50%;
-            background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 70%);
-            filter: blur(80px);
-        }
+    .form-row {
+        display: flex;
+        gap: 1rem;
+    }
 
-        /* Navbar */
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.25rem 2.5rem;
-            background: rgba(10, 14, 23, 0.8);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border-color);
-            z-index: 10;
-        }
+    .form-row .form-group {
+        flex: 1;
+    }
 
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: var(--text-main);
-            text-decoration: none;
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 1.25rem;
-        }
+    /* Condition Builder row */
+    .rule-builder-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255,255,255,0.01);
+        border: 1px solid var(--border-color);
+        padding: 0.75rem;
+        border-radius: 10px;
+        margin-bottom: 0.75rem;
+    }
 
-        .nav-links {
-            display: flex;
-            gap: 1.5rem;
-        }
+    .rule-btn {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        border-radius: 8px;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
 
-        .nav-link {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.95rem;
-            font-weight: 500;
-            transition: color var(--transition-fast);
-        }
+    .rule-btn:hover {
+        color: var(--text-main);
+        border-color: var(--text-muted);
+    }
 
-        .nav-link:hover, .nav-link.active {
-            color: var(--primary);
-        }
+    .rule-btn-remove {
+        color: var(--accent-red);
+        border-color: rgba(239, 68, 68, 0.2);
+        padding: 0.4rem;
+    }
 
-        /* Main Container */
-        .container {
-            flex: 1;
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2.5rem 2rem;
-            z-index: 1;
-            display: grid;
-            grid-template-columns: 1.2fr 1fr;
-            gap: 2.5rem;
-        }
+    .rule-btn-remove:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: var(--accent-red);
+    }
 
-        @media (max-width: 992px) {
-            .container {
-                grid-template-columns: 1fr;
-            }
-        }
+    /* Tester sliders */
+    .tester-slider-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
 
-        /* Typography & Layout */
-        h1 {
-            font-family: var(--font-heading);
-            font-weight: 800;
-            font-size: 2.25rem;
-            letter-spacing: -0.02em;
-            background: linear-gradient(to right, #ffffff, #a5b4fc);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
+    .tester-label-container {
+        flex: 1;
+    }
 
-        .desc {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            margin-bottom: 2rem;
-        }
+    .tester-slider-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex: 2;
+    }
 
-        .card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 1.75rem;
-            backdrop-filter: blur(16px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            margin-bottom: 2rem;
-        }
+    .tester-slider {
+        flex: 1;
+        height: 6px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 3px;
+        outline: none;
+        -webkit-appearance: none;
+    }
 
-        .card-title {
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 1.25rem;
-            margin-bottom: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.75rem;
-        }
+    .tester-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        background: var(--primary);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 10px var(--primary-glow);
+    }
 
-        /* Form styling */
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
+    .tester-value {
+        width: 3rem;
+        text-align: right;
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--accent-cyan);
+    }
 
-        label {
-            display: block;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-bottom: 0.4rem;
-            letter-spacing: 0.05em;
-        }
+    /* Results Display */
+    .result-box {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px dashed var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-top: 1.5rem;
+    }
 
-        .form-input {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 0.75rem;
-            color: var(--text-main);
-            font-family: inherit;
-            font-size: 0.9rem;
-            transition: all var(--transition-fast);
-            outline: none;
-        }
+    .result-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
 
-        .form-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 10px var(--primary-glow);
-        }
+    .result-item:last-child {
+        border-bottom: none;
+    }
 
-        select.form-input {
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 0.75rem center;
-            background-size: 1rem;
-            padding-right: 2.5rem;
-        }
+    .result-label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
 
-        .form-row {
-            display: flex;
-            gap: 1rem;
-        }
+    .result-value {
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
 
-        .form-row .form-group {
-            flex: 1;
-        }
+    .badge {
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
 
-        /* Condition Builder row */
-        .rule-builder-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: rgba(255,255,255,0.01);
-            border: 1px solid var(--border-color);
-            padding: 0.75rem;
-            border-radius: 10px;
-            margin-bottom: 0.75rem;
-        }
+    .badge-active {
+        background: rgba(16, 185, 129, 0.15);
+        color: var(--accent-green);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
 
-        .rule-btn {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-muted);
-            border-radius: 8px;
-            padding: 0.4rem 0.75rem;
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-        }
+    .badge-inactive {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-muted);
+        border: 1px solid var(--border-color);
+    }
 
-        .rule-btn:hover {
-            color: var(--text-main);
-            border-color: var(--text-muted);
-        }
+    .card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 1.75rem;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        margin-bottom: 2rem;
+    }
 
-        .rule-btn-remove {
-            color: var(--accent-red);
-            border-color: rgba(239, 68, 68, 0.2);
-            padding: 0.4rem;
-        }
+    .card-title {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: 1.25rem;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.75rem;
+    }
 
-        .rule-btn-remove:hover {
-            background: rgba(239, 68, 68, 0.1);
-            border-color: var(--accent-red);
-        }
+    pre {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        font-family: var(--font-mono);
+        font-size: 0.85rem;
+        color: var(--text-main);
+        overflow-x: auto;
+        max-height: 250px;
+    }
 
-        /* Tester sliders */
-        .tester-slider-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
+    .btn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0.5rem;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        text-decoration: none;
+        width: 100%;
+    }
 
-        .tester-label-container {
-            flex: 1;
-        }
+    .btn:hover {
+        opacity: 0.95;
+        transform: translateY(-1px);
+    }
+</style>
 
-        .tester-slider-container {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            flex: 2;
-        }
+<header style="margin-bottom: 2.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1.5rem;">
+    <div class="badge-header">Interactive Tool</div>
+    <h1>🛠️ Policy Builder & Tester</h1>
+    <div class="subtitle">Visually configure and simulate BDI agent policy rules (limits, avoid zones, and conditional point multipliers) in real-time.</div>
+</header>
 
-        .tester-slider {
-            flex: 1;
-            height: 6px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 3px;
-            outline: none;
-            -webkit-appearance: none;
-        }
-
-        .tester-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            background: var(--primary);
-            border-radius: 50%;
-            cursor: pointer;
-            box-shadow: 0 0 10px var(--primary-glow);
-        }
-
-        .tester-value {
-            width: 3rem;
-            text-align: right;
-            font-family: var(--font-mono);
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--accent-cyan);
-        }
-
-        /* Results Display */
-        .result-box {
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px dashed var(--border-color);
-            border-radius: 12px;
-            padding: 1.25rem;
-            margin-top: 1.5rem;
-        }
-
-        .result-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-        }
-
-        .result-item:last-child {
-            border-bottom: none;
-        }
-
-        .result-label {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        .result-value {
-            font-weight: 700;
-            font-size: 0.95rem;
-        }
-
-        .badge {
-            padding: 0.25rem 0.6rem;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .badge-active {
-            background: rgba(16, 185, 129, 0.15);
-            color: var(--accent-green);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .badge-inactive {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--text-muted);
-            border: 1px solid var(--border-color);
-        }
-
-        /* Code Preview */
-        pre {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1.25rem;
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            color: var(--text-main);
-            overflow-x: auto;
-            max-height: 250px;
-        }
-
-        .btn {
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            gap: 0.5rem;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            border-radius: 10px;
-            padding: 0.75rem 1.25rem;
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-            text-decoration: none;
-        }
-
-        .btn:hover {
-            opacity: 0.95;
-            transform: translateY(-1px);
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-            box-shadow: none;
-        }
-
-        .btn-outline:hover {
-            background: rgba(255,255,255,0.03);
-            border-color: var(--text-muted);
-        }
-    </style>
-</head>
-<body>
-
-    <div class="bg-glows">
-        <div class="glow-1"></div>
-        <div class="glow-2"></div>
-    </div>
-
-    <!-- Header Navigation -->
-    <nav>
-        <a href="/" class="nav-brand">
-            <span>🤖</span> Doc Hub
-        </a>
-        <div class="nav-links">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/policy-builder" class="nav-link active">Policy Builder</a>
-            <a href="/map-creator" class="nav-link">Map Creator</a>
-            <a href="/git" class="nav-link">Git</a>
-        </div>
-    </nav>
-
-    <!-- Content -->
-    <div class="container">
-        <!-- Left Side: Builder Panels -->
-        <div>
-            <h1>Policy Builder & Tester</h1>
-            <div class="desc">Visually configure and simulate BDI agent policy rules (limits, avoid zones, and conditional point multipliers) in real-time.</div>
-
-            <!-- Global Configurations Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span>⚙️</span> Global Constraints
+<div class="tool-layout">
+    <!-- Left Side: Builder Panels -->
+    <div class="policy-builder-container">
+        <!-- Global Configurations Card -->
+        <div class="card">
+            <div class="card-title">
+                <span>⚙️</span> Global Constraints
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="minReward">Min Reward Threshold</label>
+                    <input type="number" id="minReward" class="form-input" placeholder="e.g. 5" value="10" oninput="runSimulation()">
                 </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="minReward">Min Reward Threshold</label>
-                        <input type="number" id="minReward" class="form-input" placeholder="e.g. 5" value="10" oninput="runSimulation()">
-                    </div>
-                    <div class="form-group">
-                        <label for="maxReward">Max Reward Limit</label>
-                        <input type="number" id="maxReward" class="form-input" placeholder="e.g. 100" value="80" oninput="runSimulation()">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="avoidTiles">Avoid Tiles (comma-separated "x,y")</label>
-                        <input type="text" id="avoidTiles" class="form-input" placeholder="e.g. 3,5, 4,5, 10,12" value="3,5, 4,5" oninput="runSimulation()">
-                    </div>
-                    <div class="form-group">
-                        <label for="stackSize">Required Stack Size</label>
-                        <input type="number" id="stackSize" class="form-input" placeholder="e.g. 3" value="0" oninput="runSimulation()">
-                    </div>
+                <div class="form-group">
+                    <label for="maxReward">Max Reward Limit</label>
+                    <input type="number" id="maxReward" class="form-input" placeholder="e.g. 100" value="80" oninput="runSimulation()">
                 </div>
             </div>
-
-            <!-- Point Multipliers Card -->
-            <div class="card">
-                <div class="card-title" style="justify-content: space-between; align-items: center; display: flex;">
-                    <span>📈</span> Cost Multipliers & Bonuses
-                    <button class="rule-btn" onclick="addRuleRow('multiplier')">➕ Add Rule</button>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="avoidTiles">Avoid Tiles (comma-separated "x,y")</label>
+                    <input type="text" id="avoidTiles" class="form-input" placeholder="e.g. 3,5, 4,5, 10,12" value="3,5, 4,5" oninput="runSimulation()">
                 </div>
-                <div id="multiplierRulesContainer">
-                    <!-- Rule Rows inserted here -->
+                <div class="form-group">
+                    <label for="stackSize">Required Stack Size</label>
+                    <input type="number" id="stackSize" class="form-input" placeholder="e.g. 3" value="0" oninput="runSimulation()">
                 </div>
             </div>
         </div>
 
-        <!-- Right Side: Live Simulator -->
-        <div>
-            <!-- Live State Panel -->
-            <div class="card">
-                <div class="card-title">
-                    <span>⚡</span> Live State Simulator
-                </div>
-                
-                <!-- State Sliders -->
-                <div class="form-group">
-                    <div class="tester-slider-row">
-                        <div class="tester-label-container">
-                            <label>Agent carrying.size</label>
-                        </div>
-                        <div class="tester-slider-container">
-                            <input type="range" class="tester-slider" id="simCarrying" min="0" max="5" value="3" oninput="updateSliderVal(this, 'simCarryingVal')">
-                            <span class="tester-value" id="simCarryingVal">3</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <div class="tester-slider-row">
-                        <div class="tester-label-container">
-                            <label>Parcel Reward</label>
-                        </div>
-                        <div class="tester-slider-container">
-                            <input type="range" class="tester-slider" id="simReward" min="0" max="100" value="25" oninput="updateSliderVal(this, 'simRewardVal')">
-                            <span class="tester-value" id="simRewardVal">25</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <div class="tester-slider-row">
-                        <div class="tester-label-container">
-                            <label>Steps / Tick Count</label>
-                        </div>
-                        <div class="tester-slider-container">
-                            <input type="range" class="tester-slider" id="simSteps" min="0" max="200" value="45" oninput="updateSliderVal(this, 'simStepsVal')">
-                            <span class="tester-value" id="simStepsVal">45</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Agent X coordinate</label>
-                        <input type="number" class="form-input" id="simX" value="3" oninput="runSimulation()">
-                    </div>
-                    <div class="form-group">
-                        <label>Agent Y coordinate</label>
-                        <input type="number" class="form-input" id="simY" value="5" oninput="runSimulation()">
-                    </div>
-                </div>
-
-                <!-- Simulation Results -->
-                <div class="result-box">
-                    <label style="font-size: 0.7rem; margin-bottom: 0.75rem;">Simulator Evaluation Outcome</label>
-                    
-                    <div class="result-item">
-                        <span class="result-label">Task Status</span>
-                        <span class="result-value" id="resStatus">-</span>
-                    </div>
-
-                    <div class="result-item">
-                        <span class="result-label">Tile Avoidance</span>
-                        <span class="result-value" id="resAvoid">-</span>
-                    </div>
-
-                    <div class="result-item">
-                        <span class="result-label">Point Multiplier Applied</span>
-                        <span class="result-value" style="color: var(--accent-orange);" id="resMultiplier">1.0x</span>
-                    </div>
-
-                    <div class="result-item">
-                        <span class="result-label">Bonus Points Awarded</span>
-                        <span class="result-value" style="color: var(--accent-green);" id="resBonus">+0 pts</span>
-                    </div>
-                </div>
+        <!-- Point Multipliers Card -->
+        <div class="card">
+            <div class="card-title" style="justify-content: space-between; align-items: center; display: flex;">
+                <span>📈</span> Cost Multipliers & Bonuses
+                <button class="rule-btn" onclick="addRuleRow('multiplier')">➕ Add Rule</button>
             </div>
-
-            <!-- Output JSON -->
-            <div class="card">
-                <div class="card-title">
-                    <span>📄</span> Generated Rules JSON
-                </div>
-                <pre><code id="jsonOutput">{}</code></pre>
-                <div style="margin-top: 1rem; display: flex; gap: 1rem;">
-                    <button class="btn" style="flex: 1;" onclick="copyJson()">Copy to Clipboard</button>
-                </div>
+            <div id="multiplierRulesContainer">
+                <!-- Rule Rows inserted here -->
             </div>
         </div>
     </div>
 
-    <script>
-        // Preset rules
-        let rules = [
-            { id: 1, type: 'multiplier', variable: 'carrying.size', op: '==', value: '3', factor: '1.5' },
-            { id: 2, type: 'bonus', variable: 'x', op: '==', value: '3', factor: '50' } // x==3 && y==5 is bonus 50
-        ];
-
-        let ruleCounter = 3;
-
-        const variablesList = ['carrying.size', 'reward', 'steps', 'x', 'y'];
-        const operatorsList = [
-            { symbol: '==', label: 'equals' },
-            { symbol: '!=', label: 'not equals' },
-            { symbol: '<', label: 'less than' },
-            { symbol: '>', label: 'greater than' },
-            { symbol: '<=', label: 'less or equals' },
-            { symbol: '>=', label: 'greater or equals' }
-        ];
-
-        function init() {
-            // Render preset rules
-            rules.forEach(r => renderRuleRow(r));
-            runSimulation();
-        }
-
-        function updateSliderVal(slider, labelId) {
-            document.getElementById(labelId).innerText = slider.value;
-            runSimulation();
-        }
-
-        function addRuleRow(type) {
-            const newRule = {
-                id: ruleCounter++,
-                type: type,
-                variable: 'carrying.size',
-                op: '==',
-                value: '3',
-                factor: type === 'multiplier' ? '1.5' : '10'
-            };
-            rules.push(newRule);
-            renderRuleRow(newRule);
-            runSimulation();
-        }
-
-        function removeRuleRow(id) {
-            rules = rules.filter(r => r.id !== id);
-            const el = document.getElementById(`rule-row-${id}`);
-            if (el) el.remove();
-            runSimulation();
-        }
-
-        function updateRuleData(id, field, value) {
-            const rule = rules.find(r => r.id === id);
-            if (rule) {
-                rule[field] = value;
-            }
-            runSimulation();
-        }
-
-        function renderRuleRow(rule) {
-            const container = document.getElementById('multiplierRulesContainer');
+    <!-- Right Side: Live Simulator -->
+    <div class="policy-simulator-container">
+        <!-- Live State Panel -->
+        <div class="card">
+            <div class="card-title">
+                <span>⚡</span> Live State Simulator
+            </div>
             
-            const row = document.createElement('div');
-            row.className = 'rule-builder-row';
-            row.id = `rule-row-${rule.id}`;
-
-            // Variable select
-            let varOptions = variablesList.map(v => `<option value="${v}" ${rule.variable === v ? 'selected' : ''}>${v}</option>`).join('');
-            
-            // Operator select
-            let opOptions = operatorsList.map(o => `<option value="${o.symbol}" ${rule.op === o.symbol ? 'selected' : ''}>${o.symbol}</option>`).join('');
-
-            // Label for factor or bonus
-            const factorLabel = rule.type === 'multiplier' ? 'Multiplier (x)' : 'Bonus points';
-
-            row.innerHTML = `
-                <div style="display: flex; flex-direction: column; width: 80px; gap: 0.25rem;">
-                    <label style="font-size: 0.65rem;">Rule Type</label>
-                    <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'type', this.value)">
-                        <option value="multiplier" ${rule.type === 'multiplier' ? 'selected' : ''}>Multiplier</option>
-                        <option value="bonus" ${rule.type === 'bonus' ? 'selected' : ''}>Bonus</option>
-                    </select>
+            <!-- State Sliders -->
+            <div class="form-group">
+                <div class="tester-slider-row">
+                    <div class="tester-label-container">
+                        <label>Agent carrying.size</label>
+                    </div>
+                    <div class="tester-slider-container">
+                        <input type="range" class="tester-slider" id="simCarrying" min="0" max="5" value="3" oninput="updateSliderVal(this, 'simCarryingVal')">
+                        <span class="tester-value" id="simCarryingVal">3</span>
+                    </div>
                 </div>
-                <div style="display: flex; flex-direction: column; flex: 1.5; gap: 0.25rem;">
-                    <label style="font-size: 0.65rem;">If Variable</label>
-                    <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'variable', this.value)">
-                        ${varOptions}
-                    </select>
+            </div>
+
+            <div class="form-group">
+                <div class="tester-slider-row">
+                    <div class="tester-label-container">
+                        <label>Parcel Reward</label>
+                    </div>
+                    <div class="tester-slider-container">
+                        <input type="range" class="tester-slider" id="simReward" min="0" max="100" value="25" oninput="updateSliderVal(this, 'simRewardVal')">
+                        <span class="tester-value" id="simRewardVal">25</span>
+                    </div>
                 </div>
-                <div style="display: flex; flex-direction: column; width: 60px; gap: 0.25rem;">
-                    <label style="font-size: 0.65rem;">Op</label>
-                    <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'op', this.value)">
-                        ${opOptions}
-                    </select>
+            </div>
+
+            <div class="form-group">
+                <div class="tester-slider-row">
+                    <div class="tester-label-container">
+                        <label>Steps / Tick Count</label>
+                    </div>
+                    <div class="tester-slider-container">
+                        <input type="range" class="tester-slider" id="simSteps" min="0" max="200" value="45" oninput="updateSliderVal(this, 'simStepsVal')">
+                        <span class="tester-value" id="simStepsVal">45</span>
+                    </div>
                 </div>
-                <div style="display: flex; flex-direction: column; flex: 1; gap: 0.25rem;">
-                    <label style="font-size: 0.65rem;">Compare Val</label>
-                    <input type="text" class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" value="${rule.value}" oninput="updateRuleData(${rule.id}, 'value', this.value)">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Agent X coordinate</label>
+                    <input type="number" class="form-input" id="simX" value="3" oninput="runSimulation()">
                 </div>
-                <div style="display: flex; flex-direction: column; flex: 1; gap: 0.25rem;">
-                    <label style="font-size: 0.65rem;" id="lbl-factor-${rule.id}">${factorLabel}</label>
-                    <input type="number" step="0.1" class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" value="${rule.factor}" oninput="updateRuleData(${rule.id}, 'factor', this.value)">
+                <div class="form-group">
+                    <label>Agent Y coordinate</label>
+                    <input type="number" class="form-input" id="simY" value="5" oninput="runSimulation()">
                 </div>
-                <button class="rule-btn rule-btn-remove" style="align-self: flex-end; padding: 0.45rem;" onclick="removeRuleRow(${rule.id})" title="Delete rule">🗑️</button>
-            `;
+            </div>
 
-            container.appendChild(row);
-        }
-
-        // Live AST evaluator simulation
-        function runSimulation() {
-            // Get state variables
-            const state = {
-                'carrying.size': parseInt(document.getElementById('simCarrying').value),
-                'reward': parseInt(document.getElementById('simReward').value),
-                'steps': parseInt(document.getElementById('simSteps').value),
-                'x': parseInt(document.getElementById('simX').value || '0'),
-                'y': parseInt(document.getElementById('simY').value || '0')
-            };
-
-            const minReward = parseInt(document.getElementById('minReward').value || '0');
-            const maxReward = parseInt(document.getElementById('maxReward').value || '999');
-            const avoidTilesStr = document.getElementById('avoidTiles').value || '';
-            const requiredStack = parseInt(document.getElementById('stackSize').value || '0');
-
-            // Evaluate Task Status (limits validation)
-            let status = '<span class="badge badge-active">FEASIBLE Goal</span>';
-            if (state.reward < minReward) {
-                status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">UNFEASIBLE: Reward &lt; ${minReward}</span>`;
-            } else if (state.reward > maxReward) {
-                status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">UNFEASIBLE: Reward &gt; ${maxReward}</span>`;
-            } else if (requiredStack > 0 && state['carrying.size'] !== requiredStack) {
-                status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">HOLD: Carrying size (${state['carrying.size']}) != Required (${requiredStack})</span>`;
-            }
-            document.getElementById('resStatus').innerHTML = status;
-
-            // Evaluate Tile Avoidance
-            const avoidTiles = avoidTilesStr.split(',').map(s => s.trim()).filter(s => s !== '');
-            const currentCoord = `${state.x},${state.y}`;
-            let avoidStatus = '<span class="badge badge-active">Safe Tile</span>';
-            if (avoidTiles.includes(currentCoord)) {
-                avoidStatus = '<span class="badge badge-inactive" style="color: var(--accent-orange); border-color: rgba(249, 115, 22, 0.2);">AVOID tile matching path</span>';
-            }
-            document.getElementById('resAvoid').innerHTML = avoidStatus;
-
-            // Evaluate Multipliers and Bonuses
-            let multiplier = 1.0;
-            let bonus = 0;
-
-            const finalMultiplierRules = [];
-            const finalBonusRules = [];
-
-            rules.forEach(r => {
-                const stateVal = state[r.variable];
-                const compareVal = parseFloat(r.value);
-                let matched = false;
-
-                if (!isNaN(compareVal)) {
-                    switch (r.op) {
-                        case '==': matched = (stateVal === compareVal); break;
-                        case '!=': matched = (stateVal !== compareVal); break;
-                        case '<': matched = (stateVal < compareVal); break;
-                        case '>': matched = (stateVal > compareVal); break;
-                        case '<=': matched = (stateVal <= compareVal); break;
-                        case '>=': matched = (stateVal >= compareVal); break;
-                    }
-                }
-
-                const exprCondition = `${r.variable} ${r.op} ${r.value}`;
+            <!-- Simulation Results -->
+            <div class="result-box">
+                <label style="font-size: 0.7rem; margin-bottom: 0.75rem;">Simulator Evaluation Outcome</label>
                 
-                if (r.type === 'multiplier') {
-                    const factor = parseFloat(r.factor) || 1.0;
-                    finalMultiplierRules.push({
-                        condition: exprCondition,
-                        multiplier: factor
-                    });
-                    if (matched) multiplier *= factor;
-                } else {
-                    const points = parseInt(r.factor) || 0;
-                    finalBonusRules.push({
-                        condition: exprCondition,
-                        bonus: points
-                    });
-                    if (matched) bonus += points;
+                <div class="result-item">
+                    <span class="result-label">Task Status</span>
+                    <span class="result-value" id="resStatus">-</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">Tile Avoidance</span>
+                    <span class="result-value" id="resAvoid">-</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">Point Multiplier Applied</span>
+                    <span class="result-value" style="color: var(--accent-orange);" id="resMultiplier">1.0x</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">Bonus Points Awarded</span>
+                    <span class="result-value" style="color: var(--accent-green);" id="resBonus">+0 pts</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Output JSON -->
+        <div class="card">
+            <div class="card-title">
+                <span>📄</span> Generated Rules JSON
+            </div>
+            <pre><code id="jsonOutput">{}</code></pre>
+            <div style="margin-top: 1rem;">
+                <button class="btn" onclick="copyJson()">Copy to Clipboard</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Preset rules
+    let rules = [
+        { id: 1, type: 'multiplier', variable: 'carrying.size', op: '==', value: '3', factor: '1.5' },
+        { id: 2, type: 'bonus', variable: 'x', op: '==', value: '3', factor: '50' } // x==3 && y==5 is bonus 50
+    ];
+
+    let ruleCounter = 3;
+
+    const variablesList = ['carrying.size', 'reward', 'steps', 'x', 'y'];
+    const operatorsList = [
+        { symbol: '==', label: 'equals' },
+        { symbol: '!=', label: 'not equals' },
+        { symbol: '<', label: 'less than' },
+        { symbol: '>', label: 'greater than' },
+        { symbol: '<=', label: 'less or equals' },
+        { symbol: '>=', label: 'greater or equals' }
+    ];
+
+    function init() {
+        // Render preset rules
+        rules.forEach(r => renderRuleRow(r));
+        runSimulation();
+    }
+
+    function updateSliderVal(slider, labelId) {
+        document.getElementById(labelId).innerText = slider.value;
+        runSimulation();
+    }
+
+    function addRuleRow(type) {
+        const newRule = {
+            id: ruleCounter++,
+            type: type,
+            variable: 'carrying.size',
+            op: '==',
+            value: '3',
+            factor: type === 'multiplier' ? '1.5' : '10'
+        };
+        rules.push(newRule);
+        renderRuleRow(newRule);
+        runSimulation();
+    }
+
+    function removeRuleRow(id) {
+        rules = rules.filter(r => r.id !== id);
+        const el = document.getElementById(`rule-row-${id}`);
+        if (el) el.remove();
+        runSimulation();
+    }
+
+    function updateRuleData(id, field, value) {
+        const rule = rules.find(r => r.id === id);
+        if (rule) {
+            rule[field] = value;
+        }
+        runSimulation();
+    }
+
+    function renderRuleRow(rule) {
+        const container = document.getElementById('multiplierRulesContainer');
+        
+        const row = document.createElement('div');
+        row.className = 'rule-builder-row';
+        row.id = `rule-row-${rule.id}`;
+
+        // Variable select
+        let varOptions = variablesList.map(v => `<option value="${v}" ${rule.variable === v ? 'selected' : ''}>${v}</option>`).join('');
+        
+        // Operator select
+        let opOptions = operatorsList.map(o => `<option value="${o.symbol}" ${rule.op === o.symbol ? 'selected' : ''}>${o.symbol}</option>`).join('');
+
+        // Label for factor or bonus
+        const factorLabel = rule.type === 'multiplier' ? 'Multiplier (x)' : 'Bonus points';
+
+        row.innerHTML = `
+            <div style="display: flex; flex-direction: column; width: 80px; gap: 0.25rem;">
+                <label style="font-size: 0.65rem;">Rule Type</label>
+                <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'type', this.value)">
+                    <option value="multiplier" ${rule.type === 'multiplier' ? 'selected' : ''}>Multiplier</option>
+                    <option value="bonus" ${rule.type === 'bonus' ? 'selected' : ''}>Bonus</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 1.5; gap: 0.25rem;">
+                <label style="font-size: 0.65rem;">If Variable</label>
+                <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'variable', this.value)">
+                    ${varOptions}
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; width: 60px; gap: 0.25rem;">
+                <label style="font-size: 0.65rem;">Op</label>
+                <select class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" onchange="updateRuleData(${rule.id}, 'op', this.value)">
+                    ${opOptions}
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 1; gap: 0.25rem;">
+                <label style="font-size: 0.65rem;">Compare Val</label>
+                <input type="text" class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" value="${rule.value}" oninput="updateRuleData(${rule.id}, 'value', this.value)">
+            </div>
+            <div style="display: flex; flex-direction: column; flex: 1; gap: 0.25rem;">
+                <label style="font-size: 0.65rem;" id="lbl-factor-${rule.id}">${factorLabel}</label>
+                <input type="number" step="0.1" class="form-input" style="padding: 0.35rem; font-size: 0.8rem;" value="${rule.factor}" oninput="updateRuleData(${rule.id}, 'factor', this.value)">
+            </div>
+            <button class="rule-btn rule-btn-remove" style="align-self: flex-end; padding: 0.45rem;" onclick="removeRuleRow(${rule.id})" title="Delete rule">🗑️</button>
+        `;
+
+        container.appendChild(row);
+    }
+
+    // Live AST evaluator simulation
+    function runSimulation() {
+        // Get state variables
+        const state = {
+            'carrying.size': parseInt(document.getElementById('simCarrying').value),
+            'reward': parseInt(document.getElementById('simReward').value),
+            'steps': parseInt(document.getElementById('simSteps').value),
+            'x': parseInt(document.getElementById('simX').value || '0'),
+            'y': parseInt(document.getElementById('simY').value || '0')
+        };
+
+        const minReward = parseInt(document.getElementById('minReward').value || '0');
+        const maxReward = parseInt(document.getElementById('maxReward').value || '999');
+        const avoidTilesStr = document.getElementById('avoidTiles').value || '';
+        const requiredStack = parseInt(document.getElementById('stackSize').value || '0');
+
+        // Evaluate Task Status (limits validation)
+        let status = '<span class="badge badge-active">FEASIBLE Goal</span>';
+        if (state.reward < minReward) {
+            status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">UNFEASIBLE: Reward &lt; ${minReward}</span>`;
+        } else if (state.reward > maxReward) {
+            status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">UNFEASIBLE: Reward &gt; ${maxReward}</span>`;
+        } else if (requiredStack > 0 && state['carrying.size'] !== requiredStack) {
+            status = `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">HOLD: Carrying size (${state['carrying.size']}) != Required (${requiredStack})</span>`;
+        }
+        document.getElementById('resStatus').innerHTML = status;
+
+        // Evaluate Tile Avoidance
+        const avoidTiles = avoidTilesStr.split(',').map(s => s.trim()).filter(s => s !== '');
+        const currentCoord = `${state.x},${state.y}`;
+        let avoidStatus = '<span class="badge badge-active">Safe Tile</span>';
+        if (avoidTiles.includes(currentCoord)) {
+            avoidStatus = '<span class="badge badge-inactive" style="color: var(--accent-orange); border-color: rgba(249, 115, 22, 0.2);">AVOID tile matching path</span>';
+        }
+        document.getElementById('resAvoid').innerHTML = avoidStatus;
+
+        // Evaluate Multipliers and Bonuses
+        let multiplier = 1.0;
+        let bonus = 0;
+
+        const finalMultiplierRules = [];
+        const finalBonusRules = [];
+
+        rules.forEach(r => {
+            const stateVal = state[r.variable];
+            const compareVal = parseFloat(r.value);
+            let matched = false;
+
+            if (!isNaN(compareVal)) {
+                switch (r.op) {
+                    case '==': matched = (stateVal === compareVal); break;
+                    case '!=': matched = (stateVal !== compareVal); break;
+                    case '<': matched = (stateVal < compareVal); break;
+                    case '>': matched = (stateVal > compareVal); break;
+                    case '<=': matched = (stateVal <= compareVal); break;
+                    case '>=': matched = (stateVal >= compareVal); break;
                 }
-            });
+            }
 
-            document.getElementById('resMultiplier').innerText = `${multiplier.toFixed(2)}x`;
-            document.getElementById('resBonus').innerText = `+${bonus} pts`;
+            const exprCondition = `${r.variable} ${r.op} ${r.value}`;
+            
+            if (r.type === 'multiplier') {
+                const factor = parseFloat(r.factor) || 1.0;
+                finalMultiplierRules.push({
+                    condition: exprCondition,
+                    multiplier: factor
+                });
+                if (matched) multiplier *= factor;
+            } else {
+                const points = parseInt(r.factor) || 0;
+                finalBonusRules.push({
+                    condition: exprCondition,
+                    bonus: points
+                });
+                if (matched) bonus += points;
+            }
+        });
 
-            // Compile JSON output
-            const finalRules = {};
-            if (avoidTiles.length > 0) finalRules.avoidTiles = avoidTiles;
-            if (minReward > 0) finalRules.minRewardThreshold = minReward;
-            if (maxReward < 999) finalRules.maxRewardLimit = maxReward;
-            if (requiredStack > 0) finalRules.requiredStackSize = requiredStack;
-            if (finalMultiplierRules.length > 0) finalRules.multiplierRules = finalMultiplierRules;
-            if (finalBonusRules.length > 0) finalRules.bonusRules = finalBonusRules;
+        document.getElementById('resMultiplier').innerText = `${multiplier.toFixed(2)}x`;
+        document.getElementById('resBonus').innerText = `+${bonus} pts`;
 
-            const finalPayload = {
-                agentId: "agent_pddl_1",
-                rules: finalRules
-            };
+        // Compile JSON output
+        const finalRules = {};
+        if (avoidTiles.length > 0) finalRules.avoidTiles = avoidTiles;
+        if (minReward > 0) finalRules.minRewardThreshold = minReward;
+        if (maxReward < 999) finalRules.maxRewardLimit = maxReward;
+        if (requiredStack > 0) finalRules.requiredStackSize = requiredStack;
+        if (finalMultiplierRules.length > 0) finalRules.multiplierRules = finalMultiplierRules;
+        if (finalBonusRules.length > 0) finalRules.bonusRules = finalBonusRules;
 
-            document.getElementById('jsonOutput').innerText = JSON.stringify(finalPayload, null, 2);
-        }
+        const finalPayload = {
+            agentId: "agent_pddl_1",
+            rules: finalRules
+        };
 
-        function copyJson() {
-            const text = document.getElementById('jsonOutput').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                alert("JSON copied to clipboard!");
-            });
-        }
+        document.getElementById('jsonOutput').innerText = JSON.stringify(finalPayload, null, 2);
+    }
 
-        // Run on start
-        window.onload = init;
-    </script>
-</body>
-</html>
+    // Run on start
+    window.onload = init;
+</script>
