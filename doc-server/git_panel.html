@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Panel - Doc Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --font-heading: 'Outfit', sans-serif;
+            --font-body: 'Plus Jakarta Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --bg-page: #0b0f19;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-sidebar: rgba(10, 14, 23, 0.9);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.15);
+            --secondary: #a855f7;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-orange: #f97316;
+            --accent-red: #ef4444;
+            --transition-fast: 0.2s ease;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .bg-glows { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+        .glow-1 { position: absolute; top: -10%; left: -10%; width: 50%; height: 50%; background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, transparent 70%); filter: blur(80px); }
+        .glow-2 { position: absolute; bottom: -10%; right: -10%; width: 50%; height: 50%; background: radial-gradient(circle, rgba(168,85,247,0.1) 0%, transparent 70%); filter: blur(80px); }
+
+        /* Nav */
+        nav { display: flex; justify-content: space-between; align-items: center; padding: 1rem 2.5rem; background: rgba(10,14,23,0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); z-index: 10; }
+        .nav-brand { display: flex; align-items: center; gap: 0.75rem; color: var(--text-main); text-decoration: none; font-family: var(--font-heading); font-weight: 700; font-size: 1.25rem; }
+        .nav-links { display: flex; gap: 1.5rem; }
+        .nav-link { color: var(--text-muted); text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: color var(--transition-fast); }
+        .nav-link:hover, .nav-link.active { color: var(--primary); }
+
+        /* Layout */
+        .app-layout { display: grid; grid-template-columns: 260px 1fr; flex: 1; z-index: 1; min-height: 0; }
+        @media (max-width: 900px) { .app-layout { grid-template-columns: 1fr; } }
+
+        /* Sidebar */
+        .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-color); padding: 1.75rem 1.25rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; backdrop-filter: blur(12px); }
+        .sidebar h2 { font-family: var(--font-heading); font-size: 1.1rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .sidebar-section { display: flex; flex-direction: column; gap: 0.5rem; }
+        .sidebar-section-title { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 0.25rem; }
+        .branch-badge { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--primary-glow); border: 1px solid rgba(99,102,241,0.2); padding: 0.4rem 0.75rem; border-radius: 8px; font-family: var(--font-mono); font-size: 0.85rem; font-weight: 600; color: var(--primary); }
+        .branch-badge::before { content: ''; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
+        .status-summary { display: flex; flex-direction: column; gap: 0.4rem; }
+        .status-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 0.35rem 0; }
+        .status-row .count { font-family: var(--font-mono); font-weight: 700; }
+        .count-green { color: var(--accent-green); }
+        .count-orange { color: var(--accent-orange); }
+        .count-cyan { color: var(--accent-cyan); }
+        .count-red { color: var(--accent-red); }
+
+        /* Action buttons */
+        .action-btn { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.65rem 0.85rem; border-radius: 8px; border: 1px solid var(--border-color); background: transparent; color: var(--text-main); font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all var(--transition-fast); }
+        .action-btn:hover { background: rgba(255,255,255,0.03); border-color: var(--text-muted); }
+        .action-btn.danger { color: var(--accent-red); border-color: rgba(239,68,68,0.2); }
+        .action-btn.danger:hover { background: rgba(239,68,68,0.1); }
+        .action-btn.primary-action { background: linear-gradient(135deg, var(--primary), var(--secondary)); border: none; font-weight: 600; color: white; box-shadow: 0 4px 12px rgba(99,102,241,0.2); }
+        .action-btn.primary-action:hover { opacity: 0.95; transform: translateY(-1px); }
+        .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Project selector */
+        .project-select { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 0.5rem 0.75rem; color: var(--text-main); font-family: inherit; font-size: 0.85rem; outline: none; appearance: none; cursor: pointer; }
+        .project-select:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+
+        /* Main Content */
+        .main-content { padding: 2rem; overflow-y: auto; }
+        .page-header { margin-bottom: 2rem; }
+        .page-header h1 { font-family: var(--font-heading); font-weight: 800; font-size: 2rem; letter-spacing: -0.02em; background: linear-gradient(to right, #fff, #a5b4fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.35rem; }
+        .page-header .desc { color: var(--text-muted); font-size: 0.9rem; }
+
+        /* Tabs */
+        .tabs-bar { display: flex; gap: 0; border-bottom: 1px solid var(--border-color); margin-bottom: 1.75rem; overflow-x: auto; }
+        .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); padding: 0.8rem 1.25rem; font-family: var(--font-heading); font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all var(--transition-fast); white-space: nowrap; display: flex; align-items: center; gap: 0.4rem; }
+        .tab-btn:hover { color: var(--text-main); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-btn .tab-count { font-size: 0.7rem; background: var(--primary-glow); color: var(--primary); padding: 0.1rem 0.45rem; border-radius: 10px; font-family: var(--font-mono); font-weight: 700; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* Cards */
+        .card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem; backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0,0,0,0.2); margin-bottom: 1.5rem; }
+        .card-title { font-family: var(--font-heading); font-weight: 700; font-size: 1.1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.6rem; }
+
+        /* File list */
+        .file-list { display: flex; flex-direction: column; gap: 0.35rem; }
+        .file-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0.75rem; border-radius: 8px; font-size: 0.85rem; transition: background var(--transition-fast); cursor: pointer; }
+        .file-item:hover { background: rgba(255,255,255,0.03); }
+        .file-item input[type="checkbox"] { accent-color: var(--primary); width: 16px; height: 16px; cursor: pointer; }
+        .file-status { font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem; width: 20px; text-align: center; }
+        .file-status.st-M { color: var(--accent-orange); }
+        .file-status.st-A { color: var(--accent-green); }
+        .file-status.st-D { color: var(--accent-red); }
+        .file-status.st-U { color: var(--accent-cyan); }
+        .file-name { font-family: var(--font-mono); font-size: 0.85rem; flex: 1; word-break: break-all; }
+        .file-action-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: all var(--transition-fast); }
+        .file-action-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+
+        /* Commit form */
+        .commit-form { display: flex; flex-direction: column; gap: 0.75rem; }
+        .commit-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; color: var(--text-main); font-family: var(--font-mono); font-size: 0.85rem; resize: vertical; min-height: 60px; outline: none; transition: border-color var(--transition-fast); }
+        .commit-input:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+        .commit-actions { display: flex; gap: 0.75rem; }
+
+        /* Diff viewer */
+        .diff-viewer { background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 1rem; }
+        .diff-header { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--border-color); font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); }
+        .diff-body { padding: 0; overflow-x: auto; max-height: 400px; overflow-y: auto; }
+        .diff-line { display: flex; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+        .diff-line-num { min-width: 45px; padding: 0 8px; text-align: right; color: rgba(255,255,255,0.2); user-select: none; border-right: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; }
+        .diff-line-content { padding: 0 12px; flex: 1; }
+        .diff-line.add { background: rgba(16,185,129,0.08); color: var(--accent-green); }
+        .diff-line.del { background: rgba(239,68,68,0.08); color: var(--accent-red); }
+        .diff-line.hunk { background: rgba(99,102,241,0.08); color: var(--primary); }
+        .diff-empty { padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+
+        /* Commit log */
+        .commit-list { display: flex; flex-direction: column; gap: 0; }
+        .commit-item { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: background var(--transition-fast); }
+        .commit-item:hover { background: rgba(255,255,255,0.02); }
+        .commit-item:last-child { border-bottom: none; }
+        .commit-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--secondary)); display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-weight: 700; font-size: 0.9rem; color: white; flex-shrink: 0; }
+        .commit-info { flex: 1; min-width: 0; }
+        .commit-msg { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .commit-meta { display: flex; gap: 1rem; font-size: 0.8rem; color: var(--text-muted); }
+        .commit-hash { font-family: var(--font-mono); font-weight: 600; color: var(--accent-cyan); }
+
+        /* Branch list */
+        .branch-list { display: flex; flex-direction: column; gap: 0.35rem; }
+        .branch-item { display: flex; align-items: center; justify-content: space-between; padding: 0.65rem 0.85rem; border-radius: 8px; font-size: 0.85rem; font-family: var(--font-mono); transition: background var(--transition-fast); cursor: pointer; }
+        .branch-item:hover { background: rgba(255,255,255,0.03); }
+        .branch-item.current { background: var(--primary-glow); border: 1px solid rgba(99,102,241,0.2); }
+        .branch-item .branch-type { font-size: 0.7rem; font-family: var(--font-body); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600; }
+
+        /* Issues / PRs */
+        .issue-item { display: flex; align-items: flex-start; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .issue-item:last-child { border-bottom: none; }
+        .issue-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; flex-shrink: 0; }
+        .issue-icon.open { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+        .issue-icon.pr { background: rgba(168,85,247,0.15); color: var(--secondary); }
+        .issue-info { flex: 1; min-width: 0; }
+        .issue-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; }
+        .issue-title a { color: var(--text-main); text-decoration: none; }
+        .issue-title a:hover { color: var(--primary); }
+        .issue-meta { display: flex; gap: 0.75rem; font-size: 0.8rem; color: var(--text-muted); flex-wrap: wrap; }
+        .issue-label { display: inline-flex; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+        .issue-number { font-family: var(--font-mono); color: var(--text-muted); }
+
+        /* Contributors grid */
+        .contrib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+        .contrib-card { display: flex; align-items: center; gap: 0.75rem; padding: 1rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; transition: all var(--transition-fast); }
+        .contrib-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .contrib-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+        .contrib-name { font-weight: 600; font-size: 0.9rem; }
+        .contrib-name a { color: var(--text-main); text-decoration: none; }
+        .contrib-name a:hover { color: var(--primary); }
+        .contrib-commits { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+        /* Empty states */
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; text-align: center; color: var(--text-muted); }
+        .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.5; }
+        .empty-state .empty-text { font-size: 0.9rem; }
+        .empty-state .empty-sub { font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.7; }
+
+        /* Toast notifications */
+        .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; }
+        .toast { padding: 0.75rem 1.25rem; border-radius: 10px; font-size: 0.85rem; font-weight: 500; animation: slideIn 0.3s ease; backdrop-filter: blur(12px); border: 1px solid var(--border-color); }
+        .toast.success { background: rgba(16,185,129,0.15); color: var(--accent-green); border-color: rgba(16,185,129,0.2); }
+        .toast.error { background: rgba(239,68,68,0.15); color: var(--accent-red); border-color: rgba(239,68,68,0.2); }
+        .toast.info { background: rgba(99,102,241,0.15); color: var(--primary); border-color: rgba(99,102,241,0.2); }
+        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* Loading spinner */
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+        /* New issue form */
+        .new-issue-form { display: flex; flex-direction: column; gap: 0.75rem; }
+        .form-input { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.7rem; color: var(--text-main); font-family: inherit; font-size: 0.9rem; outline: none; transition: all var(--transition-fast); }
+        .form-input:focus { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+        label { display: block; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 0.35rem; letter-spacing: 0.05em; }
+    </style>
+</head>
+<body>
+    <div class="bg-glows"><div class="glow-1"></div><div class="glow-2"></div></div>
+
+    <nav>
+        <a href="/" class="nav-brand"><span>🤖</span> Doc Hub</a>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a id="navPolicyBuilder" href="#" class="nav-link">Policy Builder</a>
+            <a id="navMapCreator" href="#" class="nav-link">Map Creator</a>
+            <a href="/git" class="nav-link active">Git</a>
+        </div>
+    </nav>
+
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div>
+                <div class="sidebar-section-title">Project</div>
+                <select id="projectSelect" class="project-select" onchange="switchProject(this.value)"></select>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Current Branch</div>
+                <div class="branch-badge" id="currentBranch">loading...</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Working Tree</div>
+                <div class="status-summary" id="statusSummary">
+                    <div class="status-row"><span>Staged</span><span class="count count-green" id="stagedCount">0</span></div>
+                    <div class="status-row"><span>Modified</span><span class="count count-orange" id="modifiedCount">0</span></div>
+                    <div class="status-row"><span>Untracked</span><span class="count count-cyan" id="untrackedCount">0</span></div>
+                </div>
+            </div>
+
+            <div class="sidebar-section" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <div class="sidebar-section-title">Quick Actions</div>
+                <button class="action-btn" onclick="refreshAll()">🔄 Refresh Status</button>
+                <button class="action-btn" onclick="stageAll()">➕ Stage All Changes</button>
+                <button class="action-btn" onclick="pullAction()">⬇️ Pull from Remote</button>
+                <button class="action-btn" onclick="pushAction()">⬆️ Push to Remote</button>
+            </div>
+
+            <div class="sidebar-section" id="repoLinkSection" style="display: none;">
+                <div class="sidebar-section-title">Repository</div>
+                <a id="repoLink" href="#" target="_blank" class="action-btn" style="text-decoration: none; text-align: center; justify-content: center;">🔗 View on GitHub</a>
+            </div>
+        </aside>
+
+        <!-- Main -->
+        <div class="main-content">
+            <div class="page-header">
+                <h1>Git Panel</h1>
+                <div class="desc">Manage version control for <strong id="projectName">...</strong></div>
+            </div>
+
+            <div class="tabs-bar">
+                <button class="tab-btn active" onclick="switchTab('changes')">📝 Changes <span class="tab-count" id="changesTabCount">0</span></button>
+                <button class="tab-btn" onclick="switchTab('history')">📜 History</button>
+                <button class="tab-btn" onclick="switchTab('branches')">🌿 Branches</button>
+                <button class="tab-btn" onclick="switchTab('issues')">🐛 Issues <span class="tab-count" id="issuesTabCount">—</span></button>
+                <button class="tab-btn" onclick="switchTab('pulls')">🔀 Pull Requests</button>
+                <button class="tab-btn" onclick="switchTab('contributors')">👥 Contributors</button>
+            </div>
+
+            <!-- ========== CHANGES TAB ========== -->
+            <div class="tab-panel active" id="tab-changes">
+                <div class="card">
+                    <div class="card-title"><span>📂</span> Staged Changes</div>
+                    <div class="file-list" id="stagedFiles"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><span>✏️</span> Modified Files (Unstaged)</div>
+                    <div class="file-list" id="modifiedFiles"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><span>❓</span> Untracked Files</div>
+                    <div class="file-list" id="untrackedFiles"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><span>💬</span> Commit</div>
+                    <div class="commit-form">
+                        <textarea class="commit-input" id="commitMessage" placeholder="Write a commit message..." rows="3"></textarea>
+                        <div class="commit-actions">
+                            <button class="action-btn primary-action" onclick="commitAction()" id="commitBtn">✅ Commit Staged Changes</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="diffPreview"></div>
+            </div>
+
+            <!-- ========== HISTORY TAB ========== -->
+            <div class="tab-panel" id="tab-history">
+                <div class="card">
+                    <div class="card-title"><span>📜</span> Commit History</div>
+                    <div class="commit-list" id="commitList">
+                        <div class="empty-state"><div class="empty-icon">📜</div><div class="empty-text">Loading commit history...</div></div>
+                    </div>
+                </div>
+                <div id="commitDiffPreview"></div>
+            </div>
+
+            <!-- ========== BRANCHES TAB ========== -->
+            <div class="tab-panel" id="tab-branches">
+                <div class="card">
+                    <div class="card-title"><span>🌿</span> Local Branches</div>
+                    <div class="branch-list" id="localBranches"></div>
+                </div>
+                <div class="card">
+                    <div class="card-title"><span>🌐</span> Remote Branches</div>
+                    <div class="branch-list" id="remoteBranches"></div>
+                </div>
+            </div>
+
+            <!-- ========== ISSUES TAB ========== -->
+            <div class="tab-panel" id="tab-issues">
+                <div class="card">
+                    <div class="card-title" style="justify-content: space-between;"><span style="display: flex; align-items: center; gap: 0.5rem;"><span>🐛</span> Open Issues</span><button class="action-btn" style="width: auto;" onclick="toggleNewIssueForm()">➕ New Issue</button></div>
+                    <div id="newIssueFormContainer" style="display: none; margin-bottom: 1.5rem; padding: 1.25rem; background: rgba(0,0,0,0.2); border-radius: 12px; border: 1px dashed var(--border-color);">
+                        <div class="new-issue-form">
+                            <div><label for="issueTitle">Title</label><input type="text" id="issueTitle" class="form-input" placeholder="Issue title..."></div>
+                            <div><label for="issueBody">Description</label><textarea id="issueBody" class="form-input" rows="4" placeholder="Describe the issue..." style="resize: vertical;"></textarea></div>
+                            <div style="display: flex; gap: 0.75rem;">
+                                <button class="action-btn primary-action" style="flex: 1;" onclick="createIssue()">Create Issue</button>
+                                <button class="action-btn" style="width: auto;" onclick="toggleNewIssueForm()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="issuesList">
+                        <div class="empty-state"><div class="empty-icon">🐛</div><div class="empty-text">Loading issues...</div><div class="empty-sub">Requires GITHUB_TOKEN in .env</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== PULL REQUESTS TAB ========== -->
+            <div class="tab-panel" id="tab-pulls">
+                <div class="card">
+                    <div class="card-title"><span>🔀</span> Open Pull Requests</div>
+                    <div id="pullsList">
+                        <div class="empty-state"><div class="empty-icon">🔀</div><div class="empty-text">Loading pull requests...</div><div class="empty-sub">Requires GITHUB_TOKEN in .env</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== CONTRIBUTORS TAB ========== -->
+            <div class="tab-panel" id="tab-contributors">
+                <div class="card">
+                    <div class="card-title"><span>👥</span> Contributors</div>
+                    <div class="contrib-grid" id="contributorsList">
+                        <div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">👥</div><div class="empty-text">Loading contributors...</div><div class="empty-sub">Requires GITHUB_TOKEN in .env</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const PROJECT_ID = '{{PROJECT_ID}}';
+        let currentProject = PROJECT_ID;
+
+        // ==================== Initialization ====================
+        async function init() {
+            document.getElementById('projectName').innerText = formatName(currentProject);
+            document.getElementById('navPolicyBuilder').href = `/projects/${currentProject}/policy-builder`;
+            document.getElementById('navMapCreator').href = `/projects/${currentProject}/map-creator`;
+
+            // Load git projects into selector
+            try {
+                const res = await fetch('/api/projects');
+                const projects = await res.json();
+                const select = document.getElementById('projectSelect');
+                select.innerHTML = '';
+                for (const p of projects) {
+                    const opt = document.createElement('option');
+                    opt.value = p;
+                    opt.textContent = formatName(p);
+                    if (p === currentProject) opt.selected = true;
+                    select.appendChild(opt);
+                }
+            } catch {}
+
+            await refreshAll();
+            loadHistory();
+            loadBranches();
+            loadIssues();
+            loadPulls();
+            loadContributors();
+            loadRepoInfo();
+        }
+
+        function formatName(slug) {
+            return slug.replace(/-/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        }
+
+        function switchProject(id) {
+            window.location.href = `/git/${id}`;
+        }
+
+        // ==================== Tab Switching ====================
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        // ==================== Toast ====================
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // ==================== Git Status ====================
+        async function refreshAll() {
+            try {
+                const res = await fetch(`/api/git/${currentProject}/status`);
+                if (!res.ok) throw new Error((await res.json()).error);
+                const data = await res.json();
+
+                document.getElementById('currentBranch').innerText = data.branch;
+                document.getElementById('stagedCount').innerText = data.staged.length;
+                document.getElementById('modifiedCount').innerText = data.modified.length;
+                document.getElementById('untrackedCount').innerText = data.untracked.length;
+
+                const totalChanges = data.staged.length + data.modified.length + data.untracked.length;
+                document.getElementById('changesTabCount').innerText = totalChanges;
+
+                renderFileList('stagedFiles', data.staged.map(f => ({ ...f, type: 'staged' })), true);
+                renderFileList('modifiedFiles', data.modified.map(f => ({ ...f, type: 'modified' })), false);
+                renderFileList('untrackedFiles', data.untracked.map(u => ({ file: u, status: '?', type: 'untracked' })), false);
+            } catch (err) {
+                showToast(`Failed to refresh: ${err.message}`, 'error');
+            }
+        }
+
+        function renderFileList(containerId, files, isStaged) {
+            const container = document.getElementById(containerId);
+            if (files.length === 0) {
+                container.innerHTML = `<div class="empty-state" style="padding: 1.5rem;"><div class="empty-text" style="font-size: 0.85rem;">No files</div></div>`;
+                return;
+            }
+            container.innerHTML = files.map(f => {
+                const statusChar = f.status;
+                const statusClass = `st-${statusChar === '?' ? 'U' : statusChar}`;
+                const actionLabel = isStaged ? 'Unstage' : 'Stage';
+                const actionFn = isStaged ? `unstageFile('${escapeHtml(f.file)}')` : `stageFile('${escapeHtml(f.file)}')`;
+                return `
+                    <div class="file-item" onclick="showFileDiff('${escapeHtml(f.file)}', ${isStaged})">
+                        <span class="file-status ${statusClass}">${statusChar}</span>
+                        <span class="file-name">${escapeHtml(f.file)}</span>
+                        <button class="file-action-btn" onclick="event.stopPropagation(); ${actionFn}">${actionLabel}</button>
+                    </div>`;
+            }).join('');
+        }
+
+        async function showFileDiff(file, isStaged) {
+            try {
+                const res = await fetch(`/api/git/${currentProject}/diff`);
+                const data = await res.json();
+                const diffText = isStaged ? data.staged : data.unstaged;
+                renderDiffViewer('diffPreview', diffText, file);
+            } catch (err) {
+                showToast(`Failed to load diff: ${err.message}`, 'error');
+            }
+        }
+
+        // ==================== Diff Renderer ====================
+        function renderDiffViewer(containerId, diffText, title) {
+            const container = document.getElementById(containerId);
+            if (!diffText || diffText.trim().length === 0) {
+                container.innerHTML = `<div class="diff-viewer"><div class="diff-empty">No differences to show</div></div>`;
+                return;
+            }
+            const lines = diffText.split('\n');
+            let lineNum = 0;
+            const htmlLines = lines.map(line => {
+                let cls = '';
+                if (line.startsWith('+') && !line.startsWith('+++')) cls = 'add';
+                else if (line.startsWith('-') && !line.startsWith('---')) cls = 'del';
+                else if (line.startsWith('@@')) cls = 'hunk';
+                if (cls !== 'del' && cls !== 'hunk' && !line.startsWith('diff') && !line.startsWith('index') && !line.startsWith('---') && !line.startsWith('+++')) lineNum++;
+                return `<div class="diff-line ${cls}"><span class="diff-line-num">${cls === 'hunk' ? '···' : lineNum}</span><span class="diff-line-content">${escapeHtml(line)}</span></div>`;
+            }).join('');
+            container.innerHTML = `
+                <div class="diff-viewer">
+                    <div class="diff-header"><span>${escapeHtml(title || 'Diff')}</span></div>
+                    <div class="diff-body">${htmlLines}</div>
+                </div>`;
+        }
+
+        // ==================== Stage / Unstage ====================
+        async function stageFile(file) {
+            try {
+                await fetch(`/api/git/${currentProject}/stage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: [file] })
+                });
+                showToast(`Staged: ${file}`, 'success');
+                await refreshAll();
+            } catch (err) { showToast(err.message, 'error'); }
+        }
+
+        async function unstageFile(file) {
+            try {
+                await fetch(`/api/git/${currentProject}/unstage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: [file] })
+                });
+                showToast(`Unstaged: ${file}`, 'success');
+                await refreshAll();
+            } catch (err) { showToast(err.message, 'error'); }
+        }
+
+        async function stageAll() {
+            try {
+                await fetch(`/api/git/${currentProject}/stage`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ all: true })
+                });
+                showToast('All changes staged', 'success');
+                await refreshAll();
+            } catch (err) { showToast(err.message, 'error'); }
+        }
+
+        // ==================== Commit ====================
+        async function commitAction() {
+            const msg = document.getElementById('commitMessage').value.trim();
+            if (!msg) { showToast('Commit message is required', 'error'); return; }
+
+            const btn = document.getElementById('commitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Committing...';
+
+            try {
+                const res = await fetch(`/api/git/${currentProject}/commit`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showToast('Committed successfully!', 'success');
+                document.getElementById('commitMessage').value = '';
+                await refreshAll();
+                loadHistory();
+            } catch (err) {
+                showToast(`Commit failed: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '✅ Commit Staged Changes';
+            }
+        }
+
+        // ==================== Pull / Push ====================
+        async function pullAction() {
+            showToast('Pulling from remote...', 'info');
+            try {
+                const res = await fetch(`/api/git/${currentProject}/pull`, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showToast('Pull successful!', 'success');
+                await refreshAll();
+                loadHistory();
+            } catch (err) { showToast(`Pull failed: ${err.message}`, 'error'); }
+        }
+
+        async function pushAction() {
+            showToast('Pushing to remote...', 'info');
+            try {
+                const res = await fetch(`/api/git/${currentProject}/push`, { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showToast('Push successful!', 'success');
+            } catch (err) { showToast(`Push failed: ${err.message}`, 'error'); }
+        }
+
+        // ==================== History ====================
+        async function loadHistory() {
+            try {
+                const res = await fetch(`/api/git/${currentProject}/log?count=30`);
+                const commits = await res.json();
+                const container = document.getElementById('commitList');
+                if (commits.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-icon">📜</div><div class="empty-text">No commits yet</div></div>`;
+                    return;
+                }
+                container.innerHTML = commits.map(c => `
+                    <div class="commit-item" onclick="showCommitDiff('${c.hash}')">
+                        <div class="commit-avatar">${c.author.charAt(0).toUpperCase()}</div>
+                        <div class="commit-info">
+                            <div class="commit-msg">${escapeHtml(c.message)}</div>
+                            <div class="commit-meta">
+                                <span class="commit-hash">${c.shortHash}</span>
+                                <span>${escapeHtml(c.author)}</span>
+                                <span>${formatDate(c.date)}</span>
+                            </div>
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                document.getElementById('commitList').innerHTML = `<div class="empty-state"><div class="empty-text">Failed to load: ${err.message}</div></div>`;
+            }
+        }
+
+        async function showCommitDiff(hash) {
+            try {
+                const res = await fetch(`/api/git/${currentProject}/diff/${hash}`);
+                const data = await res.json();
+                renderDiffViewer('commitDiffPreview', data.diff, `Commit ${hash.substring(0, 7)}`);
+            } catch (err) { showToast(`Failed to load commit diff: ${err.message}`, 'error'); }
+        }
+
+        // ==================== Branches ====================
+        async function loadBranches() {
+            try {
+                const res = await fetch(`/api/git/${currentProject}/branches`);
+                const data = await res.json();
+
+                const localContainer = document.getElementById('localBranches');
+                localContainer.innerHTML = data.local.map(b => `
+                    <div class="branch-item ${b === data.current ? 'current' : ''}" onclick="${b !== data.current ? `checkoutBranch('${escapeHtml(b)}')` : ''}">
+                        <span>${b === data.current ? '● ' : ''}${escapeHtml(b)}</span>
+                        ${b === data.current ? '<span class="branch-type">current</span>' : '<span class="branch-type">local</span>'}
+                    </div>`).join('');
+
+                const remoteContainer = document.getElementById('remoteBranches');
+                if (data.remote.length === 0) {
+                    remoteContainer.innerHTML = `<div class="empty-state" style="padding: 1rem;"><div class="empty-text" style="font-size: 0.85rem;">No remote branches</div></div>`;
+                } else {
+                    remoteContainer.innerHTML = data.remote.map(b => `
+                        <div class="branch-item">
+                            <span>${escapeHtml(b)}</span>
+                            <span class="branch-type">remote</span>
+                        </div>`).join('');
+                }
+            } catch (err) {
+                document.getElementById('localBranches').innerHTML = `<div class="empty-state"><div class="empty-text">Failed: ${err.message}</div></div>`;
+            }
+        }
+
+        async function checkoutBranch(branch) {
+            if (!confirm(`Switch to branch "${branch}"?`)) return;
+            try {
+                const res = await fetch(`/api/git/${currentProject}/checkout`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ branch })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showToast(`Switched to ${branch}`, 'success');
+                await refreshAll();
+                loadBranches();
+                loadHistory();
+            } catch (err) { showToast(`Checkout failed: ${err.message}`, 'error'); }
+        }
+
+        // ==================== Issues ====================
+        async function loadIssues() {
+            try {
+                const res = await fetch(`/api/github/${currentProject}/issues`);
+                if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+                const issues = await res.json();
+                const container = document.getElementById('issuesList');
+                document.getElementById('issuesTabCount').innerText = issues.length;
+
+                if (issues.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-text">No open issues!</div></div>`;
+                    return;
+                }
+                container.innerHTML = issues.map(i => `
+                    <div class="issue-item">
+                        <div class="issue-icon open">●</div>
+                        <div class="issue-info">
+                            <div class="issue-title"><a href="${i.htmlUrl}" target="_blank">${escapeHtml(i.title)}</a> <span class="issue-number">#${i.number}</span></div>
+                            <div class="issue-meta">
+                                <span>by ${escapeHtml(i.author.login)}</span>
+                                <span>${formatDate(i.createdAt)}</span>
+                                ${i.labels.map(l => `<span class="issue-label" style="background: #${l.color}22; color: #${l.color}; border: 1px solid #${l.color}44;">${escapeHtml(l.name)}</span>`).join('')}
+                                ${i.comments > 0 ? `<span>💬 ${i.comments}</span>` : ''}
+                            </div>
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                document.getElementById('issuesList').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${escapeHtml(err.message)}</div><div class="empty-sub">Set GITHUB_TOKEN in collab-agent-team/.env</div></div>`;
+            }
+        }
+
+        function toggleNewIssueForm() {
+            const form = document.getElementById('newIssueFormContainer');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function createIssue() {
+            const title = document.getElementById('issueTitle').value.trim();
+            const body = document.getElementById('issueBody').value.trim();
+            if (!title) { showToast('Issue title required', 'error'); return; }
+            try {
+                const res = await fetch(`/api/github/${currentProject}/issues`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, body })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                showToast(`Issue #${data.number} created!`, 'success');
+                document.getElementById('issueTitle').value = '';
+                document.getElementById('issueBody').value = '';
+                toggleNewIssueForm();
+                loadIssues();
+            } catch (err) { showToast(`Failed: ${err.message}`, 'error'); }
+        }
+
+        // ==================== Pull Requests ====================
+        async function loadPulls() {
+            try {
+                const res = await fetch(`/api/github/${currentProject}/pulls`);
+                if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+                const pulls = await res.json();
+                const container = document.getElementById('pullsList');
+
+                if (pulls.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-icon">🎉</div><div class="empty-text">No open pull requests</div></div>`;
+                    return;
+                }
+                container.innerHTML = pulls.map(pr => `
+                    <div class="issue-item">
+                        <div class="issue-icon pr">⎇</div>
+                        <div class="issue-info">
+                            <div class="issue-title"><a href="${pr.htmlUrl}" target="_blank">${escapeHtml(pr.title)}</a> <span class="issue-number">#${pr.number}</span>${pr.draft ? ' <span class="issue-label" style="background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color);">Draft</span>' : ''}</div>
+                            <div class="issue-meta">
+                                <span>by ${escapeHtml(pr.author.login)}</span>
+                                <span>${escapeHtml(pr.head)} → ${escapeHtml(pr.base)}</span>
+                                <span>${formatDate(pr.createdAt)}</span>
+                            </div>
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                document.getElementById('pullsList').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${escapeHtml(err.message)}</div><div class="empty-sub">Set GITHUB_TOKEN in collab-agent-team/.env</div></div>`;
+            }
+        }
+
+        // ==================== Contributors ====================
+        async function loadContributors() {
+            try {
+                const res = await fetch(`/api/github/${currentProject}/contributors`);
+                if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+                const contribs = await res.json();
+                const container = document.getElementById('contributorsList');
+
+                if (contribs.length === 0) {
+                    container.innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">👥</div><div class="empty-text">No contributors found</div></div>`;
+                    return;
+                }
+                container.innerHTML = contribs.map(c => `
+                    <div class="contrib-card">
+                        <img class="contrib-avatar" src="${c.avatar}" alt="${escapeHtml(c.login)}" loading="lazy">
+                        <div>
+                            <div class="contrib-name"><a href="${c.htmlUrl}" target="_blank">${escapeHtml(c.login)}</a></div>
+                            <div class="contrib-commits">${c.contributions} commits</div>
+                        </div>
+                    </div>`).join('');
+            } catch (err) {
+                document.getElementById('contributorsList').innerHTML = `<div class="empty-state" style="grid-column: 1 / -1;"><div class="empty-icon">⚠️</div><div class="empty-text">${escapeHtml(err.message)}</div><div class="empty-sub">Set GITHUB_TOKEN in collab-agent-team/.env</div></div>`;
+            }
+        }
+
+        // ==================== Repo Info ====================
+        async function loadRepoInfo() {
+            try {
+                const res = await fetch(`/api/github/${currentProject}/repo`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.htmlUrl) {
+                    document.getElementById('repoLinkSection').style.display = 'flex';
+                    document.getElementById('repoLink').href = data.htmlUrl;
+                }
+            } catch { /* GitHub token not set, silently skip */ }
+        }
+
+        // ==================== Utilities ====================
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            const now = new Date();
+            const diff = now - d;
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

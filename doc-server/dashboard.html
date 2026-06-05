@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation Hub - Project Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --font-heading: 'Outfit', sans-serif;
+            --font-body: 'Plus Jakarta Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+
+            --bg-page: #0b0f19;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.15);
+            --secondary: #a855f7;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+
+            --transition-fast: 0.2s ease;
+            --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            font-family: var(--font-body);
+            overflow-x: hidden;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* Ambient Glow Backdrops */
+        .bg-glows {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .glow-1 {
+            position: absolute;
+            top: -20%;
+            left: -10%;
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%);
+            filter: blur(80px);
+        }
+
+        .glow-2 {
+            position: absolute;
+            bottom: -20%;
+            right: -10%;
+            width: 60%;
+            height: 60%;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, rgba(168, 85, 247, 0) 70%);
+            filter: blur(80px);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            padding: 2rem;
+            margin: auto;
+            z-index: 1;
+            animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        .logo-box {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 16px;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 30px rgba(99, 102, 241, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-family: var(--font-heading);
+            font-weight: 800;
+            font-size: 2.75rem;
+            letter-spacing: -0.03em;
+            background: linear-gradient(to right, #ffffff, #a5b4fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.75rem;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 400;
+        }
+
+        /* Dashboard Grid Layout */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 2.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 2rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            transition: border-color var(--transition-fast), transform var(--transition-fast);
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.25);
+        }
+
+        .card-title {
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 1.35rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        /* Project List */
+        .project-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        /* Scrollbar Styling */
+        .project-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .project-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .project-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        .project-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .project-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: all var(--transition-fast);
+        }
+
+        .project-item:hover {
+            background: rgba(99, 102, 241, 0.05);
+            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateX(4px);
+        }
+
+        .project-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .project-icon {
+            font-size: 1.25rem;
+        }
+
+        .project-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .project-chevron {
+            color: var(--text-muted);
+            transition: transform var(--transition-fast);
+        }
+
+        .project-item:hover .project-chevron {
+            color: var(--primary);
+            transform: translateX(2px);
+        }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 2.5rem;
+            font-size: 0.95rem;
+            border: 1px dashed var(--border-color);
+            border-radius: 12px;
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all var(--transition-fast);
+            outline: none;
+        }
+
+        .form-input:focus {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .btn {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 0.9rem 1.5rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+        }
+
+        .btn:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Error/Info messages */
+        .message-box {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: none;
+        }
+
+        .message-success {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .message-error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <nav style="display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 2.5rem; background: rgba(10, 14, 23, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); z-index: 10; width: 100%;">
+        <a href="/" class="nav-brand" style="display: flex; align-items: center; gap: 0.75rem; color: var(--text-main); text-decoration: none; font-family: var(--font-heading); font-weight: 700; font-size: 1.25rem;">
+            <span>🤖</span> Doc Hub
+        </a>
+        <div class="nav-links" style="display: flex; gap: 1.5rem;">
+            <a href="/" class="nav-link active" style="color: var(--primary); text-decoration: none; font-size: 0.95rem; font-weight: 500;">Dashboard</a>
+            <a href="/git" class="nav-link" style="color: var(--text-muted); text-decoration: none; font-size: 0.95rem; font-weight: 500;">Git</a>
+        </div>
+    </nav>
+
+    <div class="bg-glows">
+        <div class="glow-1"></div>
+        <div class="glow-2"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div class="logo-box">🤖</div>
+            <h1>Documentation Hub</h1>
+            <div class="subtitle">Multi-project documentation repository & critique interface</div>
+        </header>
+
+        <div class="grid-layout">
+            <!-- Project List Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>📂</span> Active Projects
+                </div>
+                <div class="project-list" id="projectList">
+                    <div class="empty-state">Loading active projects...</div>
+                </div>
+            </div>
+
+            <!-- Create Project Card -->
+            <div class="card">
+                <div class="card-title">
+                    <span>✨</span> Create New Project
+                </div>
+                <form id="createProjectForm" onsubmit="handleCreateProject(event)">
+                    <div class="form-group">
+                        <label for="projectName">Project Name</label>
+                        <div class="input-wrapper">
+                            <input type="text" id="projectName" class="form-input" placeholder="e.g. Deliveroo Agents" required autocomplete="off">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">
+                        <span>➕</span> Create Workspace
+                    </button>
+                    <div class="message-box" id="messageBox"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchProjects() {
+            try {
+                const res = await fetch('/api/projects');
+                if (res.ok) {
+                    const projects = await res.json();
+                    renderProjects(projects);
+                } else {
+                    document.getElementById('projectList').innerHTML = `
+                        <div class="empty-state" style="border-color: #ef4444; color: #ef4444;">Failed to load projects.</div>
+                    `;
+                }
+            } catch (err) {
+                console.error("Error loading projects", err);
+                document.getElementById('projectList').innerHTML = `
+                    <div class="empty-state" style="border-color: #ef4444; color: #ef4444;">Connection error.</div>
+                `;
+            }
+        }
+
+        function renderProjects(projects) {
+            const listEl = document.getElementById('projectList');
+            if (projects.length === 0) {
+                listEl.innerHTML = `
+                    <div class="empty-state">No active projects found. Create one to get started!</div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = '';
+            projects.forEach(p => {
+                const displayName = p.replace(/-/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                const item = document.createElement('a');
+                item.href = `/projects/${p}`;
+                item.className = 'project-item';
+                item.innerHTML = `
+                    <div class="project-info">
+                        <span class="project-icon">📁</span>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span class="project-name">${displayName}</span>
+                            <span class="git-status-badge" id="git-badge-${p}" style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono, monospace);">...</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <a href="/git/${p}" onclick="event.stopPropagation();" style="font-size: 0.75rem; color: var(--accent-cyan, #06b6d4); text-decoration: none; border: 1px solid rgba(6,182,212,0.2); padding: 0.2rem 0.5rem; border-radius: 6px;">Git</a>
+                        <span class="project-chevron">→</span>
+                    </div>
+                `;
+                listEl.appendChild(item);
+
+                // Async load git status badge
+                loadGitBadge(p);
+            });
+        }
+
+        async function loadGitBadge(projectId) {
+            const badge = document.getElementById(`git-badge-${projectId}`);
+            if (!badge) return;
+            try {
+                const res = await fetch(`/api/git/${projectId}/status`);
+                if (!res.ok) {
+                    badge.innerText = 'not a git repo';
+                    badge.style.color = 'var(--text-muted, #9ca3af)';
+                    return;
+                }
+                const data = await res.json();
+                const total = data.staged.length + data.modified.length + data.untracked.length;
+                if (total === 0) {
+                    badge.innerHTML = `🌿 <span style="color: var(--accent-green, #10b981);">${data.branch}</span> · ✓ clean`;
+                    badge.style.color = 'var(--accent-green, #10b981)';
+                } else {
+                    badge.innerHTML = `🌿 <span style="color: var(--primary, #6366f1);">${data.branch}</span> · <span style="color: var(--accent-orange, #f97316);">${total} changed</span>`;
+                }
+            } catch {
+                badge.innerText = 'no git';
+                badge.style.opacity = '0.5';
+            }
+        }
+
+        async function handleCreateProject(event) {
+            event.preventDefault();
+            const nameInput = document.getElementById('projectName');
+            const name = nameInput.value.trim();
+            const msgBox = document.getElementById('messageBox');
+            
+            if (!name) return;
+
+            // Reset message
+            msgBox.style.display = 'none';
+            msgBox.className = 'message-box';
+
+            try {
+                const res = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    msgBox.innerText = 'Project created! Redirecting...';
+                    msgBox.classList.add('message-success');
+                    msgBox.style.display = 'block';
+                    nameInput.value = '';
+                    setTimeout(() => {
+                        window.location.href = data.redirectUrl;
+                    }, 1000);
+                } else {
+                    msgBox.innerText = data.error || 'Failed to create project';
+                    msgBox.classList.add('message-error');
+                    msgBox.style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Error creating project", err);
+                msgBox.innerText = 'Network error occurred.';
+                msgBox.classList.add('message-error');
+                msgBox.style.display = 'block';
+            }
+        }
+
+        // Initialize on load
+        fetchProjects();
+    </script>
+</body>
+</html>

@@ -64,8 +64,8 @@
   },
   "devDependencies": {},
   "scripts": {
-    "start": "node server.js",
-    "doc": "node server.js",
+    "start": "npm start --prefix doc-server",
+    "doc": "npm start --prefix doc-server",
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
     "test": "echo \"Error: no test specified\" && exit 1"

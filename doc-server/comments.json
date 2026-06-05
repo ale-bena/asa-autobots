@@ -1,0 +1,35 @@
+{
+  "asa-autobots:1-documentation:code-xfa8vz": [
+    {
+      "id": "1780597669654",
+      "timestamp": "2026-06-04T18:27:49.654Z",
+      "text": "can you add the description of this type and each section may contain and how it can be represented in our js project"
+    }
+  ],
+  "asa-autobots:2-design:arch-card": [
+    {
+      "id": "1780598122204",
+      "timestamp": "2026-06-04T18:35:22.204Z",
+      "text": "fix this graph as it's not connected correctly, also expand on the more complex connections"
+    }
+  ],
+  "asa-autobots:2-design:code-u1adkf": [
+    {
+      "id": "1780598194910",
+      "timestamp": "2026-06-04T18:36:34.910Z",
+      "text": "can you expand on the types of recepies and how they will be designed"
+    }
+  ],
+  "asa-autobots:2-design:p2p-manager-code": [
+    {
+      "id": "1780598325105",
+      "timestamp": "2026-06-04T18:38:45.105Z",
+      "text": "note that the two agents should cooperate and act on the same knowledge, meaning that if one agent is going to pick up parcel 2 then the other ideally shouldn't consider going to pick up that as it's what the other is doing, so I want to have some shared knowledge that each can \"claim\" or something along those lines to avoid racing to achieve the same thing and therefore getting stuck"
+    },
+    {
+      "id": "1780598385693",
+      "timestamp": "2026-06-04T18:39:45.693Z",
+      "text": "also with this in mind is it better to have separate scripts for the agents and a script for the state handler or evaluation engine which can be queried for the information or is it better to duplicate it and sync it? I don't know which would be best for access and ease of use"
+    }
+  ]
+}
