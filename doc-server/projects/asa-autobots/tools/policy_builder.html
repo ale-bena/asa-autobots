@@ -12,12 +12,14 @@
         flex: 1 1 500px;
         display: flex;
         flex-direction: column;
+        min-width: 0;
     }
 
     .policy-simulator-container {
         flex: 1 1 400px;
         display: flex;
         flex-direction: column;
+        min-width: 0;
     }
 
     /* Form styling */
@@ -51,6 +53,24 @@
     .form-input:focus {
         border-color: var(--primary);
         box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .form-input[type="file"] {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+    .form-input[type="file"]::file-selector-button {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-main);
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        transition: background var(--transition-fast);
+        margin-right: 0.5rem;
+    }
+    .form-input[type="file"]::file-selector-button:hover {
+        background: rgba(255, 255, 255, 0.15);
     }
 
     select.form-input {
@@ -303,6 +323,23 @@
             </div>
         </div>
 
+        <!-- Map Context Card -->
+        <div class="card">
+            <div class="card-title" style="justify-content: space-between; align-items: center; display: flex;">
+                <span>🗺️</span> Map Context
+                <button class="rule-btn" onclick="toggleMapImport()">📥 Import Map</button>
+            </div>
+            <div id="mapImportPanel" style="display: none; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+                <label for="mapJsonInput">Paste Map JSON or Choose File</label>
+                <input type="file" id="policyMapFileSelect" accept=".json" class="form-input" style="margin-bottom: 0.5rem;" onchange="handleMapFileSelect(this, 'mapJsonInput')">
+                <textarea id="mapJsonInput" class="form-input" style="font-family: var(--font-mono); font-size: 0.8rem; height: 100px; resize: vertical;" placeholder='{ "map": { "tiles": [...] } }'></textarea>
+                <button class="btn" style="margin-top: 0.5rem;" onclick="applyMapImport()">Apply Map</button>
+            </div>
+            <div id="mapMetaInfo" style="font-size: 0.85rem; color: var(--text-muted);">
+                No active map loaded. Spatial variables (<code>distToDelivery</code>, <code>distToCrate</code>, <code>currentTile</code>) will use default fallbacks.
+            </div>
+        </div>
+
         <!-- Point Multipliers Card -->
         <div class="card">
             <div class="card-title" style="justify-content: space-between; align-items: center; display: flex;">
@@ -386,6 +423,21 @@
                 </div>
 
                 <div class="result-item">
+                    <span class="result-label">Current Tile Type</span>
+                    <span class="result-value" id="resTileType">-</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">Distance to Delivery</span>
+                    <span class="result-value" id="resDistDeliver">-</span>
+                </div>
+
+                <div class="result-item">
+                    <span class="result-label">Distance to Crate</span>
+                    <span class="result-value" id="resDistCrate">-</span>
+                </div>
+
+                <div class="result-item">
                     <span class="result-label">Point Multiplier Applied</span>
                     <span class="result-value" style="color: var(--accent-orange);" id="resMultiplier">1.0x</span>
                 </div>
@@ -418,8 +470,9 @@
     ];
 
     let ruleCounter = 3;
+    let loadedMap = null;
 
-    const variablesList = ['carrying.size', 'reward', 'steps', 'x', 'y'];
+    const variablesList = ['carrying.size', 'reward', 'steps', 'x', 'y', 'distToDelivery', 'distToCrate', 'currentTile'];
     const operatorsList = [
         { symbol: '==', label: 'equals' },
         { symbol: '!=', label: 'not equals' },
@@ -530,6 +583,24 @@
             'y': parseInt(document.getElementById('simY').value || '0')
         };
 
+        const x = state.x;
+        const y = state.y;
+        
+        let tileTypeVal = 'empty';
+        if (loadedMap) {
+            if (x >= 0 && x < loadedMap.width && y >= 0 && y < loadedMap.height) {
+                tileTypeVal = loadedMap.tiles[x][y] || 'empty';
+            }
+        }
+        
+        state.currentTile = tileTypeVal;
+        state.distToDelivery = getDistanceToTarget(x, y, 'deliver');
+        state.distToCrate = getDistanceToTarget(x, y, 'crate');
+
+        document.getElementById('resTileType').innerText = state.currentTile;
+        document.getElementById('resDistDeliver').innerText = state.distToDelivery === 99 ? 'N/A' : `${state.distToDelivery} steps`;
+        document.getElementById('resDistCrate').innerText = state.distToCrate === 99 ? 'N/A' : `${state.distToCrate} steps`;
+
         const minReward = parseInt(document.getElementById('minReward').value || '0');
         const maxReward = parseInt(document.getElementById('maxReward').value || '999');
         const avoidTilesStr = document.getElementById('avoidTiles').value || '';
@@ -564,17 +635,23 @@
 
         rules.forEach(r => {
             const stateVal = state[r.variable];
-            const compareVal = parseFloat(r.value);
             let matched = false;
+            const compareValNum = parseFloat(r.value);
 
-            if (!isNaN(compareVal)) {
+            if (!isNaN(compareValNum) && typeof stateVal === 'number') {
                 switch (r.op) {
-                    case '==': matched = (stateVal === compareVal); break;
-                    case '!=': matched = (stateVal !== compareVal); break;
-                    case '<': matched = (stateVal < compareVal); break;
-                    case '>': matched = (stateVal > compareVal); break;
-                    case '<=': matched = (stateVal <= compareVal); break;
-                    case '>=': matched = (stateVal >= compareVal); break;
+                    case '==': matched = (stateVal === compareValNum); break;
+                    case '!=': matched = (stateVal !== compareValNum); break;
+                    case '<': matched = (stateVal < compareValNum); break;
+                    case '>': matched = (stateVal > compareValNum); break;
+                    case '<=': matched = (stateVal <= compareValNum); break;
+                    case '>=': matched = (stateVal >= compareValNum); break;
+                }
+            } else {
+                const compareValStr = String(r.value).trim();
+                switch (r.op) {
+                    case '==': matched = (String(stateVal) === compareValStr); break;
+                    case '!=': matched = (String(stateVal) !== compareValStr); break;
                 }
             }
 
@@ -615,6 +692,152 @@
         };
 
         document.getElementById('jsonOutput').innerText = JSON.stringify(finalPayload, null, 2);
+    }
+
+    function toggleMapImport() {
+        const el = document.getElementById('mapImportPanel');
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function applyMapImport() {
+        const text = document.getElementById('mapJsonInput').value.trim();
+        if (!text) return;
+
+        try {
+            const data = JSON.parse(text);
+            if (!data.map || typeof data.map.width === 'undefined' || typeof data.map.height === 'undefined' || !data.map.tiles) {
+                alert("Invalid format! Must contain map.width, map.height, and map.tiles.");
+                return;
+            }
+
+            const width = data.map.width;
+            const height = data.map.height;
+            const rawTiles = data.map.tiles;
+
+            const reverseSymbols = {
+                "0": "empty",
+                "3": "normal",
+                "1": "spawn",
+                "2": "deliver",
+                "5": "crate",
+                "5!": "crate_spawn"
+            };
+
+            const tiles = [];
+            for (let x = 0; x < width; x++) {
+                const column = [];
+                for (let y = 0; y < height; y++) {
+                    const rawVal = String(rawTiles[x] && rawTiles[x][y] !== undefined ? rawTiles[x][y] : "normal");
+                    column.push(reverseSymbols[rawVal] || rawVal || "normal");
+                }
+                tiles.push(column);
+            }
+
+            const spawns = [];
+            const deliveries = [];
+            const crates = [];
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    const tile = tiles[x][y];
+                    const coord = { x, y };
+                    if (tile === 'spawn') spawns.push(coord);
+                    else if (tile === 'deliver') deliveries.push(coord);
+                    else if (tile === 'crate' || tile === 'crate_spawn') crates.push(coord);
+                }
+            }
+
+            loadedMap = {
+                title: data.title || 'custom_arena',
+                width,
+                height,
+                tiles,
+                spawns,
+                deliveries,
+                crates
+            };
+
+            document.getElementById('mapMetaInfo').innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                    <div><strong>Active Map:</strong> <span style="color: var(--primary); font-weight: 600;">${loadedMap.title}</span> (${width}x${height})</div>
+                    <div><strong>Spawns:</strong> ${spawns.length} | <strong>Deliveries:</strong> ${deliveries.length} | <strong>Crates:</strong> ${crates.length}</div>
+                </div>
+            `;
+
+            document.getElementById('mapImportPanel').style.display = 'none';
+            document.getElementById('mapJsonInput').value = '';
+            runSimulation();
+
+        } catch (err) {
+            alert("JSON Parse Error: " + err.message);
+        }
+    }
+
+    function getDistanceToTarget(startX, startY, targetType) {
+        if (!loadedMap) return 99;
+
+        let targets = [];
+        if (targetType === 'deliver') targets = loadedMap.deliveries;
+        else if (targetType === 'crate') targets = loadedMap.crates;
+
+        if (targets.length === 0) return 99;
+        if (startX < 0 || startX >= loadedMap.width || startY < 0 || startY >= loadedMap.height) {
+            return 99;
+        }
+
+        const visited = Array(loadedMap.width).fill().map(() => Array(loadedMap.height).fill(false));
+        const queue = [{ x: startX, y: startY, dist: 0 }];
+        visited[startX][startY] = true;
+
+        while (queue.length > 0) {
+            const curr = queue.shift();
+
+            const reached = targets.some(t => t.x === curr.x && t.y === curr.y);
+            if (reached) return curr.dist;
+
+            const dirs = [
+                { x: 0, y: 1, toDir: '↑' },  // Up: increasing y
+                { x: 0, y: -1, toDir: '↓' }, // Down: decreasing y
+                { x: -1, y: 0, toDir: '←' }, // Left: decreasing x
+                { x: 1, y: 0, toDir: '→' }   // Right: increasing x
+            ];
+
+            for (const d of dirs) {
+                const nx = curr.x + d.x;
+                const ny = curr.y + d.y;
+
+                if (nx >= 0 && nx < loadedMap.width && ny >= 0 && ny < loadedMap.height) {
+                    if (!visited[nx][ny]) {
+                        const tile = loadedMap.tiles[nx][ny] || 'empty';
+                        if (tile !== 'empty') {
+                            let canMove = true;
+                            if (tile === '↑' && d.toDir === '↓') canMove = false;
+                            else if (tile === '↓' && d.toDir === '↑') canMove = false;
+                            else if (tile === '→' && d.toDir === '←') canMove = false;
+                            else if (tile === '←' && d.toDir === '→') canMove = false;
+
+                            if (canMove) {
+                                visited[nx][ny] = true;
+                                queue.push({ x: nx, y: ny, dist: curr.dist + 1 });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return 99; // Unreachable
+    }
+
+    function handleMapFileSelect(input, textareaId) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById(textareaId).value = e.target.result;
+        };
+        reader.readAsText(file);
     }
 
     // Run on start

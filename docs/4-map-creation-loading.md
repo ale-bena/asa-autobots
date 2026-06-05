@@ -33,44 +33,44 @@ The project includes an interactive <strong>Map Creator</strong> tool served at 
 <tbody>
 <tr>
 <td><code>"0"</code></td>
-<td>Walkable</td>
-<td>Deep Blue / Black</td>
-<td>Standard walkable cell. Agents, crates, and parcels can occupy it.</td>
+<td>Empty (Wall / Void)</td>
+<td>Dark Blue / Black</td>
+<td>Impassable static obstacle (wall). Cannot be occupied or traversed.</td>
 </tr>
 <tr>
 <td><code>"3"</code></td>
-<td>Wall</td>
-<td>Grey</td>
-<td>Impassable static obstacle. Cannot be occupied or pushed through.</td>
+<td>Normal (Pavement)</td>
+<td>Grayish Light</td>
+<td>Standard walkable pavement cell. Agents, crates, and parcels can occupy it.</td>
 </tr>
 <tr>
 <td><code>"1"</code></td>
 <td>Spawn Zone</td>
-<td>Green Glow</td>
+<td>Green</td>
 <td>Designated starting grid cell for Deliveroo agents.</td>
 </tr>
 <tr>
 <td><code>"2"</code></td>
 <td>Delivery Zone</td>
-<td>Purple Glow</td>
+<td>Red</td>
 <td>Designated drop-off point where cargo parcels must be delivered for points.</td>
 </tr>
 <tr>
 <td><code>"5"</code></td>
-<td>Crate Spawn</td>
-<td>Orange Glow</td>
+<td>Crate</td>
+<td>Yellow</td>
 <td>Tile initially populated with a movable obstacle crate.</td>
 </tr>
 <tr>
 <td><code>"5!"</code></td>
-<td>Target Zone</td>
-<td>Red Glow</td>
-<td>Specialized tile. Movable obstacle crates can only be pushed onto target cells.</td>
+<td>Crate Spawn</td>
+<td>Orange</td>
+<td>Specialized spawn tile for crates.</td>
 </tr>
 <tr>
 <td><code>"↑", "→", "↓", "←"</code></td>
 <td>One-Way Gates</td>
-<td>Light Cyan Arrow</td>
+<td>Blue Arrow</td>
 <td>Spatial directional arrows painted on tiles. Impose asymmetric routing blockages.</td>
 </tr>
 </tbody>
@@ -133,8 +133,8 @@ Once designed, the Map Creator compiles the layout into the simulator's required
     "width": 10,
     "height": 10,
     "tiles": [
-      ["3", "3", "3", "3", "3", "3", "3", "3", "3", "3"], // column x=0 (y=0 to y=9)
-      ["3", "1", "0", "0", "0", "0", "0", "0", "0", "3"], // column x=1 (y=0 to y=9)
+      ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0"], // column x=0 (y=0 to y=9) (Wall border)
+      ["0", "1", "3", "3", "3", "3", "3", "3", "3", "0"], // column x=1 (y=0 to y=9) (Spawn zone at y=1)
       // ...
     ]
   },

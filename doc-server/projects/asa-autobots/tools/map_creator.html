@@ -1,679 +1,1686 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deliveroo Grid Map Creator - Doc Hub</title>
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --font-heading: 'Outfit', sans-serif;
-            --font-body: 'Plus Jakarta Sans', sans-serif;
-            --font-mono: 'JetBrains Mono', monospace;
+<style>
+    /* Tool-specific Layout */
+    .tool-layout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2.5rem;
+        width: 100%;
+        margin-top: 1.5rem;
+    }
 
-            --bg-page: #0b0f19;
-            --bg-card: rgba(17, 24, 39, 0.7);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --text-main: #f3f4f6;
-            --text-muted: #9ca3af;
+    /* Map Canvas & Toolbar */
+    .map-editor-container {
+        flex: 2 1 600px;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+        min-width: 0;
+    }
 
-            --primary: #6366f1;
-            --primary-glow: rgba(99, 102, 241, 0.15);
-            --secondary: #a855f7;
-            --accent-cyan: #06b6d4;
-            --accent-green: #10b981;
-            --accent-orange: #f97316;
-            --accent-red: #ef4444;
+    .settings-json-container {
+        flex: 1 1 400px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
 
-            --transition-fast: 0.2s ease;
+    .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+    }
+
+    .tool-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-main);
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+    }
+
+    .tool-btn:hover {
+        background: rgba(255,255,255,0.05);
+        border-color: var(--text-muted);
+    }
+
+    .tool-btn.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    /* Grid Editor styling */
+    .grid-container-card {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        height: 520px;
+        min-height: 200px;
+        min-width: 300px;
+        resize: both;
+        overflow: hidden;
+        /* overflow:hidden is required for resize:both to show the drag handle */
+    }
+
+    .grid-wrapper {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        display: flex;
+        padding: 0.75rem;
+    }
+
+    .grid-canvas {
+        --cell-size: 32px;
+        display: grid;
+        gap: 1px;
+        background-color: var(--border-color);
+        border: 2px solid var(--border-color);
+        border-radius: 4px;
+        user-select: none;
+        margin: auto;
+        width: max-content;
+        height: max-content;
+    }
+
+    .grid-cell {
+        width: var(--cell-size);
+        height: var(--cell-size);
+        background-color: var(--bg-page);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: calc(var(--cell-size) * 0.35);
+        font-weight: 700;
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
+    }
+
+    /* Colors based on tile type */
+    .grid-cell.tile-empty { background-color: #080a14; color: rgba(255, 255, 255, 0.15); } /* Empty (very dark) */
+    .grid-cell.tile-normal { background-color: #1e293b; color: #94a3b8; } /* Wall (dark slate gray) */
+    .grid-cell.tile-spawn { background-color: #059669; color: #ffffff; } /* Spawn (slightly brighter green) */
+    .grid-cell.tile-deliver { background-color: #dc2626; color: #ffffff; } /* Delivery (slightly brighter red) */
+    .grid-cell.tile-crate { background-color: #ca8a04; color: #0f172a; } /* Target/Crate (rich yellow) */
+    .grid-cell.tile-crate_spawn { background-color: #ea580c; color: #ffffff; } /* Crate Spawn (rich orange) */
+    
+    .grid-cell.tile-arrow {
+        background-color: #1e40af;
+        color: #ffffff;
+        font-size: calc(var(--cell-size) * 0.5);
+    }
+
+    /* Premium Range Slider styling */
+    .range-slider-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .range-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+        outline: none;
+        margin: 0.5rem 0;
+        transition: background 0.3s;
+    }
+
+    .range-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--primary);
+        cursor: pointer;
+        box-shadow: 0 0 8px var(--primary-glow);
+        transition: transform var(--transition-fast), background var(--transition-fast);
+    }
+
+    .range-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.25);
+        background: var(--secondary);
+    }
+
+    .range-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--primary);
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 8px var(--primary-glow);
+        transition: transform var(--transition-fast), background var(--transition-fast);
+    }
+
+    .range-slider::-moz-range-thumb:hover {
+        transform: scale(1.25);
+        background: var(--secondary);
+    }
+
+    .grid-cell:hover {
+        filter: brightness(1.2);
+        border: 1px solid var(--primary);
+    }
+
+    /* Info boxes */
+    .coord-overlay {
+        display: flex;
+        justify-content: space-between;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+    }
+
+    .coord-item span {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        color: var(--accent-cyan);
+    }
+
+    /* Forms options */
+    .form-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    label {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 0.4rem;
+        letter-spacing: 0.05em;
+    }
+
+    .form-input {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 0.7rem;
+        color: var(--text-main);
+        font-family: inherit;
+        font-size: 0.9rem;
+        outline: none;
+        transition: all var(--transition-fast);
+    }
+
+    .form-input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .form-input[type="file"] {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+    .form-input[type="file"]::file-selector-button {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-main);
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        transition: background var(--transition-fast);
+        margin-right: 0.5rem;
+    }
+    .form-input[type="file"]::file-selector-button:hover {
+        background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0.5rem;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 0.75rem 1.25rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        width: 100%;
+    }
+
+    .btn:hover {
+        opacity: 0.95;
+        transform: translateY(-1px);
+    }
+
+    .btn-outline {
+        background: transparent !important;
+        border: 1px solid var(--border-color);
+        color: var(--text-main);
+        box-shadow: none;
+    }
+
+    .btn-outline:hover {
+        background: rgba(255, 255, 255, 0.03) !important;
+        border-color: var(--text-muted);
+    }
+
+    .card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 20px;
+        padding: 1.75rem;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        margin-bottom: 2rem;
+    }
+
+    .card-title {
+        font-family: var(--font-heading);
+        font-weight: 700;
+        font-size: 1.25rem;
+        margin-bottom: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 0.75rem;
+    }
+
+    pre {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        font-family: var(--font-mono);
+        font-size: 0.85rem;
+        color: var(--text-main);
+        overflow-x: auto;
+        max-height: 350px;
+    }
+
+    /* Pathfinding Visualizer Overlays */
+    .grid-cell.pf-start {
+        box-shadow: inset 0 0 0 3px var(--accent-cyan);
+        background-color: rgba(6, 182, 212, 0.25) !important;
+        position: relative;
+    }
+    .grid-cell.pf-start::after {
+        content: "🚩";
+        font-size: 0.8rem;
+        position: absolute;
+    }
+
+    .grid-cell.pf-target {
+        box-shadow: inset 0 0 0 3px var(--accent-red);
+        background-color: rgba(239, 68, 68, 0.25) !important;
+        position: relative;
+    }
+    .grid-cell.pf-target::after {
+        content: "🎯";
+        font-size: 0.8rem;
+        position: absolute;
+    }
+
+    @keyframes pulse-visited {
+        0% { background-color: rgba(139, 92, 246, 0.2); transform: scale(0.95); }
+        50% { background-color: rgba(139, 92, 246, 0.45); transform: scale(1.02); }
+        100% { background-color: rgba(139, 92, 246, 0.3); transform: scale(1); }
+    }
+
+    .grid-cell.pf-visited {
+        animation: pulse-visited 0.4s ease-out forwards;
+        color: rgba(255, 255, 255, 0.3) !important;
+    }
+
+    @keyframes pulse-frontier {
+        0% { background-color: rgba(245, 158, 11, 0.15); }
+        50% { background-color: rgba(245, 158, 11, 0.4); }
+        100% { background-color: rgba(245, 158, 11, 0.25); }
+    }
+
+    .grid-cell.pf-frontier {
+        animation: pulse-frontier 0.3s ease-out forwards;
+    }
+
+    .grid-cell.pf-path {
+        background-color: var(--accent-cyan) !important;
+        color: #0c0f1d !important;
+        font-weight: 900;
+        box-shadow: 0 0 10px var(--primary-glow);
+        transform: scale(0.92);
+        transition: all 0.2s;
+    }
+
+    /* Pathfinder HUD bar — pinned at top of the resizable card */
+    .visualizer-hud {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        padding: 0.5rem 0.75rem;
+        background: rgba(6, 8, 18, 0.7);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 16px 16px 0 0;
+        flex-shrink: 0;
+        user-select: none;
+        min-height: 42px;
+    }
+
+    .hud-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        color: var(--text-muted);
+        white-space: nowrap;
+        text-transform: uppercase;
+        padding-right: 0.25rem;
+    }
+
+    .hud-sep {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.12);
+        flex-shrink: 0;
+    }
+
+    .hud-stats {
+        display: inline-flex;
+        gap: 0.5rem;
+        font-family: var(--font-mono);
+        font-size: 0.73rem;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        white-space: nowrap;
+    }
+
+    .hud-stats span {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15rem;
+        font-weight: 700;
+    }
+
+    .hud-speed-ctrl {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    .hud-speed-ctrl input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 55px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+        accent-color: var(--primary);
+    }
+
+    .hud-speed-ctrl input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--primary);
+        cursor: pointer;
+    }
+
+    .hud-speed-ctrl input[type="range"]::-moz-range-thumb {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--primary);
+        cursor: pointer;
+        border: none;
+    }
+</style>
+
+<header style="margin-bottom: 2.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 1.5rem;">
+    <div class="badge-header">Interactive Tool</div>
+    <h1>🗺️ Map Creator</h1>
+    <div class="subtitle">Visually paint Deliveroo simulator maps and dynamically generate the JSON configuration.</div>
+</header>
+
+<div class="tool-layout">
+    <!-- Left Side: Interactive Canvas -->
+    <div class="map-editor-container">
+        <!-- Configuration sizing -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="form-row">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="gridWidth">Grid Width (X-axis)</label>
+                    <input type="number" id="gridWidth" class="form-input" value="10" min="1" max="50" onchange="resizeGrid()">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="gridHeight">Grid Height (Y-axis)</label>
+                    <input type="number" id="gridHeight" class="form-input" value="10" min="1" max="50" onchange="resizeGrid()">
+                </div>
+            </div>
+            <div class="form-row" style="margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1rem;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="cellSize">Cell Zoom (<span id="cellSizeVal">32</span>px)</label>
+                    <input type="range" id="cellSize" class="range-slider" min="12" max="48" value="32" oninput="updateZoom()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Painter Palette Toolbar -->
+        <div class="toolbar">
+            <button class="tool-btn btn-outline" id="undoBtn" onclick="undo()" title="Undo (Ctrl+Z)" disabled>↩️ Undo</button>
+            <button class="tool-btn btn-outline" id="redoBtn" onclick="redo()" title="Redo (Ctrl+Y)" disabled>↪️ Redo</button>
+            <div style="width: 1px; background: rgba(255,255,255,0.1); margin: 0 0.25rem;"></div>
+            <button class="tool-btn active" data-tile="empty" onclick="selectTool(this)">⬜ Empty (0)</button>
+            <button class="tool-btn" data-tile="normal" onclick="selectTool(this)">🧱 Normal (3)</button>
+            <button class="tool-btn" data-tile="spawn" onclick="selectTool(this)">🟢 Spawn (1)</button>
+            <button class="tool-btn" data-tile="deliver" onclick="selectTool(this)">🔴 Delivery (2)</button>
+            <button class="tool-btn" data-tile="crate" onclick="selectTool(this)">📦 Crate (5)</button>
+            <button class="tool-btn" data-tile="crate_spawn" onclick="selectTool(this)">🎯 Crate Spawn (5!)</button>
+            <button class="tool-btn" data-tile="↑" onclick="selectTool(this)">⬆️ Up Arrow</button>
+            <button class="tool-btn" data-tile="→" onclick="selectTool(this)">➡️ Right Arrow</button>
+            <button class="tool-btn" data-tile="↓" onclick="selectTool(this)">⬇️ Down Arrow</button>
+            <button class="tool-btn" data-tile="←" onclick="selectTool(this)">⬅️ Left Arrow</button>
+        </div>
+
+        <!-- Canvas Card: HUD bar at top, scrollable grid below, fully resizable -->
+        <div class="grid-container-card" id="gridContainerCard">
+
+            <!-- ── Pathfinder HUD bar ── -->
+            <div class="visualizer-hud" id="visualizerHud">
+                <span class="hud-title">🚀 Pathfinder</span>
+                <span id="visualizerStatus" class="badge badge-inactive" style="font-size: 0.68rem; padding: 0.15rem 0.5rem;">Idle</span>
+
+                <!-- Toggle collapse -->
+                <button class="tool-btn btn-outline" id="hudToggleCollapse" onclick="toggleHudCollapse()"
+                        style="padding: 0.28rem 0.5rem; font-size: 0.73rem;"
+                        title="Show / hide pathfinding controls">⏴ Minimize</button>
+
+                <!-- All controls — hidden as a block when collapsed -->
+                <div id="hudExpandedContent" style="display: contents;">
+                    <div class="hud-sep"></div>
+
+                    <!-- Start / Target pickers -->
+                    <button class="tool-btn btn-outline" id="btnSelectStart" onclick="toggleSelectMode('start')"
+                            style="padding: 0.28rem 0.5rem; font-size: 0.73rem;"
+                            title="Then click any tile on the map to set the pathfinding START position">
+                        🚩 Start: <span id="startCoordLbl" style="font-family: var(--font-mono); color: var(--accent-cyan);">N/A</span>
+                    </button>
+                    <button class="tool-btn btn-outline" id="btnSelectTarget" onclick="toggleSelectMode('target')"
+                            style="padding: 0.28rem 0.5rem; font-size: 0.73rem;"
+                            title="Then click any tile on the map to set the pathfinding TARGET / GOAL position">
+                        🎯 Target: <span id="targetCoordLbl" style="font-family: var(--font-mono); color: var(--accent-red);">N/A</span>
+                    </button>
+
+                    <div class="hud-sep"></div>
+
+                    <!-- Algorithm picker -->
+                    <select id="pfAlgo" class="form-input"
+                            style="width: auto; padding: 0.28rem 1.6rem 0.28rem 0.45rem; font-size: 0.73rem; margin-bottom: 0;"
+                            onchange="resetVisualizer()"
+                            title="Algorithm to run: BFS (shortest hops), Dijkstra (weighted), A* (heuristic), DFS (deep-first)">
+                        <option value="bfs">BFS — Breadth-First</option>
+                        <option value="dijkstra">Dijkstra</option>
+                        <option value="astar">A* (Manhattan)</option>
+                        <option value="dfs">DFS — Depth-First</option>
+                    </select>
+
+                    <div class="hud-sep"></div>
+
+                    <!-- Playback controls -->
+                    <button class="tool-btn" id="btnPlay" onclick="playVisualizer()"
+                            style="padding: 0.28rem 0.55rem; background-color: var(--primary); border-color: var(--primary); color: white; font-size: 0.73rem;"
+                            title="Start / Resume the step-by-step animation">▶ Play</button>
+                    <button class="tool-btn btn-outline" id="btnPause" onclick="pauseVisualizer()"
+                            style="padding: 0.28rem 0.55rem; font-size: 0.73rem;" disabled
+                            title="Pause the running animation">⏸ Pause</button>
+                    <button class="tool-btn btn-outline" id="btnStep" onclick="stepVisualizer()"
+                            style="padding: 0.28rem 0.55rem; font-size: 0.73rem;"
+                            title="Advance exactly one step">⏭ Step</button>
+                    <button class="tool-btn btn-outline" id="btnReset" onclick="resetVisualizer()"
+                            style="padding: 0.28rem 0.55rem; font-size: 0.73rem;"
+                            title="Clear all visited / path overlays and reset the search state">⏹ Reset</button>
+
+                    <div class="hud-sep"></div>
+
+                    <!-- Manual step toggle -->
+                    <label style="display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; color: var(--text-muted); cursor: pointer; margin-bottom: 0; white-space: nowrap;"
+                           title="When checked, Play is disabled — use Step to advance one node at a time">
+                        <input type="checkbox" id="pfManualCheck" onchange="toggleManualStepMode(this.checked)"
+                               style="cursor: pointer; width: 13px; height: 13px; accent-color: var(--primary);">
+                        Manual
+                    </label>
+
+                    <div class="hud-sep"></div>
+
+                    <!-- Speed slider -->
+                    <div class="hud-speed-ctrl" title="Drag to change animation step delay: left = faster (10 ms), right = slower (1000 ms)">
+                        <span style="font-size: 0.7rem; color: var(--text-muted); white-space: nowrap;">⏱ <span id="pfDelayVal">100</span>ms</span>
+                        <input type="range" id="pfDelay" min="10" max="1000" value="100"
+                               oninput="document.getElementById('pfDelayVal').innerText = this.value">
+                    </div>
+
+                    <div class="hud-sep"></div>
+
+                    <!-- Live stats -->
+                    <div class="hud-stats" title="Live counters — V: visited nodes, F: frontier queue size, P: final path length">
+                        <span style="color: var(--accent-cyan);" title="Nodes visited so far">V <span id="statVisited">0</span></span>
+                        <span style="color: var(--accent-orange);" title="Nodes currently in the frontier">F <span id="statFrontier">0</span></span>
+                        <span style="color: #86efac;" title="Final path length (once found)">P <span id="statPathLen">0</span></span>
+                    </div>
+
+                    <!-- Status dot -->
+                    <span id="hudStatusDot"
+                          style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block; flex-shrink: 0;"
+                          title="Status: Idle"></span>
+                </div>
+            </div>
+
+            <!-- Scrollable grid viewport -->
+            <div class="grid-wrapper" id="gridWrapper">
+                <div class="grid-canvas" id="gridCanvas">
+                    <!-- Cell elements dynamically injected -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Coordinates overlay tracker -->
+        <div class="coord-overlay">
+            <div class="coord-item">Visual Coordinate: <span id="visualCoord">Row: 0, Col: 0</span></div>
+            <div class="coord-item">JSON Schema Coordinate: <span id="schemaCoord">X: 0, Y: 9</span></div>
+        </div>
+
+        <!-- Connectivity Validator -->
+        <div class="card" style="margin-top: 1.25rem; margin-bottom: 0;">
+            <div class="card-title" style="font-size: 1rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem;">
+                <span>🔍</span> Path Connectivity Validator
+            </div>
+            <div id="validationResult">
+                <span class="badge badge-active">All connected!</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Right Side: Game Settings & Generated JSON -->
+    <div class="settings-json-container">
+        <!-- Game settings card -->
+        <div class="card">
+            <div class="card-title">
+                <span>⚙️</span> Game Settings
+            </div>
+            <div class="form-group">
+                <label for="mapTitle">Map Title</label>
+                <input type="text" id="mapTitle" class="form-input" value="custom_arena" oninput="generateJson()">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="maxPlayers">Max Players</label>
+                    <input type="number" id="maxPlayers" class="form-input" value="4" oninput="generateJson()">
+                </div>
+                <div class="form-group">
+                    <label for="capacity">Player Cargo Capacity</label>
+                    <input type="number" id="capacity" class="form-input" value="5" oninput="generateJson()">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="parcelMax">Max Parcels On Map</label>
+                    <input type="number" id="parcelMax" class="form-input" value="5" oninput="generateJson()">
+                </div>
+                <div class="form-group">
+                    <label for="parcelGen">Parcel Spawn Rate</label>
+                    <input type="text" id="parcelGen" class="form-input" value="2s" oninput="generateJson()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Generated JSON Card -->
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-title" onclick="toggleJsonMinimize()" style="cursor: pointer; justify-content: space-between; display: flex; align-items: center; user-select: none;">
+                <span>📄 Generated Map JSON</span>
+                <span id="minimizeIcon">▼</span>
+            </div>
+            <pre><code id="jsonOutput">{}</code></pre>
+            <div style="margin-top: 1.25rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+                <button class="btn" style="flex: 1; min-width: 120px;" onclick="copyJson()">📋 Copy</button>
+                <button class="btn btn-outline" style="flex: 1; min-width: 120px;" onclick="downloadJson()">💾 Download</button>
+                <button class="btn btn-outline" style="flex: 1; min-width: 120px;" onclick="toggleImport()">📥 Import</button>
+            </div>
+            <div id="importContainer" style="display: none; margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.25rem;">
+                <label for="importJsonInput">Paste Map JSON or Choose File</label>
+                <input type="file" id="mapFileSelect" accept=".json" class="form-input" style="margin-bottom: 0.75rem;" onchange="handleMapFileSelect(this, 'importJsonInput')">
+                <textarea id="importJsonInput" class="form-input" style="font-family: var(--font-mono); font-size: 0.8rem; height: 120px; resize: vertical;" placeholder='{ "map": { "tiles": [...] } }'></textarea>
+                <button class="btn" style="margin-top: 0.75rem;" onclick="applyImport()">Apply Import</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let gridWidth = 10;
+    let gridHeight = 10;
+    let activeTool = "empty"; // Default: Walkable Empty tile
+    let gridState = []; // 2D array representation of the visual grid: gridState[row][col]
+    let isMouseDown = false;
+    let undoStack = [];
+    let redoStack = [];
+
+    const displaySymbols = {
+        "empty": "0",
+        "normal": "3",
+        "spawn": "1",
+        "deliver": "2",
+        "crate_spawn": "5!",
+        "crate": "5"
+    };
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            e.preventDefault();
+            undo();
+        } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+            e.preventDefault();
+            redo();
+        }
+    });
+
+    function saveState() {
+        const stateCopy = JSON.parse(JSON.stringify(gridState));
+        undoStack.push(stateCopy);
+        if (undoStack.length > 50) {
+            undoStack.shift();
+        }
+        redoStack = [];
+        updateHistoryButtons();
+    }
+
+    function undo() {
+        if (undoStack.length === 0) return;
+        const currentState = JSON.parse(JSON.stringify(gridState));
+        redoStack.push(currentState);
+        
+        gridState = undoStack.pop();
+        renderCanvas();
+        generateJson();
+        updateHistoryButtons();
+    }
+
+    function redo() {
+        if (redoStack.length === 0) return;
+        const currentState = JSON.parse(JSON.stringify(gridState));
+        undoStack.push(currentState);
+        
+        gridState = redoStack.pop();
+        renderCanvas();
+        generateJson();
+        updateHistoryButtons();
+    }
+
+    function updateHistoryButtons() {
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        if (undoBtn) undoBtn.disabled = (undoStack.length === 0);
+        if (redoBtn) redoBtn.disabled = (redoStack.length === 0);
+    }
+
+    function initGrid() {
+        gridState = [];
+        for (let r = 0; r < gridHeight; r++) {
+            const row = [];
+            for (let c = 0; c < gridWidth; c++) {
+                row.push("normal"); // Initialize as normal wall
+            }
+            gridState.push(row);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            background-color: var(--bg-page);
-            color: var(--text-main);
-            font-family: var(--font-body);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
-
-        /* Ambient Glow Backdrops */
-        .bg-glows {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-            overflow: hidden;
-        }
-
-        .glow-1 {
-            position: absolute;
-            top: -10%;
-            left: -10%;
-            width: 50%;
-            height: 50%;
-            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0) 70%);
-            filter: blur(80px);
-        }
-
-        .glow-2 {
-            position: absolute;
-            bottom: -10%;
-            right: -10%;
-            width: 50%;
-            height: 50%;
-            background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 70%);
-            filter: blur(80px);
-        }
-
-        /* Navbar */
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.25rem 2.5rem;
-            background: rgba(10, 14, 23, 0.8);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border-color);
-            z-index: 10;
-        }
-
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            color: var(--text-main);
-            text-decoration: none;
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 1.25rem;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 1.5rem;
-        }
-
-        .nav-link {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.95rem;
-            font-weight: 500;
-            transition: color var(--transition-fast);
-        }
-
-        .nav-link:hover, .nav-link.active {
-            color: var(--primary);
-        }
-
-        /* Container */
-        .container {
-            flex: 1;
-            width: 100%;
-            max-width: 1300px;
-            margin: 0 auto;
-            padding: 2.5rem 2rem;
-            z-index: 1;
-            display: grid;
-            grid-template-columns: 1.4fr 1fr;
-            gap: 2.5rem;
-        }
-
-        @media (max-width: 992px) {
-            .container {
-                grid-template-columns: 1fr;
+        // Spawn and delivery defaults with safety bounds checking
+        if (gridHeight >= 3 && gridWidth >= 3) {
+            gridState[1][1] = "spawn";
+            gridState[gridHeight-2][gridWidth-2] = "deliver";
+        } else {
+            if (gridHeight > 0 && gridWidth > 0) {
+                gridState[0][0] = "spawn";
+            }
+            if (gridHeight > 1 || gridWidth > 1) {
+                gridState[gridHeight-1][gridWidth-1] = "deliver";
             }
         }
 
-        h1 {
-            font-family: var(--font-heading);
-            font-weight: 800;
-            font-size: 2.25rem;
-            letter-spacing: -0.02em;
-            background: linear-gradient(to right, #ffffff, #a5b4fc);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
+        // Find default spawn & delivery coordinates for visualizer
+        let foundSpawn = null;
+        let foundDeliver = null;
+        for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+                if (gridState[r][c] === 'spawn' && !foundSpawn) foundSpawn = { r, c };
+                if (gridState[r][c] === 'deliver' && !foundDeliver) foundDeliver = { r, c };
+            }
+        }
+        startCell = foundSpawn || (gridHeight > 0 && gridWidth > 0 ? { r: 0, c: 0 } : null);
+        targetCell = foundDeliver || (gridHeight > 0 && gridWidth > 0 ? { r: gridHeight - 1, c: gridWidth - 1 } : null);
+
+        if (typeof resetVisualizer === 'function') {
+            resetVisualizer();
+        } else if (typeof drawStartTargetOverlays === 'function') {
+            drawStartTargetOverlays();
         }
 
-        .desc {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            margin-bottom: 2rem;
-        }
+        renderCanvas();
+        adjustFlexBasis();
+    }
 
-        .card {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            padding: 1.75rem;
-            backdrop-filter: blur(16px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            margin-bottom: 2rem;
-        }
+    function selectTool(btn) {
+        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeTool = btn.getAttribute('data-tile');
+    }
 
-        .card-title {
-            font-family: var(--font-heading);
-            font-weight: 700;
-            font-size: 1.25rem;
-            margin-bottom: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 0.75rem;
-        }
-
-        /* Map Canvas & Toolbar */
-        .map-editor-container {
-            display: flex;
-            flex-direction: column;
-            gap: 1.25rem;
-        }
-
-        .toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-        }
-
-        .tool-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.5rem 0.75rem;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            background: transparent;
-            color: var(--text-main);
-            font-size: 0.85rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-        }
-
-        .tool-btn:hover {
-            background: rgba(255,255,255,0.05);
-            border-color: var(--text-muted);
-        }
-
-        .tool-btn.active {
-            background: var(--primary);
-            border-color: var(--primary);
-            box-shadow: 0 0 10px var(--primary-glow);
-        }
-
-        /* Grid Editor styling */
-        .grid-wrapper {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.5rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: auto;
-            max-height: 500px;
-        }
-
-        .grid-canvas {
-            display: grid;
-            gap: 1px;
-            background-color: var(--border-color);
-            border: 2px solid var(--border-color);
-            border-radius: 4px;
-            user-select: none;
-        }
-
-        .grid-cell {
-            width: 32px;
-            height: 32px;
-            background-color: var(--bg-page);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 0.8rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: background-color var(--transition-fast);
-        }
-
-        /* Colors based on tile type */
-        .grid-cell.tile-0 { background-color: #0d1220; } /* Empty */
-        .grid-cell.tile-3 { background-color: #374151; color: #9ca3af; } /* Wall */
-        .grid-cell.tile-1 { background-color: rgba(16, 185, 129, 0.15); color: var(--accent-green); } /* Spawn */
-        .grid-cell.tile-2 { background-color: rgba(99, 102, 241, 0.15); color: #818cf8; } /* Delivery */
-        .grid-cell.tile-5 { background-color: rgba(249, 115, 22, 0.15); color: var(--accent-orange); } /* Crate */
-        .grid-cell.tile-5\! { background-color: rgba(239, 68, 68, 0.15); color: var(--accent-red); } /* Target */
+    function resizeGrid() {
+        const newW = parseInt(document.getElementById('gridWidth').value) || 10;
+        const newH = parseInt(document.getElementById('gridHeight').value) || 10;
         
-        .grid-cell.tile-arrow {
-            background-color: rgba(6, 182, 212, 0.1);
-            color: var(--accent-cyan);
-            font-size: 1.1rem;
+        // Constrain
+        gridWidth = Math.max(1, Math.min(50, newW));
+        gridHeight = Math.max(1, Math.min(50, newH));
+
+        // Sync inputs back to clamped values
+        document.getElementById('gridWidth').value = gridWidth;
+        document.getElementById('gridHeight').value = gridHeight;
+
+        initGrid();
+    }
+
+    function updateZoom() {
+        const val = document.getElementById('cellSize').value;
+        document.getElementById('cellSizeVal').innerText = val;
+        const canvas = document.getElementById('gridCanvas');
+        canvas.style.setProperty('--cell-size', `${val}px`);
+        adjustFlexBasis();
+    }
+
+    function adjustFlexBasis() {
+        const cellSize = parseInt(document.getElementById('cellSize').value) || 32;
+        const canvasWidth = gridWidth * cellSize + (gridWidth - 1) + 4 + 48; // cols * size + gaps + borders + padding
+        const editorContainer = document.querySelector('.map-editor-container');
+        if (editorContainer) {
+            if (canvasWidth > 600) {
+                // Set flex-basis to canvas width (capped at 1200px or full screen) to trigger wrap
+                editorContainer.style.flexBasis = `${Math.min(canvasWidth, 1200)}px`;
+            } else {
+                editorContainer.style.flexBasis = '600px';
+            }
+        }
+    }
+
+    function handleCellAction(row, col) {
+        gridState[row][col] = activeTool;
+        updateCellClass(row, col);
+        generateJson();
+    }
+
+    function updateCellClass(row, col) {
+        const cell = document.getElementById(`cell-${row}-${col}`);
+        if (!cell) return;
+
+        // Reset classes
+        cell.className = 'grid-cell';
+        const value = gridState[row][col];
+
+        // Add class based on value
+        if (['↑', '→', '↓', '←'].includes(value)) {
+            cell.classList.add('tile-arrow');
+            cell.innerText = value;
+        } else {
+            cell.classList.add(`tile-${value}`);
+            cell.innerText = displaySymbols[value] !== undefined ? displaySymbols[value] : value;
+        }
+    }
+
+    function handleHover(row, col) {
+        // Visual coordinates mapping to rotated Cartesian:
+        // x = col
+        // y = gridHeight - 1 - row
+        const schemaX = col;
+        const schemaY = gridHeight - 1 - row;
+
+        document.getElementById('visualCoord').innerText = `Row: ${row}, Col: ${col}`;
+        document.getElementById('schemaCoord').innerText = `X: ${schemaX}, Y: ${schemaY}`;
+    }
+
+    function renderCanvas() {
+        const canvas = document.getElementById('gridCanvas');
+        const zoomVal = document.getElementById('cellSize').value;
+        canvas.style.setProperty('--cell-size', `${zoomVal}px`);
+        canvas.style.gridTemplateColumns = `repeat(${gridWidth}, var(--cell-size))`;
+        canvas.innerHTML = '';
+
+        for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+                const cell = document.createElement('div');
+                cell.id = `cell-${r}-${c}`;
+                cell.className = 'grid-cell';
+                
+                // Bind events
+                cell.addEventListener('mousedown', (e) => {
+                    if (typeof selectMode !== 'undefined' && selectMode) {
+                        handleSelectCoordinate(r, c);
+                        return;
+                    }
+                    saveState();
+                    isMouseDown = true;
+                    handleCellAction(r, c);
+                });
+                cell.addEventListener('mouseover', () => {
+                    handleHover(r, c);
+                    if (isMouseDown && !(typeof selectMode !== 'undefined' && selectMode)) {
+                        handleCellAction(r, c);
+                    }
+                });
+
+                canvas.appendChild(cell);
+                updateCellClass(r, c);
+            }
         }
 
-        .grid-cell:hover {
-            filter: brightness(1.2);
-            border: 1px solid var(--primary);
+        if (typeof drawStartTargetOverlays === 'function') {
+            drawStartTargetOverlays();
         }
 
-        /* Info boxes */
-        .coord-overlay {
-            display: flex;
-            justify-content: space-between;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 0.75rem 1rem;
-            font-size: 0.85rem;
+        document.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        generateJson();
+    }
+
+    function generateJson() {
+        const title = document.getElementById('mapTitle').value || 'custom_arena';
+        const maxPlayers = parseInt(document.getElementById('maxPlayers').value) || 4;
+        const capacity = parseInt(document.getElementById('capacity').value) || 5;
+        const parcelMax = parseInt(document.getElementById('parcelMax').value) || 5;
+        const parcelGen = document.getElementById('parcelGen').value || '2s';
+
+        // Compensate for simulator 90° anticlockwise rotation by rotating 90° clockwise
+        // New width = old height (gridHeight), New height = old width (gridWidth)
+        const tiles = [];
+        for (let x = 0; x < gridHeight; x++) {
+            const column = [];
+            for (let y = 0; y < gridWidth; y++) {
+                // Mapping a 90° clockwise rotation:
+                // row = gridHeight - 1 - x
+                // col = gridWidth - 1 - y
+                const visualRow = gridHeight - 1 - x;
+                const visualCol = gridWidth - 1 - y;
+                const val = gridState[visualRow][visualCol];
+                column.push(displaySymbols[val] !== undefined ? displaySymbols[val] : val);
+            }
+            tiles.push(column);
         }
 
-        .coord-item span {
-            font-family: var(--font-mono);
-            font-weight: 700;
-            color: var(--accent-cyan);
+        const payload = {
+            title: title,
+            description: `Visually created map matching Deliveroo column-oriented coordination grid (rotated 90° clockwise to compensate for simulator's 90° anticlockwise rotation).`,
+            maxPlayers: maxPlayers,
+            map: {
+                width: gridHeight,
+                height: gridWidth,
+                tiles: tiles
+            },
+            npcs: [],
+            parcels: {
+                generation_event: parcelGen,
+                decaying_event: "1s",
+                max: parcelMax,
+                reward_avg: 30,
+                reward_variance: 10
+            },
+            player: {
+                movement_duration: 50,
+                observation_distance: 5,
+                capacity: capacity
+            }
+        };
+
+        document.getElementById('jsonOutput').innerText = JSON.stringify(payload, null, 2);
+        runPathfindingValidation();
+    }
+
+    let jsonMinimized = false;
+    function toggleJsonMinimize() {
+        jsonMinimized = !jsonMinimized;
+        const pre = document.querySelector('.card pre');
+        const icon = document.getElementById('minimizeIcon');
+        if (jsonMinimized) {
+            pre.style.display = 'none';
+            icon.innerText = '▲';
+        } else {
+            pre.style.display = 'block';
+            icon.innerText = '▼';
         }
+    }
 
-        /* Forms options */
-        .form-row {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
+    function downloadJson() {
+        const text = document.getElementById('jsonOutput').innerText;
+        const title = document.getElementById('mapTitle').value || 'custom_arena';
+        const blob = new Blob([text], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${title}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function copyJson() {
+        const text = document.getElementById('jsonOutput').innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            alert("Game Configuration JSON copied to clipboard!");
+        });
+    }
+
+    function toggleImport() {
+        const importContainer = document.getElementById('importContainer');
+        if (importContainer.style.display === 'none') {
+            importContainer.style.display = 'block';
+        } else {
+            importContainer.style.display = 'none';
         }
+    }
 
-        .form-row .form-group {
-            flex: 1;
-        }
+    function applyImport() {
+        const rawJson = document.getElementById('importJsonInput').value.trim();
+        if (!rawJson) return;
 
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
+        try {
+            const data = JSON.parse(rawJson);
+            
+            if (!data.map || typeof data.map.width === 'undefined' || typeof data.map.height === 'undefined' || !data.map.tiles) {
+                alert("Invalid format! Must contain map.width, map.height, and map.tiles.");
+                return;
+            }
 
-        label {
-            display: block;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-weight: 600;
-            text-transform: uppercase;
-            margin-bottom: 0.4rem;
-            letter-spacing: 0.05em;
-        }
+            saveState();
 
-        .form-input {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 0.7rem;
-            color: var(--text-main);
-            font-family: inherit;
-            font-size: 0.9rem;
-            outline: none;
-            transition: all var(--transition-fast);
-        }
+            // Transposing grid height and width back
+            gridWidth = data.map.height;
+            gridHeight = data.map.width;
 
-        .form-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 10px var(--primary-glow);
-        }
+            document.getElementById('gridWidth').value = gridWidth;
+            document.getElementById('gridHeight').value = gridHeight;
 
-        .btn {
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            gap: 0.5rem;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            border-radius: 10px;
-            padding: 0.75rem 1.25rem;
-            font-weight: 600;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all var(--transition-fast);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-            width: 100%;
-        }
+            if (data.title) document.getElementById('mapTitle').value = data.title;
+            if (data.maxPlayers) document.getElementById('maxPlayers').value = data.maxPlayers;
+            if (data.player && data.player.capacity) document.getElementById('capacity').value = data.player.capacity;
+            if (data.parcels && data.parcels.max) document.getElementById('parcelMax').value = data.parcels.max;
+            if (data.parcels && data.parcels.generation_event) document.getElementById('parcelGen').value = data.parcels.generation_event;
 
-        .btn:hover {
-            opacity: 0.95;
-            transform: translateY(-1px);
-        }
-
-        pre {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 1.25rem;
-            font-family: var(--font-mono);
-            font-size: 0.85rem;
-            color: var(--text-main);
-            overflow-x: auto;
-            max-height: 350px;
-        }
-    </style>
-</head>
-<body>
-
-    <div class="bg-glows">
-        <div class="glow-1"></div>
-        <div class="glow-2"></div>
-    </div>
-
-    <!-- Header Navigation -->
-    <nav>
-        <a href="/" class="nav-brand">
-            <span>🤖</span> Doc Hub
-        </a>
-        <div class="nav-links">
-            <a href="/" class="nav-link">Dashboard</a>
-            <a href="/policy-builder" class="nav-link">Policy Builder</a>
-            <a href="/map-creator" class="nav-link active">Map Creator</a>
-            <a href="/git" class="nav-link">Git</a>
-        </div>
-    </nav>
-
-    <!-- Content -->
-    <div class="container">
-        <!-- Left Side: Interactive Canvas -->
-        <div class="map-editor-container">
-            <h1>Deliveroo Map Creator</h1>
-            <div class="desc">Visually design simulator maps. The generator automatically transposes and flips coordinates (`tiles[x][y]`) to match the simulator's JSON schema perfectly.</div>
-
-            <!-- Configuration sizing -->
-            <div class="card">
-                <div class="form-row" style="margin-bottom: 0;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="gridWidth">Grid Width (X-axis)</label>
-                        <input type="number" id="gridWidth" class="form-input" value="10" min="5" max="50" onchange="resizeGrid()">
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="gridHeight">Grid Height (Y-axis)</label>
-                        <input type="number" id="gridHeight" class="form-input" value="10" min="5" max="50" onchange="resizeGrid()">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Painter Palette Toolbar -->
-            <div class="toolbar">
-                <button class="tool-btn active" data-tile="0" onclick="selectTool(this)">⬜ Walkable</button>
-                <button class="tool-btn" data-tile="3" onclick="selectTool(this)">🧱 Wall</button>
-                <button class="tool-btn" data-tile="1" onclick="selectTool(this)">🟢 Spawn</button>
-                <button class="tool-btn" data-tile="2" onclick="selectTool(this)">🔴 Delivery</button>
-                <button class="tool-btn" data-tile="5" onclick="selectTool(this)">📦 Crate</button>
-                <button class="tool-btn" data-tile="5!" onclick="selectTool(this)">🎯 Target</button>
-                <button class="tool-btn" data-tile="↑" onclick="selectTool(this)">⬆️ Up Arrow</button>
-                <button class="tool-btn" data-tile="→" onclick="selectTool(this)">➡️ Right Arrow</button>
-                <button class="tool-btn" data-tile="↓" onclick="selectTool(this)">⬇️ Down Arrow</button>
-                <button class="tool-btn" data-tile="←" onclick="selectTool(this)">⬅️ Left Arrow</button>
-            </div>
-
-            <!-- Grid Wrapper -->
-            <div class="grid-wrapper">
-                <div class="grid-canvas" id="gridCanvas">
-                    <!-- Cell elements dynamically loaded -->
-                </div>
-            </div>
-
-            <!-- Coordinates overlay tracker -->
-            <div class="coord-overlay">
-                <div class="coord-item">Visual Coordinate: <span id="visualCoord">Row: 0, Col: 0</span></div>
-                <div class="coord-item">JSON Schema Coordinate: <span id="schemaCoord">X: 0, Y: 9</span></div>
-            </div>
-        </div>
-
-        <!-- Right Side: Game Settings & Generated JSON -->
-        <div>
-            <!-- Game settings card -->
-            <div class="card">
-                <div class="card-title">
-                    <span>⚙️</span> Game Settings
-                </div>
-                <div class="form-group">
-                    <label for="mapTitle">Map Title</label>
-                    <input type="text" id="mapTitle" class="form-input" value="custom_arena" oninput="generateJson()">
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="maxPlayers">Max Players</label>
-                        <input type="number" id="maxPlayers" class="form-input" value="4" oninput="generateJson()">
-                    </div>
-                    <div class="form-group">
-                        <label for="capacity">Player Cargo Capacity</label>
-                        <input type="number" id="capacity" class="form-input" value="5" oninput="generateJson()">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="parcelMax">Max Parcels On Map</label>
-                        <input type="number" id="parcelMax" class="form-input" value="5" oninput="generateJson()">
-                    </div>
-                    <div class="form-group">
-                        <label for="parcelGen">Parcel Spawn Rate</label>
-                        <input type="text" id="parcelGen" class="form-input" value="2s" oninput="generateJson()">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Generated JSON Card -->
-            <div class="card">
-                <div class="card-title">
-                    <span>📄</span> Generated Map JSON
-                </div>
-                <pre><code id="jsonOutput">{}</code></pre>
-                <div style="margin-top: 1.25rem;">
-                    <button class="btn" onclick="copyJson()">📋 Copy Map Configuration</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let gridWidth = 10;
-        let gridHeight = 10;
-        let activeTool = "0"; // Default: Walkable Empty tile
-        let gridState = []; // 2D array representation of the visual grid: gridState[row][col]
-        let isMouseDown = false;
-
-        function initGrid() {
             gridState = [];
             for (let r = 0; r < gridHeight; r++) {
                 const row = [];
                 for (let c = 0; c < gridWidth; c++) {
-                    row.push("0"); // Initialize as empty walkable
+                    row.push("normal");
                 }
                 gridState.push(row);
             }
 
-            // Draw some defaults
-            // Wall borders
-            for(let c=0; c<gridWidth; c++) {
-                gridState[0][c] = "3";
-                gridState[gridHeight-1][c] = "3";
-            }
-            for(let r=0; r<gridHeight; r++) {
-                gridState[r][0] = "3";
-                gridState[r][gridWidth-1] = "3";
-            }
-
-            // Spawn and delivery defaults
-            gridState[1][1] = "1";
-            gridState[gridHeight-2][gridWidth-2] = "2";
-
-            renderCanvas();
-        }
-
-        function selectTool(btn) {
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            activeTool = btn.getAttribute('data-tile');
-        }
-
-        function resizeGrid() {
-            const newW = parseInt(document.getElementById('gridWidth').value) || 10;
-            const newH = parseInt(document.getElementById('gridHeight').value) || 10;
-            
-            // Constrain
-            gridWidth = Math.max(5, Math.min(50, newW));
-            gridHeight = Math.max(5, Math.min(50, newH));
-
-            initGrid();
-        }
-
-        function handleCellAction(row, col) {
-            gridState[row][col] = activeTool;
-            updateCellClass(row, col);
-            generateJson();
-        }
-
-        function updateCellClass(row, col) {
-            const cell = document.getElementById(`cell-${row}-${col}`);
-            if (!cell) return;
-
-            // Reset classes
-            cell.className = 'grid-cell';
-            const value = gridState[row][col];
-
-            // Add class based on value
-            if (['↑', '→', '↓', '←'].includes(value)) {
-                cell.classList.add('tile-arrow');
-                cell.innerText = value;
-            } else {
-                cell.classList.add(`tile-${value}`);
-                cell.innerText = value === "0" ? "" : value;
-            }
-        }
-
-        function handleHover(row, col) {
-            // Visual row index is top-down (0 to H-1)
-            // Schema Y index is bottom-up (y = (H-1) - row)
-            const schemaX = col;
-            const schemaY = gridHeight - 1 - row;
-
-            document.getElementById('visualCoord').innerText = `Row: ${row}, Col: ${col}`;
-            document.getElementById('schemaCoord').innerText = `X: ${schemaX}, Y: ${schemaY}`;
-        }
-
-        function renderCanvas() {
-            const canvas = document.getElementById('gridCanvas');
-            canvas.style.gridTemplateColumns = `repeat(${gridWidth}, 32px)`;
-            canvas.innerHTML = '';
-
-            for (let r = 0; r < gridHeight; r++) {
-                for (let c = 0; c < gridWidth; c++) {
-                    const cell = document.createElement('div');
-                    cell.id = `cell-${r}-${c}`;
-                    cell.className = 'grid-cell';
-                    
-                    // Bind events
-                    cell.addEventListener('mousedown', (e) => {
-                        isMouseDown = true;
-                        handleCellAction(r, c);
-                    });
-                    cell.addEventListener('mouseover', () => {
-                        handleHover(r, c);
-                        if (isMouseDown) {
-                            handleCellAction(r, c);
-                        }
-                    });
-
-                    canvas.appendChild(cell);
-                    updateCellClass(r, c);
-                }
-            }
-
-            document.addEventListener('mouseup', () => {
-                isMouseDown = false;
-            });
-
-            generateJson();
-        }
-
-        function generateJson() {
-            const title = document.getElementById('mapTitle').value || 'custom_arena';
-            const maxPlayers = parseInt(document.getElementById('maxPlayers').value) || 4;
-            const capacity = parseInt(document.getElementById('capacity').value) || 5;
-            const parcelMax = parseInt(document.getElementById('parcelMax').value) || 5;
-            const parcelGen = document.getElementById('parcelGen').value || '2s';
-
-            // Generate tiles array matching the Deliveroo coordinates: tiles[x][y]
-            // x goes from 0 to WIDTH-1
-            // y goes from 0 to HEIGHT-1
-            const tiles = [];
-            for (let x = 0; x < gridWidth; x++) {
-                const column = [];
-                for (let y = 0; y < gridHeight; y++) {
-                    // y=0 is visual bottom (row = gridHeight - 1)
-                    // y=gridHeight-1 is visual top (row = 0)
-                    const visualRow = gridHeight - 1 - y;
-                    const val = gridState[visualRow][x];
-                    
-                    // Push either numbers or strings as per schema
-                    if (['↑', '→', '↓', '←', '5!'].includes(val)) {
-                        column.push(val);
-                    } else {
-                        // Store numbers like 0, 1, 2, 3, 5 as integers or strings.
-                        // Let's output them as strings for schema consistency
-                        column.push(val);
-                    }
-                }
-                tiles.push(column);
-            }
-
-            const payload = {
-                title: title,
-                description: `Visually created map matching Deliveroo column-oriented coordination grid.`,
-                maxPlayers: maxPlayers,
-                map: {
-                    width: gridWidth,
-                    height: gridHeight,
-                    tiles: tiles
-                },
-                npcs: [],
-                parcels: {
-                    generation_event: parcelGen,
-                    decaying_event: "1s",
-                    max: parcelMax,
-                    reward_avg: 30,
-                    reward_variance: 10
-                },
-                player: {
-                    movement_duration: 50,
-                    observation_distance: 5,
-                    capacity: capacity
-                }
+            const reverseSymbols = {
+                "0": "empty",
+                "3": "normal",
+                "1": "spawn",
+                "2": "deliver",
+                "5": "crate",
+                "5!": "crate_spawn"
             };
 
-            document.getElementById('jsonOutput').innerText = JSON.stringify(payload, null, 2);
+            for (let x = 0; x < gridHeight; x++) {
+                for (let y = 0; y < gridWidth; y++) {
+                    const visualRow = gridHeight - 1 - x;
+                    const visualCol = gridWidth - 1 - y;
+                    const rawVal = String(data.map.tiles[x][y]);
+                    gridState[visualRow][visualCol] = reverseSymbols[rawVal] || rawVal || "normal";
+                }
+            }
+
+            renderCanvas();
+            document.getElementById('importContainer').style.display = 'none';
+            document.getElementById('importJsonInput').value = '';
+            alert("Map imported successfully!");
+
+        } catch (err) {
+            alert("JSON parsing error: " + err.message);
+        }
+    }
+
+    function runPathfindingValidation() {
+        const spawns = [];
+        const deliveries = [];
+        const crates = [];
+        const crateSpawns = [];
+
+        for (let r = 0; r < gridHeight; r++) {
+            for (let c = 0; c < gridWidth; c++) {
+                const tile = gridState[r][c];
+                const coord = { r, c };
+                if (tile === 'spawn') spawns.push(coord);
+                else if (tile === 'deliver') deliveries.push(coord);
+                else if (tile === 'crate') crates.push(coord);
+                else if (tile === 'crate_spawn') crateSpawns.push(coord);
+            }
         }
 
-        function copyJson() {
-            const text = document.getElementById('jsonOutput').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                alert("Game Configuration JSON copied to clipboard!");
+        const validationContainer = document.getElementById('validationResult');
+        if (!validationContainer) return;
+
+        if (spawns.length === 0) {
+            validationContainer.innerHTML = `<span class="badge badge-inactive" style="color: var(--accent-orange); border-color: rgba(249,115,22,0.2);">⚠️ No spawn zone placed yet.</span>`;
+            return;
+        }
+
+        const visited = Array(gridHeight).fill().map(() => Array(gridWidth).fill(false));
+        const queue = [];
+
+        spawns.forEach(s => {
+            queue.push(s);
+            visited[s.r][s.c] = true;
+        });
+
+        while (queue.length > 0) {
+            const current = queue.shift();
+            
+            const dirs = [
+                { r: -1, c: 0, fromDir: '↓', toDir: '↑' }, // Up
+                { r: 1, c: 0, fromDir: '↑', toDir: '↓' },  // Down
+                { r: 0, c: -1, fromDir: '→', toDir: '←' }, // Left
+                { r: 0, c: 1, fromDir: '←', toDir: '→' }   // Right
+            ];
+
+            dirs.forEach(d => {
+                const nr = current.r + d.r;
+                const nc = current.c + d.c;
+
+                if (nr >= 0 && nr < gridHeight && nc >= 0 && nc < gridWidth) {
+                    if (!visited[nr][nc]) {
+                        const targetTile = gridState[nr][nc];
+                        if (targetTile !== 'empty') {
+                            let canMove = true;
+                            if (targetTile === '↑' && d.toDir === '↓') canMove = false;
+                            else if (targetTile === '↓' && d.toDir === '↑') canMove = false;
+                            else if (targetTile === '→' && d.toDir === '←') canMove = false;
+                            else if (targetTile === '←' && d.toDir === '→') canMove = false;
+
+                            if (canMove) {
+                                visited[nr][nc] = true;
+                                queue.push({ r: nr, c: nc });
+                            }
+                        }
+                    }
+                }
             });
         }
 
-        // Initialize grid on load
-        window.onload = initGrid;
-    </script>
-</body>
-</html>
+        const unreachableDeliveries = deliveries.filter(d => !visited[d.r][d.c]);
+        const unreachableCrates = [...crates, ...crateSpawns].filter(c => !visited[c.r][c.c]);
+
+        let html = '';
+        if (unreachableDeliveries.length === 0 && unreachableCrates.length === 0) {
+            html = `<span class="badge badge-active">✔️ All paths connected! Spawns can reach all crates and delivery zones.</span>`;
+        } else {
+            html = `<div style="display: flex; flex-direction: column; gap: 0.5rem;">`;
+            html += `<span class="badge badge-inactive" style="color: var(--accent-red); border-color: rgba(239,68,68,0.2); width: fit-content;">❌ Isolated elements found!</span>`;
+            if (unreachableDeliveries.length > 0) {
+                html += `<div style="font-size: 0.8rem; color: var(--text-muted);">Unreachable Deliveries at: ${unreachableDeliveries.map(d => `(${d.c}, ${gridHeight-1-d.r})`).join(', ')}</div>`;
+            }
+            if (unreachableCrates.length > 0) {
+                html += `<div style="font-size: 0.8rem; color: var(--text-muted);">Unreachable Crates/Spawns at: ${unreachableCrates.map(c => `(${c.c}, ${gridHeight-1-c.r})`).join(', ')}</div>`;
+            }
+            html += `</div>`;
+        }
+        validationContainer.innerHTML = html;
+    }
+
+    function handleMapFileSelect(input, textareaId) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById(textareaId).value = e.target.result;
+        };
+        reader.readAsText(file);
+    }
+
+    // ============================================================
+    // Pathfinding Visualizer Engine & State
+    // ============================================================
+    let selectMode = null;     // 'start', 'target', or null
+    let startCell = null;      // { r, c }
+    let targetCell = null;     // { r, c }
+    let pfIsRunning = false;
+    let pfIsPaused = false;
+    let pfTimer = null;
+    let pfVisited = new Set();
+    let pfFrontier = [];
+    let pfParent = new Map();
+    let pfFinalPath = null;
+    let pfNodesExplored = 0;
+    
+    let hudCollapsed = false;
+    
+    function toggleHudCollapse() {
+        hudCollapsed = !hudCollapsed;
+        const expandedContent = document.getElementById('hudExpandedContent');
+        const toggleBtn = document.getElementById('hudToggleCollapse');
+        if (hudCollapsed) {
+            expandedContent.style.display = 'none';
+            toggleBtn.innerText = '⏵ Expand';
+            toggleBtn.title = 'Expand pathfinding controls';
+        } else {
+            expandedContent.style.display = 'contents';
+            toggleBtn.innerText = '⏴ Minimize';
+            toggleBtn.title = 'Minimize / hide pathfinding controls';
+        }
+    }
+
+    function syncHudDelay(val) {
+        document.getElementById('pfDelayVal').innerText = val;
+    }
+
+    function syncHudAlgo(val) {
+        resetVisualizer();
+    }
+
+    function toggleSelectMode(mode) {
+        // Reset old selections
+        document.getElementById('btnSelectStart').classList.remove('active');
+        document.getElementById('btnSelectTarget').classList.remove('active');
+        document.getElementById('btnSelectStart').classList.remove('active');
+        document.getElementById('btnSelectTarget').classList.remove('active');
+
+        if (selectMode === mode) {
+            selectMode = null;
+        } else {
+            selectMode = mode;
+            if (mode === 'start') {
+                document.getElementById('btnSelectStart').classList.add('active');
+                document.getElementById('btnSelectStart').classList.add('active');
+            } else {
+                document.getElementById('btnSelectTarget').classList.add('active');
+                document.getElementById('btnSelectTarget').classList.add('active');
+            }
+        }
+    }
+
+    function handleSelectCoordinate(r, c) {
+        if (selectMode === 'start') {
+            startCell = { r, c };
+        } else if (selectMode === 'target') {
+            targetCell = { r, c };
+        }
+        
+        document.getElementById('btnSelectStart').classList.remove('active');
+        document.getElementById('btnSelectTarget').classList.remove('active');
+        document.getElementById('btnSelectStart').classList.remove('active');
+        document.getElementById('btnSelectTarget').classList.remove('active');
+        selectMode = null;
+        
+        drawStartTargetOverlays();
+        resetVisualizer();
+    }
+
+    function drawStartTargetOverlays() {
+        document.querySelectorAll('.pf-start').forEach(e => e.classList.remove('pf-start'));
+        document.querySelectorAll('.pf-target').forEach(e => e.classList.remove('pf-target'));
+
+        const startLblText = startCell ? `${startCell.c}, ${gridHeight - 1 - startCell.r}` : 'N/A';
+        const targetLblText = targetCell ? `${targetCell.c}, ${gridHeight - 1 - targetCell.r}` : 'N/A';
+
+        document.getElementById('startCoordLbl').innerText = startLblText;
+        document.getElementById('startCoordLbl').innerText = startLblText;
+        document.getElementById('targetCoordLbl').innerText = targetLblText;
+        document.getElementById('targetCoordLbl').innerText = targetLblText;
+
+        if (startCell) {
+            const startEl = document.getElementById(`cell-${startCell.r}-${startCell.c}`);
+            if (startEl) startEl.classList.add('pf-start');
+        }
+
+        if (targetCell) {
+            const targetEl = document.getElementById(`cell-${targetCell.r}-${targetCell.c}`);
+            if (targetEl) targetEl.classList.add('pf-target');
+        }
+    }
+
+    function resetVisualizer() {
+        pauseVisualizer();
+
+        document.querySelectorAll('.pf-visited').forEach(e => e.classList.remove('pf-visited'));
+        document.querySelectorAll('.pf-frontier').forEach(e => e.classList.remove('pf-frontier'));
+        document.querySelectorAll('.pf-path').forEach(e => {
+            e.classList.remove('pf-path');
+            const cellId = e.id;
+            const parts = cellId.split('-');
+            const r = parseInt(parts[1]);
+            const c = parseInt(parts[2]);
+            updateCellClass(r, c);
+        });
+
+        pfVisited.clear();
+        pfFrontier = [];
+        pfParent.clear();
+        pfFinalPath = null;
+        pfNodesExplored = 0;
+        pfIsRunning = false;
+        pfIsPaused = false;
+
+        document.getElementById('visualizerStatus').className = 'badge badge-inactive';
+        document.getElementById('visualizerStatus').innerText = 'Idle';
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnPlay').innerText = '▶️ Play';
+        document.getElementById('btnPause').disabled = true;
+        
+        const manualStep = document.getElementById('pfManualCheck').checked;
+        document.getElementById('btnStep').disabled = !manualStep;
+
+        // HUD buttons update
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnPlay').innerText = '▶️';
+        document.getElementById('btnPause').disabled = true;
+        document.getElementById('btnStep').disabled = !manualStep;
+        
+        const hudDot = document.getElementById('hudStatusDot');
+        if (hudDot) {
+            hudDot.style.background = '#94a3b8';
+            hudDot.title = 'Visualizer Status: Idle';
+        }
+
+        updateVisualizerStats();
+        drawStartTargetOverlays();
+    }
+
+    function updateVisualizerStats() {
+        const visitedSize = pfVisited.size;
+        const frontierLen = pfFrontier.length;
+        const pathLen = pfFinalPath ? pfFinalPath.length : 0;
+
+        document.getElementById('statVisited').innerText = visitedSize;
+        document.getElementById('statFrontier').innerText = frontierLen;
+        document.getElementById('statPathLen').innerText = pathLen;
+
+        const hudV = document.getElementById('statVisited');
+        const hudF = document.getElementById('statFrontier');
+        const hudP = document.getElementById('statPathLen');
+        if (hudV) hudV.innerText = visitedSize;
+        if (hudF) hudF.innerText = frontierLen;
+        if (hudP) hudP.innerText = pathLen;
+    }
+
+    function getManhattan(p1, p2) {
+        return Math.abs(p1.r - p2.r) + Math.abs(p1.c - p2.c);
+    }
+
+    function toggleManualStepMode(isChecked) {
+        if (isChecked) {
+            pauseVisualizer();
+            document.getElementById('btnPlay').disabled = true;
+            document.getElementById('btnPause').disabled = true;
+            document.getElementById('btnStep').disabled = false;
+            document.getElementById('btnStep').disabled = false;
+        } else {
+            document.getElementById('btnPlay').disabled = false;
+            document.getElementById('btnStep').disabled = true;
+            document.getElementById('btnStep').disabled = true;
+        }
+    }
+
+    function playVisualizer() {
+        if (!startCell || !targetCell) {
+            alert("Please select Start and Target coordinates first!");
+            return;
+        }
+
+        document.getElementById('btnPlay').disabled = true;
+        document.getElementById('btnPause').disabled = false;
+        document.getElementById('btnStep').disabled = true;
+        document.getElementById('visualizerStatus').className = 'badge badge-active';
+        document.getElementById('visualizerStatus').innerText = 'Running';
+
+        // HUD state update
+        document.getElementById('btnPlay').disabled = true;
+        document.getElementById('btnPause').disabled = false;
+        document.getElementById('btnStep').disabled = true;
+        
+        const hudDot = document.getElementById('hudStatusDot');
+        if (hudDot) {
+            hudDot.style.background = '#10b981';
+            hudDot.title = 'Visualizer Status: Running';
+        }
+
+        pfIsPaused = false;
+
+        const delay = parseInt(document.getElementById('pfDelay').value) || 100;
+        
+        function tick() {
+            if (pfIsPaused) return;
+            const status = stepIteration();
+            if (status === 'done' || status === 'unreachable') {
+                document.getElementById('btnPlay').disabled = false;
+                document.getElementById('btnPlay').innerText = '▶️ Play';
+                document.getElementById('btnPause').disabled = true;
+                document.getElementById('btnStep').disabled = true;
+
+                document.getElementById('btnPlay').disabled = false;
+                document.getElementById('btnPlay').innerText = '▶️';
+                document.getElementById('btnPause').disabled = true;
+                document.getElementById('btnStep').disabled = true;
+
+                const finalDot = document.getElementById('hudStatusDot');
+                if (finalDot) {
+                    if (status === 'done') {
+                        finalDot.style.background = '#06b6d4';
+                        finalDot.title = 'Visualizer Status: Finished';
+                    } else {
+                        finalDot.style.background = '#ef4444';
+                        finalDot.title = 'Visualizer Status: Unreachable';
+                    }
+                }
+            } else {
+                pfTimer = setTimeout(tick, delay);
+            }
+        }
+
+        tick();
+    }
+
+    function pauseVisualizer() {
+        pfIsPaused = true;
+        clearTimeout(pfTimer);
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnPlay').innerText = '▶️ Resume';
+        document.getElementById('btnPause').disabled = true;
+        
+        const manualStep = document.getElementById('pfManualCheck').checked;
+        document.getElementById('btnStep').disabled = !manualStep;
+
+        // HUD state update
+        document.getElementById('btnPlay').disabled = false;
+        document.getElementById('btnPlay').innerText = '▶️';
+        document.getElementById('btnPause').disabled = true;
+        document.getElementById('btnStep').disabled = !manualStep;
+
+        const hudDot = document.getElementById('hudStatusDot');
+        if (hudDot) {
+            hudDot.style.background = '#f59e0b';
+            hudDot.title = 'Visualizer Status: Paused';
+        }
+        
+        document.getElementById('visualizerStatus').className = 'badge badge-inactive';
+        document.getElementById('visualizerStatus').innerText = 'Paused';
+    }
+
+    function stepVisualizer() {
+        if (!startCell || !targetCell) {
+            alert("Please select Start and Target coordinates first!");
+            return;
+        }
+        const status = stepIteration();
+        if (status === 'done' || status === 'unreachable') {
+            document.getElementById('btnStep').disabled = true;
+            document.getElementById('btnStep').disabled = true;
+
+            const hudDot = document.getElementById('hudStatusDot');
+            if (hudDot) {
+                if (status === 'done') {
+                    hudDot.style.background = '#06b6d4';
+                    hudDot.title = 'Visualizer Status: Finished';
+                } else {
+                    hudDot.style.background = '#ef4444';
+                    hudDot.title = 'Visualizer Status: Unreachable';
+                }
+            }
+        }
+    }
+
+    function stepIteration() {
+        if (!pfIsRunning) {
+            pfVisited.clear();
+            pfParent.clear();
+            pfFinalPath = null;
+            pfNodesExplored = 0;
+            pfIsRunning = true;
+            
+            const algo = document.getElementById('pfAlgo').value;
+            
+            if (algo === 'astar') {
+                pfFrontier = [{
+                    r: startCell.r,
+                    c: startCell.c,
+                    g: 0,
+                    h: getManhattan(startCell, targetCell),
+                    f: getManhattan(startCell, targetCell),
+                    parent: null
+                }];
+            } else if (algo === 'dijkstra') {
+                pfFrontier = [{
+                    r: startCell.r,
+                    c: startCell.c,
+                    dist: 0,
+                    parent: null
+                }];
+            } else {
+                pfFrontier = [{
+                    r: startCell.r,
+                    c: startCell.c,
+                    parent: null
+                }];
+            }
+
+            document.querySelectorAll('.pf-visited').forEach(e => e.classList.remove('pf-visited'));
+            document.querySelectorAll('.pf-frontier').forEach(e => e.classList.remove('pf-frontier'));
+            document.querySelectorAll('.pf-path').forEach(e => e.classList.remove('pf-path'));
+        }
+
+        if (pfFrontier.length === 0) {
+            document.getElementById('visualizerStatus').className = 'badge badge-inactive';
+            document.getElementById('visualizerStatus').style.borderColor = 'rgba(239,68,68,0.2)';
+            document.getElementById('visualizerStatus').style.color = 'var(--accent-red)';
+            document.getElementById('visualizerStatus').innerText = 'Unreachable';
+            return 'unreachable';
+        }
+
+        const algo = document.getElementById('pfAlgo').value;
+        let curr = null;
+
+        if (algo === 'astar') {
+            pfFrontier.sort((a, b) => a.f - b.f || a.h - b.h);
+            curr = pfFrontier.shift();
+        } else if (algo === 'dijkstra') {
+            pfFrontier.sort((a, b) => a.dist - b.dist);
+            curr = pfFrontier.shift();
+        } else if (algo === 'dfs') {
+            curr = pfFrontier.pop();
+        } else {
+            curr = pfFrontier.shift();
+        }
+
+        const currKey = `${curr.r},${curr.c}`;
+        
+        if (pfVisited.has(currKey)) {
+            return stepIteration();
+        }
+
+        pfVisited.add(currKey);
+        pfNodesExplored++;
+
+        const currEl = document.getElementById(`cell-${curr.r}-${curr.c}`);
+        if (currEl && currKey !== `${startCell.r},${startCell.c}` && currKey !== `${targetCell.r},${targetCell.c}`) {
+            currEl.classList.add('pf-visited');
+        }
+
+        if (curr.r === targetCell.r && curr.c === targetCell.c) {
+            reconstructAndDrawPath(curr);
+            document.getElementById('visualizerStatus').className = 'badge badge-active';
+            document.getElementById('visualizerStatus').innerText = 'Finished';
+            return 'done';
+        }
+
+        const dirs = [
+            { r: -1, c: 0, toDir: '↑' }, // Up
+            { r: 1, c: 0, toDir: '↓' },  // Down
+            { r: 0, c: -1, toDir: '←' }, // Left
+            { r: 0, c: 1, toDir: '→' }   // Right
+        ];
+
+        dirs.forEach(d => {
+            const nr = curr.r + d.r;
+            const nc = curr.c + d.c;
+
+            if (nr >= 0 && nr < gridHeight && nc >= 0 && nc < gridWidth) {
+                const nKey = `${nr},${nc}`;
+                if (!pfVisited.has(nKey)) {
+                    const targetTile = gridState[nr][nc];
+                    
+                    if (targetTile !== 'empty') {
+                        let canMove = true;
+                        if (targetTile === '↑' && d.toDir === '↓') canMove = false;
+                        else if (targetTile === '↓' && d.toDir === '↑') canMove = false;
+                        else if (targetTile === '→' && d.toDir === '←') canMove = false;
+                        else if (targetTile === '←' && d.toDir === '→') canMove = false;
+
+                        if (canMove) {
+                            if (algo === 'astar') {
+                                const newG = (curr.g || 0) + 1;
+                                const h = getManhattan({ r: nr, c: nc }, targetCell);
+                                const f = newG + h;
+                                
+                                const existing = pfFrontier.find(item => item.r === nr && item.c === nc);
+                                if (existing) {
+                                    if (newG < existing.g) {
+                                        existing.g = newG;
+                                        existing.f = f;
+                                        existing.parent = curr;
+                                    }
+                                } else {
+                                    pfFrontier.push({
+                                        r: nr,
+                                        c: nc,
+                                        g: newG,
+                                        h: h,
+                                        f: f,
+                                        parent: curr
+                                    });
+                                    pfParent.set(nKey, currKey);
+                                    const cellEl = document.getElementById(`cell-${nr}-${nc}`);
+                                    if (cellEl && nKey !== `${startCell.r},${startCell.c}` && nKey !== `${targetCell.r},${targetCell.c}`) {
+                                        cellEl.classList.add('pf-frontier');
+                                    }
+                                }
+                            } else if (algo === 'dijkstra') {
+                                const newDist = (curr.dist || 0) + 1;
+                                const existing = pfFrontier.find(item => item.r === nr && item.c === nc);
+                                if (existing) {
+                                    if (newDist < existing.dist) {
+                                        existing.dist = newDist;
+                                        existing.parent = curr;
+                                    }
+                                } else {
+                                    pfFrontier.push({
+                                        r: nr,
+                                        c: nc,
+                                        dist: newDist,
+                                        parent: curr
+                                    });
+                                    pfParent.set(nKey, currKey);
+                                    const cellEl = document.getElementById(`cell-${nr}-${nc}`);
+                                    if (cellEl && nKey !== `${startCell.r},${startCell.c}` && nKey !== `${targetCell.r},${targetCell.c}`) {
+                                        cellEl.classList.add('pf-frontier');
+                                    }
+                                }
+                            } else {
+                                pfFrontier.push({
+                                    r: nr,
+                                    c: nc,
+                                    parent: curr
+                                });
+                                pfParent.set(nKey, currKey);
+                                const cellEl = document.getElementById(`cell-${nr}-${nc}`);
+                                if (cellEl && nKey !== `${startCell.r},${startCell.c}` && nKey !== `${targetCell.r},${targetCell.c}`) {
+                                    cellEl.classList.add('pf-frontier');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        updateVisualizerStats();
+        return 'searching';
+    }
+
+    function reconstructAndDrawPath(endNode) {
+        pfFinalPath = [];
+        let curr = endNode;
+        while (curr !== null) {
+            pfFinalPath.push({ r: curr.r, c: curr.c });
+            curr = curr.parent;
+        }
+        pfFinalPath.reverse();
+
+        pfFinalPath.forEach((cell, idx) => {
+            const cellEl = document.getElementById(`cell-${cell.r}-${cell.c}`);
+            if (cellEl) {
+                cellEl.classList.add('pf-path');
+                cellEl.innerText = idx;
+            }
+        });
+
+        updateVisualizerStats();
+    }
+    function initHudInteraction() {
+        // Sync bottom-panel values up to the HUD bar on load
+        const currentDelay = document.getElementById('pfDelay').value;
+        document.getElementById('pfDelay').value = currentDelay;
+        const currentAlgo = document.getElementById('pfAlgo').value;
+        document.getElementById('pfAlgo').value = currentAlgo;
+    }
+
+    // Initialize grid & HUD interaction on load
+    window.onload = () => {
+        initGrid();
+        initHudInteraction();
+    };
+</script>
