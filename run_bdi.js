@@ -39,6 +39,7 @@ socket.onMap((width, height, tiles) => {
     beliefs.map = new MapRepresentation(width, height, tiles);
     mapInitialized = true;
     console.log(`[BDI] Grid Map initialized successfully: ${width}x${height}`);
+    beliefs.map.printMap();
 });
 
 // 3. Keep me credentials updated
@@ -52,23 +53,35 @@ socket.onConfig((config) => {
 });
 
 // 5. Revise beliefs and run intention tick on every sensing update frame
-socket.onSensing(async (sensing) => {
+// 5. Revise beliefs on every sensing update frame
+socket.onSensing((sensing) => {
     if (!mapInitialized) return;
-
-    // Revision step
     beliefs.revise(sensing);
-
-    // Intention execution step
-    try {
-        await intentionEngine.tick();
-    } catch (e) {
-        console.error('[BDI] Intention tick cycle encountered error:', e.message);
-    }
 });
 
+// Start BDI physical reasoning game loop
+async function runGameLoop() {
+    while (true) {
+        if (mapInitialized) {
+            try {
+                await intentionEngine.tick();
+            } catch (e) {
+                console.error('[BDI] Intention tick cycle encountered error:', e.message);
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 16)); // ~60 Hz
+    }
+}
+runGameLoop();
+
 // 6. Handle P2P chat messages for contract negotiation and target locking
-socket.onMsg((senderId, name, msg) => {
-    p2pManager.handleIncomingChat(senderId, msg);
+socket.onMsg(async (senderId, name, msg) => {
+    if (senderId === AGENT_IDS.ADMIN_ID && !msg.startsWith('{')) {
+        console.log(`[BDI] Intercepted Admin console message: "${msg}". Forwarding to LLM agent (${AGENT_IDS.LLM_AGENT_ID}).`);
+        await socket.emitSay(AGENT_IDS.LLM_AGENT_ID, msg);
+    } else {
+        await p2pManager.handleIncomingChat(senderId, msg);
+    }
 });
 
 socket.onDisconnect(() => {

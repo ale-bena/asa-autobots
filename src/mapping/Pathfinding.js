@@ -43,11 +43,27 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
 
     const avoidTiles = new Set(policy && policy.avoidTiles ? policy.avoidTiles : []);
 
-    // Create a fast lookup set of coordinates occupied by dynamic crates.
+    // Create a fast lookup set of coordinates occupied by dynamic crates or peer agents.
     const crateTiles = new Set();
     if (beliefs && beliefs.crates) {
         for (const crate of beliefs.crates.values()) {
             crateTiles.add(`${crate.x},${crate.y}`);
+        }
+    }
+    if (beliefs && beliefs.blockedTargets) {
+        for (const key of beliefs.blockedTargets.keys()) {
+            if (key.includes(',')) {
+                crateTiles.add(key);
+            }
+        }
+    }
+
+    const peerTiles = new Set();
+    if (beliefs && beliefs.peers) {
+        for (const peer of beliefs.peers.values()) {
+            const px = Math.round(peer.x);
+            const py = Math.round(peer.y);
+            peerTiles.add(`${px},${py}`);
         }
     }
 
@@ -88,6 +104,10 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
 
             // Calculate cost to neighbor.
             let stepCost = 1;
+            const hasPeer = peerTiles.has(neighborKey);
+            if (hasPeer && !isGoal) {
+                stepCost += 5; // Add penalty for peer agent instead of treating as blocked
+            }
             if (avoidTiles.has(neighborKey)) {
                 stepCost += PATHFINDING_CONFIG.AVOID_TILE_PENALTY;
             }

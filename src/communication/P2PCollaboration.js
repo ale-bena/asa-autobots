@@ -33,7 +33,7 @@ export class P2PManager {
      * @param {string} senderId - Identifier of the sender.
      * @param {string} rawMessage - Raw message text.
      */
-    handleIncomingChat(senderId, rawMessage) {
+    async handleIncomingChat(senderId, rawMessage) {
         // Skip messages sent by ourselves.
         if (senderId === this.beliefs.me.id) return;
 
@@ -106,7 +106,7 @@ export class P2PManager {
 
                 case 'INSTRUCT_SAY':
                     console.log('[P2P] Direct say command executed:', message.message);
-                    this.socket.emit('say', message.message);
+                    await this.socket.emitShout(message.message);
                     break;
             }
         } catch (e) {
@@ -118,9 +118,9 @@ export class P2PManager {
      * Broadcasts a P2P message to all clients in the game room.
      * @param {Object} message - Message payload object.
      */
-    broadcast(message) {
+    async broadcast(message) {
         const rawString = JSON.stringify(message);
-        this.socket.emit('say', rawString);
+        await this.socket.emitShout(rawString);
     }
 
     /**

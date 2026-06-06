@@ -15,6 +15,7 @@ import { BeliefBase } from './src/agent/BeliefBase.js';
 import { LLMCoordinator } from './src/llm/LLMCoordinator.js';
 import { MapRepresentation } from './src/mapping/MapRepresentation.js';
 import { P2PManager } from './src/communication/P2PCollaboration.js';
+import { IntentionEngine } from './src/agent/Intentions.js';
 
 console.log('================================================================================');
 console.log('🧠 ASA Autobots - LLM Cognitive Coordinator Agent (Agent 2)');
@@ -25,6 +26,7 @@ const socket = DjsConnect();
 const beliefs = new BeliefBase();
 const coordinator = new LLMCoordinator(beliefs, socket);
 const p2pManager = new P2PManager(beliefs, socket);
+const intentionEngine = new IntentionEngine(beliefs, socket);
 
 let mapInitialized = false;
 
@@ -38,6 +40,7 @@ socket.onMap((width, height, tiles) => {
     beliefs.map = new MapRepresentation(width, height, tiles);
     mapInitialized = true;
     console.log(`[LLM] Grid Map initialized successfully: ${width}x${height}`);
+    beliefs.map.printMap();
 });
 
 // 3. Keep me credentials updated
@@ -56,26 +59,43 @@ socket.onSensing((sensing) => {
     beliefs.revise(sensing);
 });
 
+// Start LLM Coordinator physical reasoning game loop
+async function runGameLoop() {
+    while (true) {
+        if (mapInitialized) {
+            try {
+                await intentionEngine.tick();
+            } catch (e) {
+                console.error('[LLM] Intention tick cycle encountered error:', e.message);
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 16)); // ~60 Hz
+    }
+}
+runGameLoop();
+
 // 6. Intercept Admin challenge instructions and run LLM Coordinator loop
 socket.onMsg(async (senderId, name, msg) => {
-    // Intercept instructions from the Admin ID
-    if (senderId === AGENT_IDS.ADMIN_ID) {
-        console.log(`\n[LLM] Intercepted Admin console message from "${name}" (${senderId}): "${msg}"`);
+    // Intercept instructions from the Admin ID, or forwarded by the BDI agent
+    const isAdminPrompt = senderId === AGENT_IDS.ADMIN_ID || (senderId === AGENT_IDS.BDI_AGENT_ID && !msg.startsWith('{'));
+
+    if (isAdminPrompt) {
+        console.log(`\n[LLM] Intercepted Admin console message (origin/forwarded) from "${name}" (${senderId}): "${msg}"`);
 
         // Run cognitive reasoning loop
         try {
             const reply = await coordinator.handleAdminPrompt(msg);
             console.log(`[LLM] Completed reasoning cycle. Output: "${reply}"`);
 
-            // Speak response back to Admin console
-            socket.emit('say', reply);
+            // Speak response back to Admin console using SDK method
+            await socket.emitSay(AGENT_IDS.ADMIN_ID, reply);
         } catch (e) {
             console.error('[LLM] Error executing LLM reasoning loop:', e.message);
-            socket.emit('say', 'An error occurred during LLM reasoning execution.');
+            await socket.emitSay(AGENT_IDS.ADMIN_ID, 'An error occurred during LLM reasoning execution.');
         }
     } else {
         // Delegate P2P messages to coordination manager
-        p2pManager.handleIncomingChat(senderId, msg);
+        await p2pManager.handleIncomingChat(senderId, msg);
     }
 });
 

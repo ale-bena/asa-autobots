@@ -91,6 +91,33 @@ export class BeliefBase {
          * @type {number}
          */
         this.observationDistance = 5;
+
+        /**
+         * Full game configuration object from the server.
+         * @type {Object|null}
+         */
+        this.config = null;
+
+        /**
+         * How often parcel rewards decay by 1 point (in milliseconds).
+         * Read from config PARCELS_DECADING_INTERVAL; defaults to 1000ms.
+         * A value of Infinity means parcels never decay.
+         * @type {number}
+         */
+        this.parcelDecayIntervalMs = 1000;
+
+        /**
+         * Server-side movement duration in milliseconds.
+         * This is how long one move action takes on the server.
+         * @type {number}
+         */
+        this.movementDurationMs = 500;
+
+        /**
+         * Map of target key (coords or ID) -> block timestamp.
+         * @type {Map<string, number>}
+         */
+        this.blockedTargets = new Map();
     }
 
     /**
@@ -103,17 +130,44 @@ export class BeliefBase {
         // 1. Revise Self info
         if (sensorPayload.me) {
             Object.assign(this.me, sensorPayload.me);
+            this.me.x = Math.round(this.me.x);
+            this.me.y = Math.round(this.me.y);
         }
 
         // 2. Revise Map Config if present
         if (sensorPayload.config) {
-            this.observationDistance = sensorPayload.config.GAME.player.observation_distance || 5;
+            this.config = sensorPayload.config;
+            this.observationDistance = sensorPayload.config.GAME?.player?.observation_distance || 5;
+
+            console.log(`[BDI Config] Player Capacity: ${this.config.GAME?.player?.capacity}, Decaying Event: ${this.config.GAME?.parcels?.decaying_event}, Movement Duration: ${this.config.GAME?.player?.movement_duration}`);
+
+            // Extract parcel decay interval (checks both standard decaying_event and fallback decading_interval)
+            const decayRaw = sensorPayload.config.GAME?.parcels?.decaying_event || sensorPayload.config.GAME?.parcel?.decading_interval;
+            if (decayRaw === 'infinite' || decayRaw === Infinity) {
+                this.parcelDecayIntervalMs = Infinity;
+            } else if (typeof decayRaw === 'number' && decayRaw > 0) {
+                this.parcelDecayIntervalMs = decayRaw;
+            } else if (typeof decayRaw === 'string') {
+                const parsed = parseInt(decayRaw, 10);
+                if (!isNaN(parsed) && parsed > 0) {
+                    this.parcelDecayIntervalMs = decayRaw.endsWith('s') ? parsed * 1000 : parsed;
+                }
+            }
+
+            // Extract movement duration
+            const moveDur = sensorPayload.config.GAME?.player?.movement_duration;
+            if (typeof moveDur === 'number' && moveDur > 0) {
+                this.movementDurationMs = moveDur;
+            } else if (typeof moveDur === 'string') {
+                const parsed = parseInt(moveDur, 10);
+                if (!isNaN(parsed) && parsed > 0) this.movementDurationMs = parsed;
+            }
         }
 
         // 3. Revise Peers
-        if (sensorPayload.peers) {
+        if (sensorPayload.agents) {
             this.peers.clear();
-            sensorPayload.peers.forEach(p => {
+            sensorPayload.agents.forEach(p => {
                 if (p.id !== this.me.id) {
                     this.peers.set(p.id, p);
                 }
@@ -172,9 +226,49 @@ export class BeliefBase {
             this.parcels.set(p.id, p);
         });
 
+        // Ensure all carried parcels exist in this.parcels
+        for (const cid of this.carried) {
+            if (!this.parcels.has(cid)) {
+                this.parcels.set(cid, {
+                    id: cid,
+                    x: this.me.x,
+                    y: this.me.y,
+                    reward: 20, // fallback reward
+                    carriedBy: this.me.id,
+                    lastDecayed: Date.now()
+                });
+            }
+        }
+
         // Loop through existing memory.
         for (const [id, parcel] of this.parcels.entries()) {
             if (sensedParcelMap.has(id)) continue;
+
+            // If we are carrying this parcel, do not delete it!
+            // Instead, update its position to our current position,
+            // and decay its reward based on elapsed time.
+            if (this.carried.includes(id)) {
+                parcel.x = this.me.x;
+                parcel.y = this.me.y;
+                parcel.carriedBy = this.me.id;
+
+                const now = Date.now();
+                if (!parcel.lastDecayed) {
+                    parcel.lastDecayed = now;
+                }
+                const decayMs = this.parcelDecayIntervalMs;
+                if (isFinite(decayMs) && decayMs > 0) {
+                    const elapsed = now - parcel.lastDecayed;
+                    if (elapsed >= decayMs) {
+                        const decayAmount = Math.floor(elapsed / decayMs);
+                        parcel.reward = Math.max(0, parcel.reward - decayAmount);
+                        parcel.lastDecayed = now - (elapsed % decayMs);
+                    }
+                } else {
+                    parcel.lastDecayed = now;
+                }
+                continue;
+            }
 
             const distance = Math.abs(parcel.x - this.me.x) + Math.abs(parcel.y - this.me.y);
             if (distance < this.observationDistance) {
@@ -194,6 +288,13 @@ export class BeliefBase {
         for (const targetId of this.lockedTargets) {
             if (!this.parcels.has(targetId)) {
                 this.lockedTargets.delete(targetId);
+            }
+        }
+        // Clean blocked targets older than 3000ms
+        const now = Date.now();
+        for (const [key, ts] of this.blockedTargets.entries()) {
+            if (now - ts > 3000) {
+                this.blockedTargets.delete(key);
             }
         }
     }

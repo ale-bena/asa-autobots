@@ -33,30 +33,29 @@ export class MapRepresentation {
      * @param {Array<Array<string>>} tiles - Grid column matrix from Socket.io map event.
      */
     constructor(width, height, tiles) {
+        // The simulator emits the maximum coordinate index (maxX, maxY) as the width and height.
+        // Therefore, we must add 1 to obtain the actual dimensions of the grid.
         /** @type {number} */
-        this.width = width;
+        this.width = width + 1;
         /** @type {number} */
-        this.height = height;
+        this.height = height + 1;
 
         // Flatten tiles into a 1D Uint8Array for optimized performance.
         /** @type {Uint8Array} */
-        this.grid = new Uint8Array(width * height);
+        this.grid = new Uint8Array(this.width * this.height);
 
         this._initializeGrid(tiles);
     }
 
     /**
-     * Populates the grid layout from a 2D tile array.
-     * @param {Array<Array<string>>} tiles - The 2D array of tile descriptions.
+     * Populates the grid layout from a flat tile array.
+     * @param {Array<Object>} tiles - Flat tile array from Socket.io map event.
      * @private
      */
     _initializeGrid(tiles) {
-        for (let x = 0; x < this.width; x++) {
-            for (let y = 0; y < this.height; y++) {
-                const rawTile = tiles[x][y];
-                const index = this.getFlatIndex(x, y);
-                this.grid[index] = this._parseTileType(rawTile);
-            }
+        for (const tile of tiles) {
+            const index = this.getFlatIndex(tile.x, tile.y);
+            this.grid[index] = this._parseTileType(tile.type);
         }
     }
 
@@ -132,22 +131,32 @@ export class MapRepresentation {
      * @returns {boolean} True if transition is valid.
      */
     isAdjacent(from, to) {
+        const fromX = Math.round(from.x);
+        const fromY = Math.round(from.y);
+        const toX = Math.round(to.x);
+        const toY = Math.round(to.y);
+        
         // Must be exactly 1 cell away in Manhattan distance.
-        const dx = Math.abs(from.x - to.x);
-        const dy = Math.abs(from.y - to.y);
-        if (dx + dy !== 1) return false;
-
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+        
         // Destination must be a valid walkable tile.
-        if (!this.isWalkableTile(to.x, to.y)) return false;
-
-        const toCode = this.getTileCode(to.x, to.y);
-
-        // Enforce directed one-way gates: we cannot enter B from the pointed-to direction.
-        if (toCode === MapRepresentation.TILE_CODES.ARROW_UP && from.y === to.y + 1) return false;
-        if (toCode === MapRepresentation.TILE_CODES.ARROW_DOWN && from.y === to.y - 1) return false;
-        if (toCode === MapRepresentation.TILE_CODES.ARROW_RIGHT && from.x === to.x + 1) return false;
-        if (toCode === MapRepresentation.TILE_CODES.ARROW_LEFT && from.x === to.x - 1) return false;
-
+        if (!this.isWalkableTile(toX, toY)) return false;
+        
+        const toCode = this.getTileCode(toX, toY);
+        
+        // Directional tiles (arrows) restrict entry *into* the arrow tile.
+        // Cannot enter a tile if moving opposite to its direction.
+        // Arrow Up (pointing up): cannot move down onto it (dy = -1, i.e., from.y = to.y + 1)
+        if (toCode === MapRepresentation.TILE_CODES.ARROW_UP && dy === -1) return false;
+        // Arrow Down (pointing down): cannot move up onto it (dy = 1, i.e., from.y = to.y - 1)
+        if (toCode === MapRepresentation.TILE_CODES.ARROW_DOWN && dy === 1) return false;
+        // Arrow Right (pointing right): cannot move left onto it (dx = -1, i.e., from.x = to.x + 1)
+        if (toCode === MapRepresentation.TILE_CODES.ARROW_RIGHT && dx === -1) return false;
+        // Arrow Left (pointing left): cannot move right onto it (dx = 1, i.e., from.x = to.x - 1)
+        if (toCode === MapRepresentation.TILE_CODES.ARROW_LEFT && dx === 1) return false;
+        
         return true;
     }
 
@@ -164,5 +173,54 @@ export class MapRepresentation {
             { x: pos.x - 1, y: pos.y }  // left
         ];
         return directions.filter(dest => this.isAdjacent(pos, dest));
+    }
+
+    /**
+     * Prints a beautiful colored ANSI representation of the grid map to the console.
+     */
+    printMap() {
+        console.log('\n🗺️  ASA Grid Map Representation:');
+        for (let y = this.height - 1; y >= 0; y--) {
+            let rowStr = '';
+            for (let x = 0; x < this.width; x++) {
+                const code = this.getTileCode(x, y);
+                switch (code) {
+                    case MapRepresentation.TILE_CODES.WALL:
+                        rowStr += '\x1b[48;5;235m  \x1b[0m'; // Dark grey block for walls
+                        break;
+                    case MapRepresentation.TILE_CODES.SPAWN:
+                        rowStr += '\x1b[48;5;40m\x1b[38;5;15mSP\x1b[0m'; // Green block for Spawn
+                        break;
+                    case MapRepresentation.TILE_CODES.DELIVERY:
+                        rowStr += '\x1b[48;5;27m\x1b[38;5;15mDL\x1b[0m'; // Blue block for Delivery
+                        break;
+                    case MapRepresentation.TILE_CODES.PAVEMENT:
+                        rowStr += '\x1b[48;5;250m  \x1b[0m'; // Light grey for pavement
+                        break;
+                    case MapRepresentation.TILE_CODES.CRATE_SPAWN:
+                        rowStr += '\x1b[48;5;125mCS\x1b[0m'; // Magenta for Crate Spawn
+                        break;
+                    case MapRepresentation.TILE_CODES.CRATE:
+                        rowStr += '\x1b[48;5;136mCR\x1b[0m'; // Orange/Brown for Crate
+                        break;
+                    case MapRepresentation.TILE_CODES.ARROW_UP:
+                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ↑\x1b[0m'; // Yellow background with black arrow
+                        break;
+                    case MapRepresentation.TILE_CODES.ARROW_RIGHT:
+                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m →\x1b[0m';
+                        break;
+                    case MapRepresentation.TILE_CODES.ARROW_DOWN:
+                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ↓\x1b[0m';
+                        break;
+                    case MapRepresentation.TILE_CODES.ARROW_LEFT:
+                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ←\x1b[0m';
+                        break;
+                    default:
+                        rowStr += '  ';
+                }
+            }
+            console.log(rowStr);
+        }
+        console.log('');
     }
 }

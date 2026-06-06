@@ -187,7 +187,7 @@ RESPONSE FORMATTING LIMITS:
      */
     broadcastP2P(payload) {
         const rawString = JSON.stringify(payload);
-        this.socket.emit('say', rawString);
+        this.socket.emitShout(rawString);
     }
 
     /**
