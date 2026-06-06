@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import { NavigateTo, CollectAndDeliver, findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, pathDistance } from './PlanLibrary.js';
+import { evaluateExpression } from '../policy/PolicyEngine.js';
 
 /**
  * Main execution and reasoning engine for the BDI Agent.
@@ -79,6 +80,33 @@ export class IntentionEngine {
          * @type {number}
          */
         this.lastCarriedLength = 0;
+
+        /**
+         * Track execution performance stats dynamically.
+         * Initialized to low, realistic default values.
+         */
+        this.actionStats = {
+            move: { count: 0, totalTime: 0, avgTime: 50 },
+            pickup: { count: 0, totalTime: 0, avgTime: 20 },
+            putdown: { count: 0, totalTime: 0, avgTime: 20 }
+        };
+
+        /**
+         * Dynamically computed capacity limit.
+         * Default to 8 if not configured to allow active detours from start.
+         */
+        this.dynamicCapacityLimit = 8;
+
+        /**
+         * Track sequence start time and carried count for efficiency calculation.
+         */
+        this.sequenceStartTime = null;
+        this.sequenceCarriedCount = 0;
+
+        /**
+         * Track last required stack size to detect coordinator policy changes.
+         */
+        this.lastRequiredStackSize = null;
     }
 
     /**
@@ -93,6 +121,69 @@ export class IntentionEngine {
         if (me.y < target.y) return 'up';
         if (me.y > target.y) return 'down';
         return null;
+    }
+
+    /**
+     * Evaluates policy rules (multipliers, bonuses) for a projected delivery.
+     * @param {number} baseReward - The base reward before modifications.
+     * @param {Object} projectedState - Mock state representing delivery conditions.
+     * @returns {number} The policy-adjusted reward.
+     */
+    evaluatePolicyReward(baseReward, projectedState) {
+        let reward = baseReward;
+        
+        // Context object for evaluateExpression
+        const context = {
+            beliefs: this.beliefs,
+            variables: this.beliefs.variables,
+            me: {
+                x: projectedState.x !== undefined ? projectedState.x : this.beliefs.me.x,
+                y: projectedState.y !== undefined ? projectedState.y : this.beliefs.me.y,
+                score: this.beliefs.me.score,
+                status: this.beliefs.me.status
+            },
+            carried: {
+                length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : this.beliefs.carried.length
+            }
+        };
+
+        // 1. Apply multiplier rules
+        if (this.beliefs.policyRules && this.beliefs.policyRules.multiplierRules) {
+            for (const rule of this.beliefs.policyRules.multiplierRules) {
+                try {
+                    const matched = evaluateExpression(rule.condition, context, {
+                        'carrying.size': context.carried.length,
+                        'carrying.length': context.carried.length,
+                        'stack_size': context.carried.length
+                    });
+                    if (matched) {
+                        reward *= rule.multiplier;
+                    }
+                } catch (e) {
+                    console.error('[BDI Policy] Error evaluating multiplier rule condition:', rule.condition, e.message);
+                }
+            }
+        }
+
+        // 2. Apply bonus rules
+        if (this.beliefs.policyRules && this.beliefs.policyRules.bonusRules) {
+            for (const rule of this.beliefs.policyRules.bonusRules) {
+                try {
+                    const matched = evaluateExpression(rule.condition, context, {
+                        'carrying.size': context.carried.length,
+                        'carrying.length': context.carried.length,
+                        'stack_size': context.carried.length
+                    });
+                    if (matched) {
+                        reward += rule.bonus;
+                    }
+                } catch (e) {
+                    console.error('[BDI Policy] Error evaluating bonus rule condition:', rule.condition, e.message);
+                }
+            }
+        }
+
+        return reward;
     }
 
     /**
@@ -112,14 +203,31 @@ export class IntentionEngine {
             };
         }
 
-        // --- Compute time-per-step from server movement duration ---
-        // Each step in the A* path takes movementDurationMs on the server.
-        // Decay: reward drops by 1 every parcelDecayIntervalMs.
+        // Check if policy rule for requiredStackSize changed and update dynamic baseline
+        const currentRequiredStack = this.beliefs.policyRules.requiredStackSize;
+        if (currentRequiredStack !== this.lastRequiredStackSize) {
+            this.lastRequiredStackSize = currentRequiredStack;
+            if (currentRequiredStack !== null && currentRequiredStack !== undefined) {
+                this.dynamicCapacityLimit = currentRequiredStack;
+                console.log(`[BDI Adapt] Reset dynamicCapacityLimit to policy rule: ${currentRequiredStack}`);
+            }
+        }
+
+        // --- Compute time-per-step and decay values ---
         const msPerStep = this.beliefs.movementDurationMs || 500;
         const decayMs = this.beliefs.parcelDecayIntervalMs;
         const decayEnabled = isFinite(decayMs) && decayMs > 0;
-        // How many reward points are lost per step of movement
-        const decayPerStep = decayEnabled ? (msPerStep / decayMs) : 0;
+
+        const avgMoveTime = this.actionStats.move.count > 0 
+            ? this.actionStats.move.avgTime 
+            : (this.beliefs.movementDurationMs || 100);
+        const avgPickupTime = this.actionStats.pickup.count > 0 
+            ? this.actionStats.pickup.avgTime 
+            : 20;
+        const avgPutdownTime = this.actionStats.putdown.count > 0 
+            ? this.actionStats.putdown.avgTime 
+            : 20;
+        const decayPerMs = decayEnabled ? (1 / decayMs) : 0;
 
         // 2. If carrying parcels, evaluate: deliver now vs. pick up one more
         if (this.beliefs.carried.length > 0) {
@@ -127,7 +235,8 @@ export class IntentionEngine {
             if (capacity === undefined || capacity < 0) {
                 capacity = Infinity;
             }
-            console.log(`[BDI Debug] selectBestGoal carrying: capacity=${capacity}, carried=${this.beliefs.carried.length}`);
+            console.log(`[BDI Debug] selectBestGoal carrying: capacity=${capacity}, dynamicLimit=${this.dynamicCapacityLimit}, carried=${this.beliefs.carried.length}`);
+            
             const deliveryZone = findNearestDeliveryZone(this.beliefs, this.beliefs.me.x, this.beliefs.me.y);
             const deliveryDist = deliveryZone
                 ? pathDistance(this.beliefs, this.beliefs.me.x, this.beliefs.me.y, deliveryZone.x, deliveryZone.y)
@@ -143,176 +252,151 @@ export class IntentionEngine {
                 };
             }
 
-            // If decay is disabled, enforce stack size heuristic
-            if (!decayEnabled) {
-                const requiredStack = this.beliefs.policyRules.requiredStackSize || 3;
-                if (this.beliefs.carried.length >= requiredStack) {
-                    return {
-                        type: 'deliver',
-                        targetId: null,
-                        x: deliveryZone ? deliveryZone.x : null,
-                        y: deliveryZone ? deliveryZone.y : null
-                    };
-                }
+            // Estimate direct delivery time
+            const T_direct = isFinite(deliveryDist)
+                ? (deliveryDist * avgMoveTime + avgPutdownTime)
+                : Infinity;
 
-                // If not at requiredStack, try to find the closest visible parcel to pick up
-                let bestParcel = null;
-                let bestDist = Infinity;
-                for (const parcel of this.beliefs.parcels.values()) {
-                    if (parcel.carriedBy) continue;
-                    if (this.beliefs.carried.includes(parcel.id)) continue;
-                    if (this.beliefs.lockedTargets.has(parcel.id)) continue;
-                    if (this.beliefs.blockedTargets.has(parcel.id) || this.beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
-                    if (parcel.reward < this.beliefs.policyRules.minRewardThreshold) continue;
-                    if (parcel.reward > this.beliefs.policyRules.maxRewardLimit) continue;
-                    const dist = pathDistance(this.beliefs, this.beliefs.me.x, this.beliefs.me.y, parcel.x, parcel.y);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        bestParcel = parcel;
-                    }
-                }
+            const safetyMarginMs = 1 * avgMoveTime;
+            const atDynamicLimit = (this.beliefs.carried.length >= this.dynamicCapacityLimit);
 
-                if (bestParcel) {
-                    return {
-                        type: 'pickup',
-                        targetId: bestParcel.id,
-                        x: bestParcel.x,
-                        y: bestParcel.y
-                    };
-                } else {
-                    return {
-                        type: 'deliver',
-                        targetId: null,
-                        x: deliveryZone ? deliveryZone.x : null,
-                        y: deliveryZone ? deliveryZone.y : null
-                    };
+            // Compute utility of delivering now, adjusted by policy rules
+            let carriedRewardSum = 0;
+            for (const cid of this.beliefs.carried) {
+                const cp = this.beliefs.parcels.get(cid);
+                if (cp) {
+                    carriedRewardSum += cp.reward;
                 }
             }
 
-            if (isFinite(deliveryDist)) {
-                // Find the least time remaining (steps Left) in inventory
-                let minStepsLeft = Infinity;
-                let carriedRewardSum = 0;
+            const carriedDecay = decayEnabled ? (T_direct * decayPerMs) * this.beliefs.carried.length : 0;
+            const carriedValueAtDelivery = Math.max(0, carriedRewardSum - carriedDecay);
+            const utilityDeliver = this.evaluatePolicyReward(carriedValueAtDelivery, {
+                carriedSize: this.beliefs.carried.length,
+                x: deliveryZone ? deliveryZone.x : this.beliefs.me.x,
+                y: deliveryZone ? deliveryZone.y : this.beliefs.me.y
+            }) / (T_direct + 1);
+
+            let bestPickup = null;
+            let bestPickupUtility = -Infinity;
+
+            const candidates = [];
+            for (const parcel of this.beliefs.parcels.values()) {
+                if (parcel.carriedBy) continue;
+                if (this.beliefs.carried.includes(parcel.id)) continue;
+                if (this.beliefs.lockedTargets.has(parcel.id)) continue;
+                if (this.beliefs.blockedTargets.has(parcel.id) || this.beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
+                if (parcel.reward < this.beliefs.policyRules.minRewardThreshold) continue;
+                if (parcel.reward > this.beliefs.policyRules.maxRewardLimit) continue;
+                
+                const mDist = Math.abs(parcel.x - this.beliefs.me.x) + Math.abs(parcel.y - this.beliefs.me.y);
+                candidates.push({ parcel, mDist, roughUtil: parcel.reward / (mDist + 1) });
+            }
+            candidates.sort((a, b) => b.roughUtil - a.roughUtil);
+
+            for (const { parcel } of candidates.slice(0, 5)) {
+                const distToParcel = pathDistance(
+                    this.beliefs, this.beliefs.me.x, this.beliefs.me.y, parcel.x, parcel.y
+                );
+                if (!isFinite(distToParcel)) continue;
+
+                const deliveryZoneFromParcel = findNearestDeliveryZone(this.beliefs, parcel.x, parcel.y);
+                const deliveryDistFromP = deliveryZoneFromParcel
+                    ? pathDistance(this.beliefs, parcel.x, parcel.y, deliveryZoneFromParcel.x, deliveryZoneFromParcel.y)
+                    : Infinity;
+                if (!isFinite(deliveryDistFromP)) continue;
+
+                const T_detour = (distToParcel + deliveryDistFromP) * avgMoveTime + avgPickupTime + avgPutdownTime;
+
+                // Project remaining reward of carried parcels after detour
+                let carriedRewardAfterDetour = 0;
+                let carriedRewardDirect = 0;
                 for (const cid of this.beliefs.carried) {
                     const cp = this.beliefs.parcels.get(cid);
                     if (cp) {
-                        carriedRewardSum += cp.reward;
-                        const stepsLeft = decayPerStep > 0 ? (cp.reward / decayPerStep) : Infinity;
-                        if (stepsLeft < minStepsLeft) {
-                            minStepsLeft = stepsLeft;
+                        if (decayEnabled) {
+                            carriedRewardAfterDetour += Math.max(0, cp.reward - ((T_detour + safetyMarginMs) * decayPerMs));
+                            carriedRewardDirect += Math.max(0, cp.reward - (T_direct * decayPerMs));
+                        } else {
+                            carriedRewardAfterDetour += cp.reward;
+                            carriedRewardDirect += cp.reward;
                         }
                     }
                 }
 
-                // Safety margin (in steps) to ensure parcels don't expire
-                const safetyMargin = 3;
-                const slackSteps = minStepsLeft - deliveryDist;
-                const additionalAllowed = Math.floor(slackSteps / 2);
-                const theoreticalMax = Math.min(capacity, this.beliefs.carried.length + Math.max(0, additionalAllowed));
-
-                const isCritical = (minStepsLeft <= deliveryDist + safetyMargin);
-                const atTheoreticalMax = (this.beliefs.carried.length >= theoreticalMax);
-
-                console.log(`[BDI] Detour check: carried=${this.beliefs.carried.length}, capacity=${capacity}, theoreticalMax=${theoreticalMax}, minStepsLeft=${isFinite(minStepsLeft) ? minStepsLeft.toFixed(1) : 'Infinity'}, deliveryDist=${deliveryDist}, isCritical=${isCritical}, atTheoreticalMax=${atTheoreticalMax}`);
-
-                // Calculate utility of delivering now
-                const carriedDecay = deliveryDist * decayPerStep * this.beliefs.carried.length;
-                const carriedValueAtDelivery = carriedRewardSum - carriedDecay;
-                const utilityDeliver = carriedValueAtDelivery / (deliveryDist + 1);
-
-                // Evaluate detour/pickup candidates
-                let bestPickup = null;
-                let bestPickupUtility = -Infinity;
-
-                const candidates = [];
-                for (const parcel of this.beliefs.parcels.values()) {
-                    if (parcel.carriedBy) continue;
-                    if (this.beliefs.carried.includes(parcel.id)) continue;
-                    if (this.beliefs.lockedTargets.has(parcel.id)) continue;
-                    if (this.beliefs.blockedTargets.has(parcel.id) || this.beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
-                    if (parcel.reward < this.beliefs.policyRules.minRewardThreshold) continue;
-                    if (parcel.reward > this.beliefs.policyRules.maxRewardLimit) continue;
-                    const mDist = Math.abs(parcel.x - this.beliefs.me.x) + Math.abs(parcel.y - this.beliefs.me.y);
-                    candidates.push({ parcel, mDist, roughUtil: parcel.reward / (mDist + 1) });
-                }
-                candidates.sort((a, b) => b.roughUtil - a.roughUtil);
-
-                if (candidates.length > 0) {
-                    console.log(`[BDI] Top pickup candidates:`, candidates.slice(0, 3).map(c => `id=${c.parcel.id}, mDist=${c.mDist}, reward=${c.parcel.reward}`));
+                // Project remaining reward of new parcel after detour
+                let newParcelRewardAfterDetour = 0;
+                if (decayEnabled) {
+                    newParcelRewardAfterDetour = Math.max(0, parcel.reward - ((T_detour + safetyMarginMs) * decayPerMs));
+                } else {
+                    newParcelRewardAfterDetour = parcel.reward;
                 }
 
-                for (const { parcel } of candidates.slice(0, 5)) {
-                    const distToParcel = pathDistance(
-                        this.beliefs, this.beliefs.me.x, this.beliefs.me.y, parcel.x, parcel.y
-                    );
-                    if (!isFinite(distToParcel)) continue;
+                const totalRewardAfterDetour = carriedRewardAfterDetour + newParcelRewardAfterDetour;
+                const totalRewardDirect = carriedRewardDirect;
 
-                    const deliveryZoneFromParcel = findNearestDeliveryZone(this.beliefs, parcel.x, parcel.y);
-                    const deliveryDistFromP = deliveryZoneFromParcel
-                        ? pathDistance(this.beliefs, parcel.x, parcel.y, deliveryZoneFromParcel.x, deliveryZoneFromParcel.y)
-                        : Infinity;
-                    if (!isFinite(deliveryDistFromP)) continue;
+                // We detour if the new parcel doesn't completely decay,
+                // and the total reward obtained by detouring is strictly greater than delivering direct.
+                const canDeliverInTimeAfterDetour = (newParcelRewardAfterDetour > 0) && (totalRewardAfterDetour > totalRewardDirect);
+                
+                const extraSteps = (distToParcel + deliveryDistFromP) - deliveryDist;
+                const isMovingBackwards = (deliveryDistFromP > deliveryDist);
 
-                    const totalDetourDist = distToParcel + deliveryDistFromP;
-                    const extraSteps = totalDetourDist - deliveryDist;
-                    const isMovingBackwards = (deliveryDistFromP > deliveryDist);
-
-                    // Crucial Check: Will any carried parcel expire/be lost due to this detour?
-                    const canDeliverInTimeAfterDetour = (totalDetourDist < minStepsLeft - safetyMargin);
-
-                    let allowed = false;
-                    if (isCritical || atTheoreticalMax) {
-                        // When critical or at theoretical max, we MUST deliver, and only detour if it's safe and along the path
-                        if (canDeliverInTimeAfterDetour) {
-                            allowed = true; // Can detour if we can still deliver in time after detouring (moving backwards is fine)
-                        } else if (extraSteps <= 1 && !isMovingBackwards && totalDetourDist < minStepsLeft) {
-                            allowed = true; // Along the path, no backwards movement, and won't completely expire the critical parcel
-                        }
-                    } else {
-                        // Not critical, not at max, we can detour/pickup as long as we can deliver in time
-                        if (canDeliverInTimeAfterDetour) {
+                let allowed = false;
+                if (atDynamicLimit) {
+                    // At limit: only detour if it's very cheap/safe and along the path (extraSteps <= 5)
+                    if ((canDeliverInTimeAfterDetour || (extraSteps <= 5 && carriedRewardAfterDetour > 0)) && extraSteps <= 5 && !isMovingBackwards) {
+                        allowed = true;
+                    }
+                } else {
+                    // Below limit: allowed if safe and profitable, or very cheap detour along the path (extraSteps <= 10)
+                    if (canDeliverInTimeAfterDetour || (extraSteps <= 10 && carriedRewardAfterDetour > 0)) {
+                        if (extraSteps <= 25) {
                             allowed = true;
                         }
                     }
-
-                    if (!allowed) {
-                        console.log(`[BDI] Detour/pickup parcel ${parcel.id} NOT allowed: canDeliver=${canDeliverInTimeAfterDetour}, extraSteps=${extraSteps}, isMovingBackwards=${isMovingBackwards}`);
-                        continue;
-                    }
-
-                    // Total reward value at delivery if we pick up this parcel and then deliver everything
-                    const rewardAtDelivery = carriedRewardSum + parcel.reward - totalDetourDist * decayPerStep * (this.beliefs.carried.length + 1);
-                    if (rewardAtDelivery <= 0) {
-                        console.log(`[BDI] Detour/pickup parcel ${parcel.id} rejected: total reward at delivery <= 0 (${rewardAtDelivery.toFixed(1)})`);
-                        continue;
-                    }
-
-                    const utility = rewardAtDelivery / (totalDetourDist + 1);
-                    console.log(`[BDI] Detour/pickup candidate ${parcel.id}: distToP=${distToParcel}, delivDistFromP=${deliveryDistFromP}, utility=${utility.toFixed(3)} (vs deliver: ${utilityDeliver.toFixed(3)})`);
-
-                    if (utility > bestPickupUtility) {
-                        bestPickupUtility = utility;
-                        bestPickup = parcel;
-                    }
                 }
 
-                if (bestPickup && bestPickupUtility > utilityDeliver) {
-                    console.log(`[BDI] Selecting pickup detour: ${bestPickup.id} (utility ${bestPickupUtility.toFixed(3)} > deliver ${utilityDeliver.toFixed(3)})`);
-                    return {
-                        type: 'pickup',
-                        targetId: bestPickup.id,
-                        x: bestPickup.x,
-                        y: bestPickup.y
-                    };
-                } else {
-                    console.log(`[BDI] Heading to deliver (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
-                    return {
-                        type: 'deliver',
-                        targetId: null,
-                        x: deliveryZone ? deliveryZone.x : null,
-                        y: deliveryZone ? deliveryZone.y : null
-                    };
+                if (!allowed) {
+                    console.log(`[BDI] Detour/pickup parcel ${parcel.id} NOT allowed: canDeliver=${canDeliverInTimeAfterDetour}, extraSteps=${extraSteps}, isMovingBackwards=${isMovingBackwards}`);
+                    continue;
                 }
+
+                // Total reward value at delivery with detour, adjusted by policy rules
+                const remainingReward = Math.max(0, totalRewardAfterDetour);
+                const adjustedDetourReward = this.evaluatePolicyReward(remainingReward, {
+                    carriedSize: this.beliefs.carried.length + 1,
+                    x: deliveryZoneFromParcel.x,
+                    y: deliveryZoneFromParcel.y
+                });
+
+                if (adjustedDetourReward <= 0) continue;
+
+                const utility = adjustedDetourReward / (T_detour + 1);
+                console.log(`[BDI] Detour/pickup candidate ${parcel.id}: distToP=${distToParcel}, delivDistFromP=${deliveryDistFromP}, utility=${utility.toFixed(3)} (vs deliver: ${utilityDeliver.toFixed(3)})`);
+
+                if (utility > bestPickupUtility) {
+                    bestPickupUtility = utility;
+                    bestPickup = parcel;
+                }
+            }
+
+            if (bestPickup && bestPickupUtility > utilityDeliver) {
+                console.log(`[BDI] Selecting pickup detour: ${bestPickup.id} (utility ${bestPickupUtility.toFixed(3)} > deliver ${utilityDeliver.toFixed(3)})`);
+                return {
+                    type: 'pickup',
+                    targetId: bestPickup.id,
+                    x: bestPickup.x,
+                    y: bestPickup.y
+                };
+            } else {
+                console.log(`[BDI] Heading to deliver (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
+                return {
+                    type: 'deliver',
+                    targetId: null,
+                    x: deliveryZone ? deliveryZone.x : null,
+                    y: deliveryZone ? deliveryZone.y : null
+                };
             }
         }
 
@@ -352,19 +436,26 @@ export class IntentionEngine {
                 : Infinity;
             if (!isFinite(distToDelivery)) continue;
 
-            const totalTrip = distToParcel + distToDelivery;
+            const totalTripMs = (distToParcel + distToDelivery) * avgMoveTime + avgPickupTime + avgPutdownTime;
 
             // Project reward at delivery time
             let projectedReward;
             if (decayEnabled) {
-                projectedReward = parcel.reward - (totalTrip * decayPerStep);
+                projectedReward = parcel.reward - (totalTripMs * decayPerMs);
             } else {
                 projectedReward = parcel.reward;
             }
 
             if (projectedReward <= 0) continue; // Would expire before delivery
 
-            const utility = projectedReward / (totalTrip + 1);
+            const adjustedReward = this.evaluatePolicyReward(projectedReward, {
+                carriedSize: 1,
+                x: deliveryZoneForScoring ? deliveryZoneForScoring.x : this.beliefs.me.x,
+                y: deliveryZoneForScoring ? deliveryZoneForScoring.y : this.beliefs.me.y
+            });
+            if (adjustedReward <= 0) continue;
+
+            const utility = adjustedReward / (totalTripMs + 1);
             if (utility > bestUtility) {
                 bestUtility = utility;
                 bestParcel = parcel;
@@ -583,51 +674,53 @@ export class IntentionEngine {
      */
     async dispatchAction(action) {
         if (!action) return false;
+        const startTime = Date.now();
+        let success = false;
 
         switch (action.action) {
             case 'move': {
                 const target = action.target;
                 if (!this.beliefs.map?.isAdjacent(this.beliefs.me, target)) {
                     console.warn(`[BDI] Invalid move attempt to (${target.x}, ${target.y}) blocked by map constraints.`);
-                    // Do not force replanning here; let NavigateTo handle path recomputation on failure.
-                    return false;
+                    success = false;
+                    break;
                 }
                 const dir = this.getDirection(this.beliefs.me, target);
-                if (!dir) return false;
+                if (!dir) {
+                    success = false;
+                    break;
+                }
                 console.log(`[BDI] Attempting move: ${dir} to (${target.x}, ${target.y})`);
 
-                // Emit move call and await server tick confirmation using SDK method
-                const success = await this.socket.emitMove(dir);
+                const result = await this.socket.emitMove(dir);
 
-                if (success) {
-                    this.beliefs.me.x = success.x;
-                    this.beliefs.me.y = success.y;
+                if (result) {
+                    this.beliefs.me.x = result.x;
+                    this.beliefs.me.y = result.y;
                     this.collisionCounter = 0; // Reset collision count
-                    return true;
+                    success = true;
                 } else {
                     console.warn(`[BDI] Move failed to (${target.x}, ${target.y}) - Collision detected.`);
                     this.logActionFailure(action, 'Move failed (collision detected)');
                     this.collisionCounter++;
 
-                    // If we collide repeatedly, block this step coordinate temporarily to force pathing bypass or replanning
                     if (this.collisionCounter >= 2) {
                         const blockKey = `${target.x},${target.y}`;
                         this.beliefs.blockedTargets.set(blockKey, Date.now());
                         console.log(`[BDI] Path step ${blockKey} blocked due to repeated collisions, forcing bypass.`);
                     }
 
-                    // Reactive Replanning: Tier 1 Collision Back-off
                     if (this.collisionCounter <= 2) {
                         console.log(`[BDI] Tier 1 Collision: Waiting 1 tick (Count: ${this.collisionCounter}).`);
                         await new Promise(resolve => setTimeout(resolve, 100)); // Short wait
                     } else {
-                        // Tier 2 Local A* Re-routing: Reset generator to force pathing bypass
                         console.log('[BDI] Tier 2 Collision: Preempting current path to compute bypass.');
                         this.activeGenerator = this.instantiatePlanRecipe(this.currentGoal);
                         this.collisionCounter = 0;
                     }
-                    return false;
+                    success = false;
                 }
+                break;
             }
 
             case 'pickup': {
@@ -641,7 +734,6 @@ export class IntentionEngine {
                     for (const p of picked) {
                         let id = (p && typeof p === 'object') ? p.id : p;
                         if (!id && p && typeof p === 'object' && p.xy) {
-                            // Find parcel in beliefs.parcels by matching coordinates
                             const match = Array.from(this.beliefs.parcels.values()).find(
                                 bp => bp.x === p.xy.x && bp.y === p.xy.y && !matchedIds.has(bp.id)
                             );
@@ -658,18 +750,17 @@ export class IntentionEngine {
                             this.beliefs.carried.push(id);
                         }
                     }
-                    // Activate mustDeliver: force delivery before any new pickups
                     this.mustDeliver = true;
                     console.log('[BDI] mustDeliver flag SET — will deliver before considering new pickups.');
-                    return true;
+                    success = true;
                 } else {
                     console.warn(`[BDI] Pickup failed for parcel ${parcelId}.`);
                     this.logActionFailure(action, 'Pickup failed (decayed or already collected)');
-                    // Purge failed parcel from beliefs
                     this.beliefs.parcels.delete(parcelId);
                     this.beliefs.lockedTargets.delete(parcelId);
-                    return false;
+                    success = false;
                 }
+                break;
             }
 
             case 'putdown': {
@@ -683,25 +774,73 @@ export class IntentionEngine {
                     } else {
                         this.beliefs.carried = [];
                     }
-                    // Clear mustDeliver: agent is free to pick up new parcels
                     this.mustDeliver = false;
                     console.log('[BDI] mustDeliver flag CLEARED — free to evaluate new pickups.');
-                    return true;
+                    success = true;
                 } else {
                     console.warn('[BDI] Cargo drop failed.');
                     this.logActionFailure(action, 'Putdown failed');
-                    return false;
+                    success = false;
                 }
+                break;
             }
 
             case 'say': {
                 const message = action.payload;
                 console.log('[BDI] Broadcasting P2P chat sync message:', message);
                 await this.socket.emitShout(JSON.stringify(message));
-                return true;
+                success = true;
+                break;
             }
         }
-        return false;
+
+        const elapsed = Date.now() - startTime;
+        if (action.action in this.actionStats) {
+            const stats = this.actionStats[action.action];
+            stats.count++;
+            stats.totalTime += elapsed;
+            stats.avgTime = stats.totalTime / stats.count;
+            console.log(`[BDI Stats] ${action.action} took ${elapsed}ms (avg: ${stats.avgTime.toFixed(1)}ms). Count=${stats.count}`);
+        }
+
+        if (success) {
+            if (action.action === 'pickup') {
+                if (this.beliefs.carried.length === 1) {
+                    this.sequenceStartTime = Date.now();
+                    this.sequenceCarriedCount = 1;
+                } else if (this.beliefs.carried.length > 1) {
+                    this.sequenceCarriedCount = Math.max(this.sequenceCarriedCount, this.beliefs.carried.length);
+                }
+            } else if (action.action === 'putdown') {
+                if (this.beliefs.carried.length === 0 && this.sequenceStartTime !== null) {
+                    const seqDuration = Date.now() - this.sequenceStartTime;
+                    const count = this.sequenceCarriedCount;
+                    if (count > 0) {
+                        const timePerParcel = seqDuration / count;
+                        console.log(`[BDI Stats] Finished delivery sequence: delivered=${count} parcels in ${seqDuration}ms (avg ${timePerParcel.toFixed(1)}ms per parcel).`);
+                        
+                        const targetTimePerParcel = 10000;
+                        if (timePerParcel < targetTimePerParcel) {
+                            this.dynamicCapacityLimit = Math.min(
+                                this.beliefs.config?.GAME?.player?.capacity || Infinity,
+                                this.dynamicCapacityLimit + 1
+                            );
+                            console.log(`[BDI Adapt] Good efficiency! Increased dynamicCapacityLimit to ${this.dynamicCapacityLimit}`);
+                        } else {
+                            this.dynamicCapacityLimit = Math.max(
+                                3,
+                                this.dynamicCapacityLimit - 1
+                            );
+                            console.log(`[BDI Adapt] Poor efficiency (took too long). Decreased dynamicCapacityLimit to ${this.dynamicCapacityLimit}`);
+                        }
+                    }
+                    this.sequenceStartTime = null;
+                    this.sequenceCarriedCount = 0;
+                }
+            }
+        }
+
+        return success;
     }
 
     /**
