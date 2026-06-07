@@ -116,6 +116,12 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
 
             const isGoal = neighbor.x === goal.x && neighbor.y === goal.y;
 
+            // Treat intermediate blocked targets as blocked.
+            const isBlockedTarget = beliefs && beliefs.blockedTargets && beliefs.blockedTargets.has(neighborKey);
+            if (isBlockedTarget && !isGoal) {
+                continue;
+            }
+
             // Calculate cost to neighbor.
             let stepCost = 1;
             if (!isGoal) {

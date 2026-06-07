@@ -57,3 +57,48 @@ export const logger = {
         console.error(format(COLORS.red, `[ERROR - ${prefix}]`, err.message || String(err)));
     }
 };
+
+// Global Console Override to intercept and toggle third-party/internal log prefixes
+const originalLog = console.log;
+const originalWarn = console.warn;
+const originalError = console.error;
+
+function shouldSuppress(message) {
+    if (typeof message !== 'string') return false;
+    
+    // Check BDI internal logs
+    const isBdiLog = message.startsWith('[BDI]') || 
+                     message.startsWith('[BDI Debug]') || 
+                     message.startsWith('[BDI Stats]') || 
+                     message.startsWith('[BDI Beliefs]') || 
+                     message.startsWith('[BDI Adapt]') || 
+                     message.startsWith('[BDI Opportunistic]');
+    if (isBdiLog && !LOGGER_CONFIG.enableBDI) return true;
+    
+    // Check PDDL internal logs
+    const isPddlLog = message.startsWith('[PDDL]') || 
+                      message.startsWith('[PDDL Solver]') || 
+                      message.startsWith('[PDDL Trigger]') || 
+                      message.startsWith('[PDDL Throttle]');
+    if (isPddlLog && !LOGGER_CONFIG.enablePDDL) return true;
+    
+    // Check P2P internal logs (not sent via logger.p2p)
+    if (message.startsWith('[P2P]') && !LOGGER_CONFIG.enableP2P) return true;
+
+    return false;
+}
+
+console.log = function (firstArg, ...args) {
+    if (shouldSuppress(firstArg)) return;
+    originalLog.apply(console, [firstArg, ...args]);
+};
+
+console.warn = function (firstArg, ...args) {
+    if (shouldSuppress(firstArg)) return;
+    originalWarn.apply(console, [firstArg, ...args]);
+};
+
+console.error = function (firstArg, ...args) {
+    if (shouldSuppress(firstArg)) return;
+    originalError.apply(console, [firstArg, ...args]);
+};

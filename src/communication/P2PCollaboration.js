@@ -54,6 +54,7 @@ export class P2PManager {
                     if (message.payload) {
                         this.beliefs.peers.set(senderId, {
                             id: senderId,
+                            name: message.payload.name || senderId,
                             x: message.payload.x,
                             y: message.payload.y,
                             score: message.payload.score
@@ -65,6 +66,7 @@ export class P2PManager {
                     if (message.payload) {
                         this.beliefs.peers.set(senderId, {
                             id: senderId,
+                            name: message.payload.name || senderId,
                             x: message.payload.x,
                             y: message.payload.y,
                             score: message.payload.score || 0,
@@ -150,8 +152,16 @@ export class P2PManager {
                     break;
 
                 case 'INSTRUCT_SAY':
-                    logger.toolCall('instruct_agent_to_say', { message: message.message });
-                    await this.socket.emitShout(message.message);
+                    logger.toolCall('instruct_agent_to_say', { message: message.message, adminId: message.adminId });
+                    if (message.adminId) {
+                        await this.socket.emitSay(message.adminId, message.message);
+                    } else {
+                        await this.socket.emitShout(message.message);
+                    }
+                    break;
+
+                case 'SET_VARIABLE':
+                    this.beliefs.variables[message.name] = message.value;
                     break;
             }
         } catch (e) {
@@ -220,6 +230,7 @@ export class P2PManager {
         this.broadcast({
             type: 'PONG',
             payload: {
+                name: this.beliefs.me.name,
                 x: this.beliefs.me.x,
                 y: this.beliefs.me.y,
                 score: this.beliefs.me.score

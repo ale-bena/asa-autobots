@@ -117,19 +117,37 @@ socket.onMsg(async (senderId, name, msg) => {
 
         console.log(`\n[LLM] Intercepted Admin console message (origin/forwarded) from "${name}" (Admin: ${adminId}): "${actualMsg}"`);
 
-        // Run cognitive reasoning loop
         try {
             const reply = await coordinator.handleAdminPrompt(actualMsg);
             if (reply && reply.trim() !== '') {
                 console.log(`[LLM] Completed reasoning cycle. Output: "${reply}"`);
-                // Speak response back to Admin console using dynamic adminId
-                await socket.emitSay(adminId, reply);
+                if (isDirectAdmin) {
+                    // Speak response back to Admin console using dynamic adminId
+                    await socket.emitSay(adminId, reply);
+                } else {
+                    // Send P2P command to BDI agent to reply to Admin console
+                    console.log(`[LLM] Forwarded prompt detected. Instructing BDI agent to reply to Admin (${adminId}).`);
+                    await coordinator.broadcastP2P({
+                        type: 'INSTRUCT_SAY',
+                        message: reply,
+                        adminId: adminId
+                    });
+                }
             } else {
                 console.log('[LLM] Completed reasoning cycle with empty output (no public chat reply needed).');
             }
         } catch (e) {
             console.error('[LLM] Error executing LLM reasoning loop:', e.message);
-            await socket.emitSay(adminId, 'An error occurred during LLM reasoning execution.');
+            const errorMsg = 'An error occurred during LLM reasoning execution.';
+            if (isDirectAdmin) {
+                await socket.emitSay(adminId, errorMsg);
+            } else {
+                await coordinator.broadcastP2P({
+                    type: 'INSTRUCT_SAY',
+                    message: errorMsg,
+                    adminId: adminId
+                });
+            }
         }
     } else {
         // Delegate P2P messages to coordination manager

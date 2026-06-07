@@ -327,6 +327,9 @@ export class BeliefBase {
         }
 
         // 4. Enforce that crates can only sit on crate-capable tiles (codes 4 or 5)
+        // (Disabled: crates can sit on pavement (code 3) and block corridors,
+        // purging them causes the agent to forget the obstacle and collide.)
+        /*
         for (const [id, crate] of this.crates.entries()) {
             const code = this.map.getTileCode(crate.x, crate.y);
             if (code !== 4 && code !== 5) {
@@ -334,6 +337,7 @@ export class BeliefBase {
                 this.crates.delete(id);
             }
         }
+        */
 
         // 5. Enforce maximum crate limit based on spawnCount
         if (spawnCount > 0 && this.crates.size > spawnCount) {

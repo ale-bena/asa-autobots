@@ -87,6 +87,7 @@ export function evaluateExpression(expr, state, localVars = {}) {
         '==': 3, '!=': 3, '<': 3, '>': 3, '<=': 3, '>=': 3,
         '+': 4, '-': 4,
         '*': 5, '/': 5,
+        'unary-': 6,
         '!': 6
     };
 
@@ -98,6 +99,11 @@ export function evaluateExpression(expr, state, localVars = {}) {
         if (op === '!') {
             const val = values.pop();
             values.push(!val);
+            return;
+        }
+        if (op === 'unary-') {
+            const val = values.pop();
+            values.push(-Number(val));
             return;
         }
 
@@ -120,6 +126,8 @@ export function evaluateExpression(expr, state, localVars = {}) {
         }
     }
 
+    let prevToken = null;
+
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
 
@@ -131,11 +139,18 @@ export function evaluateExpression(expr, state, localVars = {}) {
             }
             operators.pop(); // remove '('
         } else if (precedence[token] !== undefined) {
+            let actualOp = token;
+            if (token === '-') {
+                const isUnary = (prevToken === null || prevToken === '(' || precedence[prevToken] !== undefined);
+                if (isUnary) {
+                    actualOp = 'unary-';
+                }
+            }
             while (operators.length > 0 &&
-                   precedence[operators[operators.length - 1]] >= precedence[token]) {
+                   precedence[operators[operators.length - 1]] >= precedence[actualOp]) {
                 applyOperator();
             }
-            operators.push(token);
+            operators.push(actualOp);
         } else {
             // Number literal, String literal, or Identifier
             if (!isNaN(token)) {
@@ -150,6 +165,7 @@ export function evaluateExpression(expr, state, localVars = {}) {
                 values.push(resolveIdentifier(token, state, localVars));
             }
         }
+        prevToken = token;
     }
 
     while (operators.length > 0) {

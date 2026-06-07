@@ -69,5 +69,7 @@ export const LOGGER_CONFIG = {
     enableMath: process.env.LOG_MATH !== 'false',
     enableP2P: process.env.LOG_P2P !== 'false',
     enablePeerStatus: process.env.LOG_PEER_STATUS === 'true',
+    enableBDI: process.env.LOG_BDI !== 'false',
+    enablePDDL: process.env.LOG_PDDL !== 'false',
     useColors: process.env.LOG_COLORS !== 'false'
 };

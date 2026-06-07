@@ -18,6 +18,19 @@ export const TOOLS_REGISTRY = {
     },
 
     move_agent_to_coordinate: async (args, coordinator) => {
+        // Guardrail: check if any stored variable related to reward is <= 0
+        for (const [key, val] of Object.entries(coordinator.beliefs.variables)) {
+            if (key.toLowerCase().includes('reward')) {
+                const numVal = Number(val);
+                if (!isNaN(numVal) && numVal <= 0) {
+                    return { 
+                        success: false, 
+                        error: `Movement rejected: variable '${key}' has non-positive value (${val}). Tasks with negative or zero rewards are unfeasible and should not be executed.` 
+                    };
+                }
+            }
+        }
+
         await coordinator.broadcastP2P({
             type: 'MOVE_TO',
             x: Number(args.x),
@@ -86,6 +99,11 @@ export const TOOLS_REGISTRY = {
 
     set_agent_variable: async (args, coordinator) => {
         coordinator.beliefs.variables[args.name] = args.value;
+        await coordinator.broadcastP2P({
+            type: 'SET_VARIABLE',
+            name: args.name,
+            value: args.value
+        });
         return { success: true, message: `Successfully set variable '${args.name}' to ${JSON.stringify(args.value)}` };
     }
 };

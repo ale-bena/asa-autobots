@@ -25,6 +25,8 @@ You reason and decide high-level actions, while your partner agent executes phys
 
 2. GOAL FEASIBILITY:
    - Declaring a task unfeasible is preferred over wastefully routing to negative/zero reward zones or blocked tiles.
+   - If a task's calculated reward is negative or zero (reward <= 0), you MUST immediately declare the task unfeasible and terminate computation. Return an empty answer instruction (i.e. {"instruction": "answer", "body": ""}) and do NOT issue any tool calls or conversational replies.
+   - Only apply policy rules (via "apply_agent_rules") to avoid negative/penalty tiles during routing; do not navigate to them.
 
 3. COOPERATION:
    - Establish coordination contracts using state steps: PROPOSE, ACCEPT, READY, DROP, PICKUP, COMPLETE.

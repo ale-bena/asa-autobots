@@ -537,9 +537,13 @@ export class IntentionEngine {
             return false;
         }
 
-        // admin_move always preempts everything.
-        if (bestGoal.type === 'admin_move' && this.currentGoal.type !== 'admin_move') {
-            return true;
+        // admin_move always preempts everything, including a different admin_move coordinate.
+        if (bestGoal.type === 'admin_move') {
+            if (this.currentGoal.type !== 'admin_move' || 
+                bestGoal.x !== this.currentGoal.x || 
+                bestGoal.y !== this.currentGoal.y) {
+                return true;
+            }
         }
 
         // Cooperative contracts (e.g. rendezvous drop) always preempt normal tasks.
@@ -620,8 +624,12 @@ export class IntentionEngine {
         switch (goal.type) {
             case 'admin_move':
                 return (function* (beliefs, tx, ty, self) {
-                    yield* NavigateTo(beliefs, tx, ty);
-                    beliefs.activeContracts.delete('admin_move');
+                    const success = yield* NavigateTo(beliefs, tx, ty);
+                    if (success) {
+                        beliefs.activeContracts.delete('admin_move');
+                    } else {
+                        console.log(`[BDI] admin_move to (${tx}, ${ty}) failed/blocked, will retry on next tick.`);
+                    }
                 })(this.beliefs, goal.x, goal.y, this);
             case 'deliver':
                 return this._deliverRecipe(goal.x, goal.y);
@@ -1141,6 +1149,7 @@ export class IntentionEngine {
         const payload = {
             type: 'PEER_STATUS',
             payload: {
+                name: this.beliefs.me.name,
                 x: this.beliefs.me.x,
                 y: this.beliefs.me.y,
                 score: this.beliefs.me.score,

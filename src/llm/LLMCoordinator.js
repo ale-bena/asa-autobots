@@ -10,6 +10,7 @@ import { OPENAI_CONFIG, AGENT_IDS } from '../config/config.js';
 import { SYSTEM_PROMPT } from './prompts.js';
 import { TOOLS_REGISTRY } from './toolsRegistry.js';
 import { logger } from '../utils/logger.js';
+import { evaluateExpression } from '../policy/PolicyEngine.js';
 
 /**
  * Master Coordinator Agent class wrapping LLM API calls and tool execution.
@@ -50,6 +51,38 @@ export class LLMCoordinator {
     }
 
     /**
+     * Checks if the user prompt text contains a negative or zero reward pattern.
+     * @param {string} promptText 
+     * @returns {boolean} True if negative/zero reward is detected.
+     * @private
+     */
+    _checkPromptForNegativeReward(promptText) {
+        if (!promptText) return false;
+        // Look for patterns like "reward of <expr>" or "reward: <expr>" or "reward = <expr>"
+        const rewardRegex = /reward\s*(?:of|is|=|\:)?\s*([-\d\s\+\*\/\(\)]+)/i;
+        const match = promptText.match(rewardRegex);
+        if (match) {
+            const expr = match[1].trim();
+            const cleanExprMatch = expr.match(/^([-\d\s\+\*\/\(\)]+)/);
+            if (cleanExprMatch) {
+                const cleanExpr = cleanExprMatch[1].trim();
+                if (cleanExpr) {
+                    try {
+                        const val = evaluateExpression(cleanExpr, this.beliefs);
+                        const numVal = Number(val);
+                        if (!isNaN(numVal) && numVal <= 0) {
+                            return true;
+                        }
+                    } catch (e) {
+                        // ignore evaluation errors
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Handles and processes natural language prompts from the Admin.
      * Entry point that resets the action tool execution state.
      * @param {string} promptText - The raw instruction from the Admin.
@@ -57,7 +90,17 @@ export class LLMCoordinator {
      */
     async handleAdminPrompt(promptText) {
         this.hasExecutedActionTool = false;
+        this.isRewardNegative = false;
+        if (this._checkPromptForNegativeReward(promptText)) {
+            console.log('[LLM Guardrail] Negative/zero reward detected in prompt. Suppressing output to ignore the task.');
+            this.isRewardNegative = true;
+            return '';
+        }
         const result = await this._handleAdminPromptInternal(promptText);
+        if (this.isRewardNegative) {
+            console.log('[LLM Guardrail] Negative/zero reward detected. Suppressing output to ignore the task.');
+            return '';
+        }
         if (this.hasExecutedActionTool && result) {
             logger.actionConfirmation(result);
             return ''; // Suppress from public chat
@@ -71,7 +114,7 @@ export class LLMCoordinator {
      * @returns {Promise<string>} The LLM text output.
      * @private
      */
-    async _handleAdminPromptInternal(promptText) {
+    async _handleAdminPromptInternal(promptText, accumulatedAnswers = []) {
         // Append user prompt/tool output to chat history
         this.chatHistory.push({ role: 'user', content: promptText });
 
@@ -145,16 +188,22 @@ export class LLMCoordinator {
         const toolInst = instructions.find(inst => inst.instruction === 'tool');
         if (toolInst) {
             const toolResult = await this.executeTool(toolInst.name, toolInst.args);
-            return await this._handleAdminPromptInternal(`[TOOL_RESULT] ${toolInst.name} output: ${JSON.stringify(toolResult)}`);
+            return await this._handleAdminPromptInternal(
+                `[TOOL_RESULT] ${toolInst.name} output: ${JSON.stringify(toolResult)}`,
+                accumulatedAnswers
+            );
         }
 
-        // Concatenate all answer instructions
-        const answers = instructions.filter(inst => inst.instruction === 'answer');
+        // If no more tool calls, accumulate and concatenate the answers from this final response
+        const answers = instructions
+            .filter(inst => inst.instruction === 'answer' && inst.body !== undefined && String(inst.body).trim() !== '')
+            .map(ans => String(ans.body).trim());
+
         if (answers.length > 0) {
-            return answers.map(ans => String(ans.body)).join('\n');
+            accumulatedAnswers.push(...answers);
         }
 
-        return '';
+        return accumulatedAnswers.join('\n');
     }
 
     /**
@@ -190,6 +239,33 @@ export class LLMCoordinator {
                     logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
                 } else if (name === 'evaluate_math_expression' && result.success) {
                     logger.math(args.expression, result.result);
+                }
+
+                // Programmatic checks for negative reward
+                if (name === 'evaluate_math_expression' && result.success) {
+                    const val = Number(result.result);
+                    if (!isNaN(val) && val <= 0) {
+                        const hasRewardInHistory = this.chatHistory.some(m => 
+                            m.role === 'user' && m.content.toLowerCase().includes('reward')
+                        );
+                        if (hasRewardInHistory) {
+                            console.log(`[LLM Guardrail] Math expression "${args.expression}" evaluated to non-positive reward: ${val}`);
+                            this.isRewardNegative = true;
+                        }
+                    }
+                } else if (name === 'set_agent_variable' && result.success) {
+                    if (args.name && args.name.toLowerCase().includes('reward')) {
+                        const val = Number(args.value);
+                        if (!isNaN(val) && val <= 0) {
+                            console.log(`[LLM Guardrail] Variable "${args.name}" set to non-positive reward: ${val}`);
+                            this.isRewardNegative = true;
+                        }
+                    }
+                } else if (name === 'move_agent_to_coordinate') {
+                    if (!result.success && result.error && result.error.includes('reward')) {
+                        console.log(`[LLM Guardrail] Move tool failed due to negative reward check: ${result.error}`);
+                        this.isRewardNegative = true;
+                    }
                 }
 
                 return result;
@@ -298,8 +374,13 @@ export class LLMCoordinator {
         if (item.instruction !== 'answer' && item.instruction !== 'tool') {
             return `Invalid value for "instruction". Expected "answer" or "tool", got "${item.instruction}"`;
         }
-        if (item.instruction === 'answer' && item.body === undefined) {
-            return 'Missing key "body" for "answer" instruction';
+        if (item.instruction === 'answer') {
+            if (item.body === undefined) {
+                return 'Missing key "body" for "answer" instruction';
+            }
+            if (this.hasExecutedActionTool && String(item.body).trim() !== '') {
+                return `An action tool was executed. You must return an empty answer body (i.e. body: "") to signal completion, instead of outputting conversational text: "${item.body}"`;
+            }
         }
         if (item.instruction === 'tool') {
             if (!item.name || typeof item.name !== 'string') {
