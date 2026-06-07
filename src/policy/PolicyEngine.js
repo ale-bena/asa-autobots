@@ -34,6 +34,19 @@ function resolveIdentifier(name, state, localVars = {}) {
         return state.variables[name];
     }
 
+    if (name.startsWith('path.traverses_')) {
+        const parts = name.split('_');
+        if (parts.length === 3) {
+            const targetX = Number(parts[1]);
+            const targetY = Number(parts[2]);
+            const path = localVars.path || state.path;
+            if (path && Array.isArray(path)) {
+                return path.some(node => Math.round(node.x) === targetX && Math.round(node.y) === targetY);
+            }
+        }
+        return false;
+    }
+
     const beliefs = state.beliefs || state;
 
     switch (name) {

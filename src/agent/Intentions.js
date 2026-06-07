@@ -167,7 +167,8 @@ export class IntentionEngine {
             },
             carried: {
                 length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : this.beliefs.carried.length
-            }
+            },
+            path: projectedState.path || []
         };
 
         // 1. Apply multiplier rules
@@ -226,6 +227,19 @@ export class IntentionEngine {
             };
         }
 
+        // 2. Prioritize active cooperative contracts (e.g. RENDEZVOUS)
+        for (const [coopId, contract] of this.beliefs.activeContracts.entries()) {
+            if (coopId === 'admin_move') continue;
+            if (contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY') {
+                return {
+                    type: 'rendezvous',
+                    targetId: coopId,
+                    x: contract.x,
+                    y: contract.y
+                };
+            }
+        }
+
         // Check if policy rule for requiredStackSize changed and update dynamic baseline
         const currentRequiredStack = this.beliefs.policyRules.requiredStackSize;
         if (currentRequiredStack !== this.lastRequiredStackSize) {
@@ -261,9 +275,16 @@ export class IntentionEngine {
             console.log(`[BDI Debug] selectBestGoal carrying: capacity=${capacity}, dynamicLimit=${this.dynamicCapacityLimit}, carried=${this.beliefs.carried.length}`);
             
             const deliveryZone = findNearestDeliveryZone(this.beliefs, this.beliefs.me.x, this.beliefs.me.y, this.blockedDeliveryZones);
-            const deliveryDist = deliveryZone
-                ? pathDistance(this.beliefs, this.beliefs.me.x, this.beliefs.me.y, deliveryZone.x, deliveryZone.y, true)
-                : Infinity;
+            const deliveryPath = deliveryZone
+                ? findAStarPath(
+                    this.beliefs.map,
+                    { x: this.beliefs.me.x, y: this.beliefs.me.y },
+                    { x: deliveryZone.x, y: deliveryZone.y },
+                    this.beliefs.policyRules,
+                    null
+                  )
+                : null;
+            const deliveryDist = deliveryPath ? deliveryPath.length - 1 : Infinity;
 
             // At capacity → must deliver
             if (this.beliefs.carried.length >= capacity) {
@@ -306,7 +327,8 @@ export class IntentionEngine {
             const utilityDeliver = this.evaluatePolicyReward(carriedValueAtDelivery, {
                 carriedSize: this.beliefs.carried.length,
                 x: deliveryZone ? deliveryZone.x : this.beliefs.me.x,
-                y: deliveryZone ? deliveryZone.y : this.beliefs.me.y
+                y: deliveryZone ? deliveryZone.y : this.beliefs.me.y,
+                path: deliveryPath || []
             }) / (T_direct + 1);
 
             let bestPickup = null;
@@ -327,16 +349,30 @@ export class IntentionEngine {
             candidates.sort((a, b) => b.roughUtil - a.roughUtil);
 
             for (const { parcel } of candidates.slice(0, 5)) {
-                const distToParcel = pathDistance(
-                    this.beliefs, this.beliefs.me.x, this.beliefs.me.y, parcel.x, parcel.y, true
+                const pathToParcel = findAStarPath(
+                    this.beliefs.map,
+                    { x: this.beliefs.me.x, y: this.beliefs.me.y },
+                    { x: parcel.x, y: parcel.y },
+                    this.beliefs.policyRules,
+                    null
                 );
-                if (!isFinite(distToParcel)) continue;
+                if (!pathToParcel) continue;
+                const distToParcel = pathToParcel.length - 1;
 
                 const deliveryZoneFromParcel = findNearestDeliveryZone(this.beliefs, parcel.x, parcel.y);
-                const deliveryDistFromP = deliveryZoneFromParcel
-                    ? pathDistance(this.beliefs, parcel.x, parcel.y, deliveryZoneFromParcel.x, deliveryZoneFromParcel.y, true)
-                    : Infinity;
-                if (!isFinite(deliveryDistFromP)) continue;
+                const pathToDelivery = deliveryZoneFromParcel
+                    ? findAStarPath(
+                        this.beliefs.map,
+                        { x: parcel.x, y: parcel.y },
+                        { x: deliveryZoneFromParcel.x, y: deliveryZoneFromParcel.y },
+                        this.beliefs.policyRules,
+                        null
+                      )
+                    : null;
+                if (!pathToDelivery) continue;
+                const deliveryDistFromP = pathToDelivery.length - 1;
+
+                const detourPath = pathToParcel.concat(pathToDelivery.slice(1));
 
                 const T_detour = (distToParcel + deliveryDistFromP) * avgMoveTime + avgPickupTime + avgPutdownTime;
 
@@ -399,7 +435,8 @@ export class IntentionEngine {
                 const adjustedDetourReward = this.evaluatePolicyReward(remainingReward, {
                     carriedSize: this.beliefs.carried.length + 1,
                     x: deliveryZoneFromParcel.x,
-                    y: deliveryZoneFromParcel.y
+                    y: deliveryZoneFromParcel.y,
+                    path: detourPath
                 });
 
                 if (adjustedDetourReward <= 0) continue;
@@ -458,17 +495,29 @@ export class IntentionEngine {
         parcelCandidates.sort((a, b) => b.roughUtility - a.roughUtility);
 
         for (const { parcel } of parcelCandidates.slice(0, 5)) {
-            // Full A* distance for accurate pathing
-            const distToParcel = pathDistance(
-                this.beliefs, this.beliefs.me.x, this.beliefs.me.y, parcel.x, parcel.y, true
+            const pathToParcel = findAStarPath(
+                this.beliefs.map,
+                { x: this.beliefs.me.x, y: this.beliefs.me.y },
+                { x: parcel.x, y: parcel.y },
+                this.beliefs.policyRules,
+                null
             );
-            if (!isFinite(distToParcel)) continue;
+            if (!pathToParcel) continue;
+            const distToParcel = pathToParcel.length - 1;
 
-            // Estimate distance from parcel to nearest delivery zone
-            const distToDelivery = deliveryZoneForScoring
-                ? pathDistance(this.beliefs, parcel.x, parcel.y, deliveryZoneForScoring.x, deliveryZoneForScoring.y, true)
-                : Infinity;
-            if (!isFinite(distToDelivery)) continue;
+            const pathToDelivery = deliveryZoneForScoring
+                ? findAStarPath(
+                    this.beliefs.map,
+                    { x: parcel.x, y: parcel.y },
+                    { x: deliveryZoneForScoring.x, y: deliveryZoneForScoring.y },
+                    this.beliefs.policyRules,
+                    null
+                  )
+                : null;
+            if (!pathToDelivery) continue;
+            const distToDelivery = pathToDelivery.length - 1;
+
+            const tripPath = pathToParcel.concat(pathToDelivery.slice(1));
 
             const totalTripMs = (distToParcel + distToDelivery) * avgMoveTime + avgPickupTime + avgPutdownTime;
 
@@ -485,7 +534,8 @@ export class IntentionEngine {
             const adjustedReward = this.evaluatePolicyReward(projectedReward, {
                 carriedSize: 1,
                 x: deliveryZoneForScoring ? deliveryZoneForScoring.x : this.beliefs.me.x,
-                y: deliveryZoneForScoring ? deliveryZoneForScoring.y : this.beliefs.me.y
+                y: deliveryZoneForScoring ? deliveryZoneForScoring.y : this.beliefs.me.y,
+                path: tripPath
             });
             if (adjustedReward <= 0) continue;
 
@@ -531,6 +581,13 @@ export class IntentionEngine {
     shouldPreemptActivePlan(bestGoal) {
         if (!this.activeGenerator) return true;
         if (!this.currentGoal) return true;
+
+        // If we are in rendezvous, but the contract is no longer active or the goal changed
+        if (this.currentGoal.type === 'rendezvous') {
+            if (bestGoal.type !== 'rendezvous' || bestGoal.targetId !== this.currentGoal.targetId) {
+                return true;
+            }
+        }
 
         // clear_corridor should never be preempted except by admin_move.
         if (this.currentGoal.type === 'clear_corridor' && bestGoal.type !== 'admin_move') {
@@ -631,6 +688,18 @@ export class IntentionEngine {
                         console.log(`[BDI] admin_move to (${tx}, ${ty}) failed/blocked, will retry on next tick.`);
                     }
                 })(this.beliefs, goal.x, goal.y, this);
+            case 'rendezvous':
+                return (function* (beliefs, tx, ty, coopId) {
+                    const success = yield* NavigateTo(beliefs, tx, ty);
+                    if (success) {
+                        console.log(`[BDI] Reached rendezvous coordinate (${tx}, ${ty}) for contract ${coopId}. Waiting still...`);
+                        while (beliefs.activeContracts.has(coopId)) {
+                            yield { action: 'wait' };
+                        }
+                    } else {
+                        console.log(`[BDI] Rendezvous to (${tx}, ${ty}) failed/blocked, retrying...`);
+                    }
+                })(this.beliefs, goal.x, goal.y, goal.targetId);
             case 'deliver':
                 return this._deliverRecipe(goal.x, goal.y);
             case 'pickup':
@@ -866,6 +935,11 @@ export class IntentionEngine {
         let success = false;
 
         switch (action.action) {
+            case 'wait': {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                success = true;
+                break;
+            }
             case 'move': {
                 const target = action.target;
                 if (!this.beliefs.map?.isAdjacent(this.beliefs.me, target)) {

@@ -4,6 +4,7 @@
  */
 
 import { AGENT_IDS } from '../config/config.js';
+import { generateToolsPrompt } from './toolsRegistry.js';
 
 export const SYSTEM_PROMPT = `
 <system_prompt>
@@ -23,10 +24,10 @@ You reason and decide high-level actions, while your partner agent executes phys
    - If a prompt has multiple expressions, evaluate them sequentially (one tool call per turn).
    - Once evaluated, use the resolved coordinates.
 
-2. GOAL FEASIBILITY:
+2. GOAL FEASIBILITY & POLICY RULES:
    - Declaring a task unfeasible is preferred over wastefully routing to negative/zero reward zones or blocked tiles.
    - If a task's calculated reward is negative or zero (reward <= 0), you MUST immediately declare the task unfeasible and terminate computation. Return an empty answer instruction (i.e. {"instruction": "answer", "body": ""}) and do NOT issue any tool calls or conversational replies.
-   - Only apply policy rules (via "apply_agent_rules") to avoid negative/penalty tiles during routing; do not navigate to them.
+   - For point penalties/losses when traversing tiles (e.g., "if you go through the center tile you lose 200 points"), you MUST update the policy rules via "apply_agent_rules" using "bonusRules" with a negative bonus and the condition "path.traverses_X_Y" (e.g., {"condition": "path.traverses_15_15", "bonus": -200}). Do NOT use "avoidTiles" for point penalties unless explicitly instructed to avoid them completely.
 
 3. COOPERATION:
    - Establish coordination contracts using state steps: PROPOSE, ACCEPT, READY, DROP, PICKUP, COMPLETE.
@@ -74,11 +75,21 @@ If the user asks multiple distinct questions/requests, return a JSON array conta
    - Description: Directs the BDI partner agent to navigate to a specific grid coordinate.
    - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "x": number, "y": number }
 3. apply_agent_rules
-   - Description: Modifies behavioral policies/rules in the partner agent.
-   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "rules": { "avoidTiles": ["x,y", ...], "minRewardThreshold": number, "maxRewardLimit": number } }
+   - Description: Modifies behavioral policies/rules in the partner agent. Supports avoidTiles, minRewardThreshold, maxRewardLimit, requiredStackSize, multiplierRules (condition and multiplier), and bonusRules (condition and bonus).
+   - Args: { 
+       "agentId": "${AGENT_IDS.BDI_AGENT_ID}", 
+       "rules": { 
+         "avoidTiles": ["x,y", ...], 
+         "minRewardThreshold": number, 
+         "maxRewardLimit": number,
+         "requiredStackSize": number,
+         "multiplierRules": [ { "condition": "carrying.size == 3", "multiplier": 2 } ],
+         "bonusRules": [ { "condition": "path.traverses_15_15", "bonus": -200 } ]
+       } 
+     }
 4. cooperate_with_agent
-   - Description: Proposes a Peer-to-Peer rendezvous or gate clearing contract.
-   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "contract": { "type": "RENDEZVOUS" | "CLEARING", "x": number, "y": number } }
+   - Description: Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.
+   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "contract": { "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", "x": number, "y": number } }
 5. instruct_agent_to_say
    - Description: Instructs the partner agent to speak a message publicly.
    - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "message": "text" }

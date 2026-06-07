@@ -186,7 +186,14 @@ export function findAdjacentClearTile(beliefs, x, y) {
  */
 export function* NavigateTo(beliefs, targetX, targetY) {
     if (!beliefs.map) return false;
-    if (beliefs.me.x === targetX && beliefs.me.y === targetY) {
+
+    // Ensure target coordinates are whole integers within map bounds
+    targetX = Math.round(targetX);
+    targetY = Math.round(targetY);
+    targetX = Math.max(0, Math.min(targetX, beliefs.map.width - 1));
+    targetY = Math.max(0, Math.min(targetY, beliefs.map.height - 1));
+
+    if (Math.round(beliefs.me.x) === targetX && Math.round(beliefs.me.y) === targetY) {
         beliefs.me.nextStep = null;
         beliefs.me.path = [];
         return true;
