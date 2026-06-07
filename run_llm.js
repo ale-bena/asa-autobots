@@ -75,23 +75,61 @@ async function runGameLoop() {
 runGameLoop();
 
 // 6. Intercept Admin challenge instructions and run LLM Coordinator loop
+const processedMessages = new Map();
+
 socket.onMsg(async (senderId, name, msg) => {
-    // Intercept instructions from the Admin ID, or forwarded by the BDI agent
-    const isAdminPrompt = senderId === AGENT_IDS.ADMIN_ID || (senderId === AGENT_IDS.BDI_AGENT_ID && !msg.startsWith('{'));
+    // Check if direct or forwarded admin prompt
+    let isAdminPrompt = false;
+    let actualMsg = msg;
+    let adminId = AGENT_IDS.ADMIN_ID;
+
+    const isDirectAdmin = name === 'admin' || senderId === AGENT_IDS.ADMIN_ID;
+    const isBdiAgent = senderId === AGENT_IDS.BDI_AGENT_ID || (name && (name.includes('pddl') || name.includes('executor') || name.startsWith('autobots_pddl')));
+
+    if (isDirectAdmin) {
+        isAdminPrompt = true;
+        adminId = senderId;
+    } else if (isBdiAgent && msg.startsWith('FORWARDED_FROM_ADMIN:')) {
+        isAdminPrompt = true;
+        const parts = msg.split(':');
+        adminId = parts[1];
+        actualMsg = parts.slice(2).join(':');
+    }
 
     if (isAdminPrompt) {
-        console.log(`\n[LLM] Intercepted Admin console message (origin/forwarded) from "${name}" (${senderId}): "${msg}"`);
+        // Deduplicate recent identical messages (e.g. from both direct Admin and BDI forwarding)
+        const now = Date.now();
+        if (processedMessages.has(actualMsg)) {
+            const lastTime = processedMessages.get(actualMsg);
+            if (now - lastTime < 3000) {
+                console.log(`[LLM] Ignored duplicate Admin prompt: "${actualMsg}"`);
+                return;
+            }
+        }
+        processedMessages.set(actualMsg, now);
+
+        // Clean up map to prevent memory growth
+        for (const [m, t] of processedMessages.entries()) {
+            if (now - t > 10000) {
+                processedMessages.delete(m);
+            }
+        }
+
+        console.log(`\n[LLM] Intercepted Admin console message (origin/forwarded) from "${name}" (Admin: ${adminId}): "${actualMsg}"`);
 
         // Run cognitive reasoning loop
         try {
-            const reply = await coordinator.handleAdminPrompt(msg);
-            console.log(`[LLM] Completed reasoning cycle. Output: "${reply}"`);
-
-            // Speak response back to Admin console using SDK method
-            await socket.emitSay(AGENT_IDS.ADMIN_ID, reply);
+            const reply = await coordinator.handleAdminPrompt(actualMsg);
+            if (reply && reply.trim() !== '') {
+                console.log(`[LLM] Completed reasoning cycle. Output: "${reply}"`);
+                // Speak response back to Admin console using dynamic adminId
+                await socket.emitSay(adminId, reply);
+            } else {
+                console.log('[LLM] Completed reasoning cycle with empty output (no public chat reply needed).');
+            }
         } catch (e) {
             console.error('[LLM] Error executing LLM reasoning loop:', e.message);
-            await socket.emitSay(AGENT_IDS.ADMIN_ID, 'An error occurred during LLM reasoning execution.');
+            await socket.emitSay(adminId, 'An error occurred during LLM reasoning execution.');
         }
     } else {
         // Delegate P2P messages to coordination manager

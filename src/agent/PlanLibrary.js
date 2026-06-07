@@ -16,14 +16,14 @@ import { findAStarPath } from '../mapping/Pathfinding.js';
  * @param {number} toY - Destination Y.
  * @returns {number} Number of steps (edges), or Infinity if unreachable.
  */
-export function pathDistance(beliefs, fromX, fromY, toX, toY) {
+export function pathDistance(beliefs, fromX, fromY, toX, toY, ignoreCrates = false) {
     if (!beliefs.map) return Infinity;
     const path = findAStarPath(
         beliefs.map,
         { x: fromX, y: fromY },
         { x: toX, y: toY },
         beliefs.policyRules,
-        beliefs
+        ignoreCrates ? null : beliefs
     );
     return path ? path.length - 1 : Infinity;
 }
@@ -33,17 +33,29 @@ export function pathDistance(beliefs, fromX, fromY, toX, toY) {
  * @param {import('./BeliefBase.js').BeliefBase} beliefs - Current agent beliefs.
  * @param {number} fromX - X coordinate.
  * @param {number} fromY - Y coordinate.
+ * @param {Map<string, number>} [blockedZones=null] - Optional map of "x,y" -> timestamp for zones to skip.
  * @returns {{x: number, y: number}|null} Coordinates of the nearest delivery zone.
  */
-export function findNearestDeliveryZone(beliefs, fromX, fromY) {
+export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = null) {
     if (!beliefs.map) return null;
     let bestZone = null;
     let minDistance = Infinity;
+    const now = Date.now();
 
     for (let x = 0; x < beliefs.map.width; x++) {
         for (let y = 0; y < beliefs.map.height; y++) {
             // TILE_CODES.DELIVERY is 2
             if (beliefs.map.getTileCode(x, y) === 2) {
+                // Skip blocked zones that haven't expired (10s)
+                if (blockedZones) {
+                    const zoneKey = `${x},${y}`;
+                    const blockedTs = blockedZones.get(zoneKey);
+                    if (blockedTs && (now - blockedTs) < 10000) {
+                        continue;
+                    } else if (blockedTs) {
+                        blockedZones.delete(zoneKey); // expired, clean up
+                    }
+                }
                 const dist = Math.abs(x - fromX) + Math.abs(y - fromY);
                 if (dist < minDistance) {
                     minDistance = dist;
@@ -174,6 +186,11 @@ export function findAdjacentClearTile(beliefs, x, y) {
  */
 export function* NavigateTo(beliefs, targetX, targetY) {
     if (!beliefs.map) return false;
+    if (beliefs.me.x === targetX && beliefs.me.y === targetY) {
+        beliefs.me.nextStep = null;
+        beliefs.me.path = [];
+        return true;
+    }
 
     let path = findAStarPath(
         beliefs.map,
@@ -184,14 +201,45 @@ export function* NavigateTo(beliefs, targetX, targetY) {
     );
 
     if (!path || path.length < 2) {
-        yield { action: 'say', payload: { type: 'PATH_BLOCKED' } };
-        beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+        const tileCode = beliefs.map.getTileCode(targetX, targetY);
+        // Do not block delivery (2) or spawn (1) zones
+        if (tileCode !== 1 && tileCode !== 2) {
+            beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+        }
+        beliefs.me.nextStep = null;
+        beliefs.me.path = [];
         return false;
     }
 
     let i = 1;
     while (i < path.length) {
         const step = path[i];
+        
+        // If displaced (e.g. on resume), recalculate path from actual position
+        if (beliefs.map && !beliefs.map.isAdjacent(beliefs.me, step)) {
+            path = findAStarPath(
+                beliefs.map,
+                { x: beliefs.me.x, y: beliefs.me.y },
+                { x: targetX, y: targetY },
+                beliefs.policyRules,
+                beliefs
+            );
+            if (!path || path.length < 2) {
+                const tileCode = beliefs.map.getTileCode(targetX, targetY);
+                if (tileCode !== 1 && tileCode !== 2) {
+                    beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+                }
+                beliefs.me.nextStep = null;
+                beliefs.me.path = [];
+                return false;
+            }
+            i = 1;
+            continue;
+        }
+
+        beliefs.me.nextStep = step;
+        beliefs.me.path = path.slice(i);
+
         const success = yield { action: 'move', target: step };
         if (success) {
             i++;
@@ -205,12 +253,19 @@ export function* NavigateTo(beliefs, targetX, targetY) {
                 beliefs
             );
             if (!path || path.length < 2) {
-                beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+                const tileCode = beliefs.map.getTileCode(targetX, targetY);
+                if (tileCode !== 1 && tileCode !== 2) {
+                    beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+                }
+                beliefs.me.nextStep = null;
+                beliefs.me.path = [];
                 return false;
             }
             i = 1; // Start from first step of the newly calculated path
         }
     }
+    beliefs.me.nextStep = null;
+    beliefs.me.path = [];
     return true;
 }
 

@@ -76,9 +76,18 @@ runGameLoop();
 
 // 6. Handle P2P chat messages for contract negotiation and target locking
 socket.onMsg(async (senderId, name, msg) => {
-    if (senderId === AGENT_IDS.ADMIN_ID && !msg.startsWith('{')) {
-        console.log(`[BDI] Intercepted Admin console message: "${msg}". Forwarding to LLM agent (${AGENT_IDS.LLM_AGENT_ID}).`);
-        await socket.emitSay(AGENT_IDS.LLM_AGENT_ID, msg);
+    const isAdmin = name === 'admin' || senderId === AGENT_IDS.ADMIN_ID;
+    if (isAdmin && !msg.startsWith('{')) {
+        // Resolve LLM agent ID dynamically
+        let llmAgentId = AGENT_IDS.LLM_AGENT_ID;
+        for (const [peerId, peer] of beliefs.peers.entries()) {
+            if (peer.name && (peer.name.includes('llm') || peer.name.includes('coordinator') || peer.name.startsWith('autobots_llm'))) {
+                llmAgentId = peerId;
+                break;
+            }
+        }
+        console.log(`[BDI] Intercepted Admin console message: "${msg}". Forwarding to LLM agent (${llmAgentId}).`);
+        await socket.emitSay(llmAgentId, `FORWARDED_FROM_ADMIN:${senderId}:${msg}`);
     } else {
         await p2pManager.handleIncomingChat(senderId, msg);
     }

@@ -186,34 +186,34 @@ export class MapRepresentation {
                 const code = this.getTileCode(x, y);
                 switch (code) {
                     case MapRepresentation.TILE_CODES.WALL:
-                        rowStr += '\x1b[48;5;235m  \x1b[0m'; // Dark grey block for walls
+                        rowStr += '\x1b[48;5;232m  \x1b[0m'; // Dark grey/black block for walls (#080a14)
                         break;
                     case MapRepresentation.TILE_CODES.SPAWN:
-                        rowStr += '\x1b[48;5;40m\x1b[38;5;15mSP\x1b[0m'; // Green block for Spawn
+                        rowStr += '\x1b[48;5;29m\x1b[38;5;15mSP\x1b[0m'; // Green block for Spawn (#059669)
                         break;
                     case MapRepresentation.TILE_CODES.DELIVERY:
-                        rowStr += '\x1b[48;5;27m\x1b[38;5;15mDL\x1b[0m'; // Blue block for Delivery
+                        rowStr += '\x1b[48;5;160m\x1b[38;5;15mDL\x1b[0m'; // Red block for Delivery (#dc2626)
                         break;
                     case MapRepresentation.TILE_CODES.PAVEMENT:
-                        rowStr += '\x1b[48;5;250m  \x1b[0m'; // Light grey for pavement
+                        rowStr += '\x1b[48;5;237m  \x1b[0m'; // Slate grey for pavement (#1e293b)
                         break;
                     case MapRepresentation.TILE_CODES.CRATE_SPAWN:
-                        rowStr += '\x1b[48;5;125mCS\x1b[0m'; // Magenta for Crate Spawn
+                        rowStr += '\x1b[48;5;202m\x1b[38;5;15mCS\x1b[0m'; // Orange for Crate Spawn (#ea580c)
                         break;
                     case MapRepresentation.TILE_CODES.CRATE:
-                        rowStr += '\x1b[48;5;136mCR\x1b[0m'; // Orange/Brown for Crate
+                        rowStr += '\x1b[48;5;178m\x1b[38;5;16mCR\x1b[0m'; // Yellow background with dark text for Crate (#ca8a04)
                         break;
                     case MapRepresentation.TILE_CODES.ARROW_UP:
-                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ↑\x1b[0m'; // Yellow background with black arrow
+                        rowStr += '\x1b[48;5;19m\x1b[38;5;15m ↑\x1b[0m'; // Blue background with white arrow (#1e40af)
                         break;
                     case MapRepresentation.TILE_CODES.ARROW_RIGHT:
-                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m →\x1b[0m';
+                        rowStr += '\x1b[48;5;19m\x1b[38;5;15m →\x1b[0m';
                         break;
                     case MapRepresentation.TILE_CODES.ARROW_DOWN:
-                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ↓\x1b[0m';
+                        rowStr += '\x1b[48;5;19m\x1b[38;5;15m ↓\x1b[0m';
                         break;
                     case MapRepresentation.TILE_CODES.ARROW_LEFT:
-                        rowStr += '\x1b[48;5;220m\x1b[38;5;16m ←\x1b[0m';
+                        rowStr += '\x1b[48;5;19m\x1b[38;5;15m ←\x1b[0m';
                         break;
                     default:
                         rowStr += '  ';

@@ -27,8 +27,8 @@ export const AGENT_IDS = {
  * @type {{BDI_TOKEN: string, LLM_TOKEN: string}}
  */
 export const AGENT_TOKENS = {
-    BDI_TOKEN: process.env.TOKEN || '',
-    LLM_TOKEN: process.env.LLM_TOKEN || ''
+    BDI_TOKEN: (process.env.TOKEN || '').trim(),
+    LLM_TOKEN: (process.env.LLM_TOKEN || '').trim()
 };
 
 /**
@@ -57,4 +57,17 @@ export const SOLVER_CONFIG = {
 export const PATHFINDING_CONFIG = {
     AVOID_TILE_PENALTY: 1000,
     CRATE_TILE_PENALTY: 50
+};
+
+/**
+ * Configurable logger settings.
+ */
+export const LOGGER_CONFIG = {
+    enableToolCalls: process.env.LOG_TOOL_CALLS !== 'false',
+    enableMovement: process.env.LOG_MOVEMENT !== 'false',
+    enablePolicyUpdates: process.env.LOG_POLICY_UPDATES !== 'false',
+    enableMath: process.env.LOG_MATH !== 'false',
+    enableP2P: process.env.LOG_P2P !== 'false',
+    enablePeerStatus: process.env.LOG_PEER_STATUS === 'true',
+    useColors: process.env.LOG_COLORS !== 'false'
 };

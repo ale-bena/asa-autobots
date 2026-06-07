@@ -50,20 +50,33 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
             crateTiles.add(`${crate.x},${crate.y}`);
         }
     }
-    if (beliefs && beliefs.blockedTargets) {
-        for (const key of beliefs.blockedTargets.keys()) {
-            if (key.includes(',')) {
-                crateTiles.add(key);
-            }
-        }
-    }
+    // NOTE: blockedTargets are NOT added to crateTiles here.
+    // They represent temporarily blocked *goals* (delivery/spawn zones), not physical obstacles.
+    // Treating them as hard blocks would prevent pathfinding to delivery zones entirely.
 
     const peerTiles = new Set();
+    const peerNextTiles = new Set();
+    const peerPathTiles = new Set();
+
     if (beliefs && beliefs.peers) {
         for (const peer of beliefs.peers.values()) {
             const px = Math.round(peer.x);
             const py = Math.round(peer.y);
             peerTiles.add(`${px},${py}`);
+
+            if (peer.nextStep) {
+                const npx = Math.round(peer.nextStep.x);
+                const npy = Math.round(peer.nextStep.y);
+                peerNextTiles.add(`${npx},${npy}`);
+            }
+
+            if (peer.path && Array.isArray(peer.path)) {
+                for (const step of peer.path.slice(0, 5)) {
+                    const spx = Math.round(step.x);
+                    const spy = Math.round(step.y);
+                    peerPathTiles.add(`${spx},${spy}`);
+                }
+            }
         }
     }
 
@@ -95,18 +108,24 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
         for (const neighbor of neighbors) {
             const neighborKey = `${neighbor.x},${neighbor.y}`;
 
-            // Treat tiles containing crates as blocked (unless it's the start or goal tile itself).
+            // Treat tiles containing crates as blocked.
             const hasCrate = crateTiles.has(neighborKey);
-            const isGoal = neighbor.x === goal.x && neighbor.y === goal.y;
-            if (hasCrate && !isGoal) {
+            if (hasCrate) {
                 continue;
             }
 
+            const isGoal = neighbor.x === goal.x && neighbor.y === goal.y;
+
             // Calculate cost to neighbor.
             let stepCost = 1;
-            const hasPeer = peerTiles.has(neighborKey);
-            if (hasPeer && !isGoal) {
-                stepCost += 5; // Add penalty for peer agent instead of treating as blocked
+            if (!isGoal) {
+                if (peerTiles.has(neighborKey)) {
+                    stepCost += 30;
+                } else if (peerNextTiles.has(neighborKey)) {
+                    stepCost += 20;
+                } else if (peerPathTiles.has(neighborKey)) {
+                    stepCost += 10;
+                }
             }
             if (avoidTiles.has(neighborKey)) {
                 stepCost += PATHFINDING_CONFIG.AVOID_TILE_PENALTY;

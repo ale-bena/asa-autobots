@@ -5,6 +5,7 @@
  */
 
 import { AGENT_IDS } from '../config/config.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * P2PManager to handle chat-based real-time coordination.
@@ -42,11 +43,11 @@ export class P2PManager {
 
         try {
             const message = JSON.parse(rawMessage);
-            console.log(`[P2P] Parsed message from ${senderId}:`, message.type);
+            logger.p2p(message.type, message, senderId, true);
 
             switch (message.type) {
                 case 'PING':
-                    this.sendPong();
+                    this.sendPong(senderId);
                     break;
 
                 case 'PONG':
@@ -57,6 +58,50 @@ export class P2PManager {
                             y: message.payload.y,
                             score: message.payload.score
                         });
+                    }
+                    break;
+
+                case 'PEER_STATUS':
+                    if (message.payload) {
+                        this.beliefs.peers.set(senderId, {
+                            id: senderId,
+                            x: message.payload.x,
+                            y: message.payload.y,
+                            score: message.payload.score || 0,
+                            nextStep: message.payload.nextStep || null,
+                            path: message.payload.path || [],
+                            source: 'p2p',
+                            lastSeen: Date.now()
+                        });
+
+                        // Merge peer's known crates into our beliefs
+                        if (Array.isArray(message.payload.crates)) {
+                            const visibilityDist = this.beliefs.observationDistance;
+                            for (const pc of message.payload.crates) {
+                                // Skip if the peer's coordinate is inside our own observation distance,
+                                // but we don't sense a crate there (meaning we can see that it's empty).
+                                const distToMe = Math.abs(pc.x - this.beliefs.me.x) + Math.abs(pc.y - this.beliefs.me.y);
+                                if (distToMe < visibilityDist) {
+                                    const hasLocalCrateAtCoord = Array.from(this.beliefs.crates.values()).some(
+                                        c => c.x === pc.x && c.y === pc.y
+                                    );
+                                    if (!hasLocalCrateAtCoord) {
+                                        continue;
+                                    }
+                                }
+
+                                // Delete any existing crate in memory at the same coordinate to prevent duplicates
+                                for (const [id, crate] of this.beliefs.crates.entries()) {
+                                    if (id !== pc.id && crate.x === pc.x && crate.y === pc.y) {
+                                        this.beliefs.crates.delete(id);
+                                    }
+                                }
+
+                                // If the crate ID already exists, this will update its position.
+                                // Otherwise, it registers the new crate.
+                                this.beliefs.crates.set(pc.id, { id: pc.id, x: pc.x, y: pc.y });
+                            }
+                        }
                     }
                     break;
 
@@ -90,11 +135,11 @@ export class P2PManager {
 
                 case 'APPLY_RULES':
                     Object.assign(this.beliefs.policyRules, message.rules);
-                    console.log('[P2P] Policy rules updated:', message.rules);
+                    logger.policyUpdate(this.beliefs.me.id || 'me', message.rules);
                     break;
 
                 case 'MOVE_TO':
-                    console.log(`[P2P] Received direct MOVE_TO command: (${message.x}, ${message.y})`);
+                    logger.movement(this.beliefs.me.id || 'me', message.x, message.y);
                     this.beliefs.activeContracts.set('admin_move', {
                         coopId: 'admin_move',
                         type: 'MOVE_TO',
@@ -105,28 +150,73 @@ export class P2PManager {
                     break;
 
                 case 'INSTRUCT_SAY':
-                    console.log('[P2P] Direct say command executed:', message.message);
+                    logger.toolCall('instruct_agent_to_say', { message: message.message });
                     await this.socket.emitShout(message.message);
                     break;
             }
         } catch (e) {
-            console.error('[P2P] Failed to parse valid P2P chat message:', e.message);
+            logger.error('P2PParse', e);
         }
     }
 
     /**
-     * Broadcasts a P2P message to all clients in the game room.
-     * @param {Object} message - Message payload object.
+     * Resolves the peer agent ID.
+     * @returns {string|null} Peer ID.
      */
-    async broadcast(message) {
+    getPeerAgentId() {
+        const isBdiMe = this.beliefs.me.id === AGENT_IDS.BDI_AGENT_ID || (this.beliefs.me.name && (this.beliefs.me.name.includes('pddl') || this.beliefs.me.name.includes('executor') || this.beliefs.me.name.startsWith('autobots_pddl')));
+        
+        if (isBdiMe) {
+            // We are BDI executor. Try to find LLM coordinator.
+            for (const [peerId, peer] of this.beliefs.peers.entries()) {
+                if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('llm') || peer.name.includes('coordinator') || peer.name.startsWith('autobots_llm'))) {
+                    return peerId;
+                }
+            }
+            // Fallback to the first peer that is not ourselves
+            for (const peerId of this.beliefs.peers.keys()) {
+                if (peerId !== this.beliefs.me.id) return peerId;
+            }
+            return AGENT_IDS.LLM_AGENT_ID;
+        } else {
+            // We are LLM coordinator. Try to find BDI executor.
+            for (const [peerId, peer] of this.beliefs.peers.entries()) {
+                if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('pddl') || peer.name.includes('executor') || peer.name.startsWith('autobots_pddl'))) {
+                    return peerId;
+                }
+            }
+            // Fallback to the first peer that is not ourselves
+            for (const peerId of this.beliefs.peers.keys()) {
+                if (peerId !== this.beliefs.me.id) return peerId;
+            }
+            return AGENT_IDS.BDI_AGENT_ID;
+        }
+    }
+
+    /**
+     * Broadcasts a P2P message or sends directly to peer if known.
+     * @param {Object} message - Message payload object.
+     * @param {string} [targetId] - Specific target agent ID to send to.
+     */
+    async broadcast(message, targetId) {
         const rawString = JSON.stringify(message);
+        const recipient = targetId || this.getPeerAgentId();
+        if (recipient) {
+            try {
+                await this.socket.emitSay(recipient, rawString);
+                return;
+            } catch (e) {
+                // Fallback to shout on failure
+            }
+        }
         await this.socket.emitShout(rawString);
     }
 
     /**
      * Sends a pong heartbeat back containing our agent's coordinates.
+     * @param {string} [targetId] - Recipient agent ID.
      */
-    sendPong() {
+    sendPong(targetId) {
         this.broadcast({
             type: 'PONG',
             payload: {
@@ -134,7 +224,7 @@ export class P2PManager {
                 y: this.beliefs.me.y,
                 score: this.beliefs.me.score
             }
-        });
+        }, targetId);
     }
 
     /**
@@ -179,7 +269,7 @@ export class P2PManager {
                 y: message.y,
                 status: 'ACCEPTED'
             });
-            this.broadcast({ type: 'ACCEPT_CONTRACT', coopId: message.coopId });
+            this.broadcast({ type: 'ACCEPT_CONTRACT', coopId: message.coopId }, senderId);
         } else {
             console.warn(`[P2P] Rejecting contract proposal ${message.coopId} - Coordinates unreachable.`);
         }

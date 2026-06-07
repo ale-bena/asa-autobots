@@ -7,7 +7,9 @@
 
 import OpenAI from 'openai';
 import { OPENAI_CONFIG, AGENT_IDS } from '../config/config.js';
-import { evaluateExpression } from '../policy/PolicyEngine.js';
+import { SYSTEM_PROMPT } from './prompts.js';
+import { TOOLS_REGISTRY } from './toolsRegistry.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Master Coordinator Agent class wrapping LLM API calls and tool execution.
@@ -44,300 +46,269 @@ export class LLMCoordinator {
      * @private
      */
     _initializeSystemPrompt() {
-        this.systemPrompt = `
-<system_prompt>
-You are the cognitive reasoning brain of a cooperative, autonomous Deliveroo multi-agent system.
-Your team consists of:
-1. Yourself (the LLM Agent - Coordinator, ID: ${AGENT_IDS.LLM_AGENT_ID})
-2. A PDDL Agent (the Partner/Executor, ID: ${AGENT_IDS.BDI_AGENT_ID})
-
-While you possess the reasoning engine, your partner agent executes physical actions under your high-level guidance or cooperates with you directly through a message-based communication scheme.
-
-────────────────────────────────────────────────────────────────────────────────
-CORE OPERATIONAL PROTOCOLS & GOALS
-────────────────────────────────────────────────────────────────────────────────
-1. MATH EVALUATION & PREPARATION
-   - Before executing any navigation or cooperative command containing arithmetic expressions (e.g. "go to cell 4+2, 10-3"), you MUST call the "evaluate_math_expression" tool.
-   - Wait for the mathematical result in the next turn, and only then use the evaluated numeric coordinates for routing or coordination.
-   - If a query contains multiple calculations, you MUST call the evaluation tool sequentially, one by one, across multiple turns. Do NOT invoke parallel tool calls, as the backend only supports a single tool call at once.
-   
-2. GOAL FILTERING & FEASIBILITY
-   - If a task offers a negative or zero reward, or the path is determined to be blocked, declare the task unfeasible. Do not waste agent resources on tasks with zero/negative reward utility.
-
-3. COOPERATIVE EXECUTION (RENDEZVOUS & TRADING)
-   - When coordinating a package handoff or gate clearance, establish a coordination contract.
-   - Coordinate using specific, sequential states: PROPOSE, ACCEPT, READY, DROP, PICKUP, COMPLETE.
-   - If you are carrying a package to trade, drop it at the rendezvous coordinate, move away, and signal your partner to step forward and retrieve it.
-
-────────────────────────────────────────────────────────────────────────────────
-RESPONSE FORMATTING LIMITS
-────────────────────────────────────────────────────────────────────────────────
-- When executing tools, output ONLY the tool calls.
-- Only call a single tool per turn. Parallel tool calling is strictly unsupported.
-- Use <thought> tags for Chain-of-Thought reasoning.
-- If asked a factual question by the admin, reply directly with the raw answer text. Avoid conversational preambles (e.g. output "4" instead of "The answer is 4").
-- For multi-turn workflows where you are waiting for a tool result, output a status prefix like "[WAITING]" or "[REPLAN]" followed by a brief reason.
-
-────────────────────────────────────────────────────────────────────────────────
-FEW-SHOT WORKFLOW DEMONSTRATIONS
-────────────────────────────────────────────────────────────────────────────────
-Example 1:
-Admin: "Evaluate if we should avoid tiles at x=3+2, y=8-2 and move the partner agent there."
-Assistant:
-<thought>
-The request requires moving the partner agent to coordinates which are written as expressions: x=3+2, y=8-2.
-First, I must resolve the math expression. The rules require calling "evaluate_math_expression" sequentially for expressions before using them.
-I will evaluate "3+2" first.
-</thought>
-evaluate_math_expression(expression="3+2")
-
-Example 2 (continuation after tool output):
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"5\"}"
-Assistant:
-<thought>
-"3+2" evaluated to 5. Now I need to evaluate the Y coordinate expression: "8-2".
-</thought>
-evaluate_math_expression(expression="8-2")
-
-Example 3 (continuation after second tool output):
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"6\"}"
-Assistant:
-<thought>
-"8-2" evaluated to 6. Now I have the final coordinates (5, 6).
-The admin also asked to "evaluate if we should avoid tiles at x=3+2, y=8-2". Since this was a request to avoid those tiles and move there, I will first apply a rule to avoid the tile (5,6) and then direct the agent to move.
-The partner agent ID is ${AGENT_IDS.BDI_AGENT_ID}.
-I will call apply_agent_rules to avoid tile "5,6".
-</thought>
-apply_agent_rules(agentId="${AGENT_IDS.BDI_AGENT_ID}", rules={"avoidTiles": ["5,6"]})
-
-Example 4:
-Admin: "Is the path clear?"
-Assistant:
-<thought>
-This is a factual question. I must reply directly with the answer, without preambles or conversation.
-Based on the current state, there are no crates blocking the path. So the answer is "Yes".
-</thought>
-Yes
-</system_prompt>
-`.trim();
+        this.systemPrompt = SYSTEM_PROMPT;
     }
 
     /**
      * Handles and processes natural language prompts from the Admin.
-     * Runs multi-turn tool evaluation cycles.
+     * Entry point that resets the action tool execution state.
      * @param {string} promptText - The raw instruction from the Admin.
      * @returns {Promise<string>} The LLM text output or action status.
      */
     async handleAdminPrompt(promptText) {
-        // Append user prompt to chat history
-        this.chatHistory.push({ role: 'user', content: promptText });
-
-        try {
-            console.log('[LLM] Invoking LLM reasoning cycle...');
-            const response = await this.openai.chat.completions.create({
-                model: OPENAI_CONFIG.model,
-                messages: [
-                    { role: 'system', content: this.systemPrompt },
-                    ...this.chatHistory
-                ],
-                tools: this.getToolsManifest(),
-                tool_choice: 'auto'
-            });
-
-            const choice = response.choices[0];
-            const message = choice.message;
-
-            // Keep log of Assistant response
-            this.chatHistory.push(message);
-
-            // Handle tool calls if returned
-            if (message.tool_calls && message.tool_calls.length > 0) {
-                const toolCall = message.tool_calls[0]; // Strict single tool execution per turn
-                const result = await this.executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
-
-                // Append tool response and run recursive tick
-                this.chatHistory.push({
-                    role: 'tool',
-                    tool_call_id: toolCall.id,
-                    name: toolCall.function.name,
-                    content: JSON.stringify(result)
-                });
-
-                // Yield tool result and tick recursively
-                return await this.handleAdminPrompt(`[TOOL_RESULT] ${toolCall.function.name} output: ${JSON.stringify(result)}`);
-            }
-
-            return message.content || '';
-        } catch (e) {
-            console.error('[LLM] Failed OpenAI Chat completion:', e.message);
-            return 'Error in processing instruction.';
+        this.hasExecutedActionTool = false;
+        const result = await this._handleAdminPromptInternal(promptText);
+        if (this.hasExecutedActionTool && result) {
+            logger.actionConfirmation(result);
+            return ''; // Suppress from public chat
         }
+        return result;
     }
 
     /**
-     * Executes the requested tool call locally.
+     * Internal recursive handler for prompt processing.
+     * @param {string} promptText - The raw instruction/tool result.
+     * @returns {Promise<string>} The LLM text output.
+     * @private
+     */
+    async _handleAdminPromptInternal(promptText) {
+        // Append user prompt/tool output to chat history
+        this.chatHistory.push({ role: 'user', content: promptText });
+
+        let parsed = null;
+        let retryMessages = [];
+        const maxRetries = 3;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            let content = '';
+            try {
+                console.log(`[LLM] Invoking LLM reasoning cycle (Attempt ${attempt}/${maxRetries})...`);
+                
+                const messagesToSend = [
+                    { role: 'system', content: this.systemPrompt },
+                    ...this.chatHistory,
+                    ...retryMessages
+                ];
+
+                const response = await this.openai.chat.completions.create({
+                    model: OPENAI_CONFIG.model,
+                    messages: messagesToSend
+                });
+
+                content = response.choices[0]?.message?.content || '';
+                const cleanedContent = this._cleanJsonResponse(content);
+
+                // Parse the response
+                parsed = JSON.parse(cleanedContent);
+
+                // Validate the response schema
+                const validationError = this._validateJsonStructure(parsed);
+                if (validationError) {
+                    console.warn(`[LLM] Schema validation failed on attempt ${attempt}:`, validationError);
+                    retryMessages.push({ role: 'assistant', content: content });
+                    retryMessages.push({
+                        role: 'user',
+                        content: JSON.stringify({
+                            error: 'JSON validation failed',
+                            details: validationError
+                        })
+                    });
+                    parsed = null;
+                    continue;
+                }
+
+                // If valid, we keep the raw content in the permanent chat history
+                this.chatHistory.push({ role: 'assistant', content: content });
+                break;
+            } catch (err) {
+                console.warn(`[LLM] Parse/API error on attempt ${attempt}:`, err.message);
+                retryMessages.push({ role: 'assistant', content: content || '[Empty/API Error]' });
+                retryMessages.push({
+                    role: 'user',
+                    content: JSON.stringify({
+                        error: 'Failed to parse JSON response',
+                        details: err.message
+                    })
+                });
+                parsed = null;
+            }
+        }
+
+        if (!parsed) {
+            throw new Error('[LLM] Failed to receive a valid JSON response from LLM after maximum retries.');
+        }
+
+        // Process the instructions
+        const instructions = Array.isArray(parsed) ? parsed : [parsed];
+
+        // Execute any tool calls first
+        const toolInst = instructions.find(inst => inst.instruction === 'tool');
+        if (toolInst) {
+            const toolResult = await this.executeTool(toolInst.name, toolInst.args);
+            return await this._handleAdminPromptInternal(`[TOOL_RESULT] ${toolInst.name} output: ${JSON.stringify(toolResult)}`);
+        }
+
+        // Concatenate all answer instructions
+        const answers = instructions.filter(inst => inst.instruction === 'answer');
+        if (answers.length > 0) {
+            return answers.map(ans => String(ans.body)).join('\n');
+        }
+
+        return '';
+    }
+
+    /**
+     * Executes the requested tool call locally using the tools registry.
      * @param {string} name - Name of the tool function.
      * @param {Object} args - Function arguments.
      * @returns {Promise<Object>} Execution status response.
      */
     async executeTool(name, args) {
-        console.log(`[LLM] Executing tool: ${name}`, args);
+        logger.toolCall(name, args);
+        const handler = TOOLS_REGISTRY[name];
+        if (handler) {
+            try {
+                // Check if it's an action tool
+                const isActionTool = [
+                    'move_agent_to_coordinate',
+                    'apply_agent_rules',
+                    'cooperate_with_agent',
+                    'instruct_agent_to_say',
+                    'set_agent_variable'
+                ].includes(name);
 
-        switch (name) {
-            case 'evaluate_math_expression': {
-                const res = evaluateExpression(args.expression, this.beliefs);
-                return { success: true, result: String(res) };
+                if (isActionTool) {
+                    this.hasExecutedActionTool = true;
+                }
+
+                const result = await handler(args, this);
+
+                // Specific logger category triggers
+                if (name === 'move_agent_to_coordinate' && result.success) {
+                    logger.movement(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.x, args.y);
+                } else if (name === 'apply_agent_rules' && result.success) {
+                    logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
+                } else if (name === 'evaluate_math_expression' && result.success) {
+                    logger.math(args.expression, result.result);
+                }
+
+                return result;
+            } catch (e) {
+                logger.error(`executeTool:${name}`, e);
+                return { error: `Execution error: ${e.message}` };
             }
-
-            case 'move_agent_to_coordinate': {
-                this.broadcastP2P({
-                    type: 'MOVE_TO',
-                    x: Number(args.x),
-                    y: Number(args.y)
-                });
-                return { success: true, message: `Directed agent to (${args.x}, ${args.y})` };
-            }
-
-            case 'apply_agent_rules': {
-                this.broadcastP2P({
-                    type: 'APPLY_RULES',
-                    rules: args.rules
-                });
-                return { success: true };
-            }
-
-            case 'cooperate_with_agent': {
-                const contract = args.contract;
-                this.broadcastP2P({
-                    type: 'PROPOSE_CONTRACT',
-                    coopId: contract.coopId || `coop_${Date.now()}`,
-                    type: contract.type,
-                    x: Number(contract.x),
-                    y: Number(contract.y)
-                });
-                return { success: true, message: 'Broadcast proposed contract.' };
-            }
-
-            case 'instruct_agent_to_say': {
-                this.broadcastP2P({
-                    type: 'INSTRUCT_SAY',
-                    message: args.message
-                });
-                return { success: true };
-            }
-
-            default:
-                return { error: 'Unknown tool call.' };
         }
+        return { error: `Unknown tool call: ${name}` };
     }
 
     /**
-     * Broadcasts a JSON message to peer game chat.
+     * Resolves the BDI agent ID dynamically.
+     * @returns {string} The BDI agent ID.
+     */
+    getBDIAgentId() {
+        // Try to find a peer whose name contains 'pddl' or starts with 'autobots_pddl'
+        for (const [peerId, peer] of this.beliefs.peers.entries()) {
+            if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('pddl') || peer.name.includes('executor') || peer.name.startsWith('autobots_pddl'))) {
+                return peerId;
+            }
+        }
+        // Fallback to the first peer that is not ourselves
+        for (const peerId of this.beliefs.peers.keys()) {
+            if (peerId !== this.beliefs.me.id) {
+                return peerId;
+            }
+        }
+        // Last fallback to config
+        return AGENT_IDS.BDI_AGENT_ID;
+    }
+
+    /**
+     * Sends a private message to the BDI partner agent to avoid cluttering the public chat.
      * @param {Object} payload - Message details.
      */
-    broadcastP2P(payload) {
+    async broadcastP2P(payload) {
         const rawString = JSON.stringify(payload);
-        this.socket.emitShout(rawString);
+        const recipient = this.getBDIAgentId();
+
+        try {
+            console.log(`[LLM] Attempting private emitSay to ${recipient}...`);
+            const status = await this.socket.emitSay(recipient, rawString);
+            if (status === 'successful') {
+                logger.p2p(payload.type, payload, recipient, true);
+                return;
+            }
+            console.warn(`[LLM] Private emitSay to ${recipient} returned status: ${status}. Falling back to emitShout.`);
+        } catch (e) {
+            console.error(`[LLM] Private emitSay failed with error: ${e.message}. Falling back to emitShout.`);
+        }
+
+        await this.socket.emitShout(rawString);
+        logger.p2p(payload.type, payload, 'global', false);
     }
 
     /**
-     * Returns the manifest of tools available to the LLM Coordinator.
-     * @returns {Array<Object>} List of tools formats.
+     * Cleans code blocks and whitespaces from the LLM output.
+     * @param {string} text - Raw text response.
+     * @returns {string} Cleaned response.
+     * @private
      */
-    getToolsManifest() {
-        return [
-            {
-                type: 'function',
-                function: {
-                    name: 'evaluate_math_expression',
-                    description: 'Resolves raw string arithmetic formulas into numeric values.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            expression: { type: 'string', description: 'Arithmetic expression to solve (e.g. "4+5").' }
-                        },
-                        required: ['expression']
-                    }
-                }
-            },
-            {
-                type: 'function',
-                function: {
-                    name: 'move_agent_to_coordinate',
-                    description: 'Directs the physical BDI partner agent to navigate to a specific grid coordinate.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            agentId: { type: 'string', description: 'Target agent ID.' },
-                            x: { type: 'integer' },
-                            y: { type: 'integer' }
-                        },
-                        required: ['agentId', 'x', 'y']
-                    }
-                }
-            },
-            {
-                type: 'function',
-                function: {
-                    name: 'apply_agent_rules',
-                    description: 'Modifies behavioral policies and environmental constraints in the partner agent.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            agentId: { type: 'string', description: 'Target agent ID.' },
-                            rules: {
-                                type: 'object',
-                                properties: {
-                                    avoidTiles: { type: 'array', items: { type: 'string' } },
-                                    maxRewardLimit: { type: 'number' },
-                                    minRewardThreshold: { type: 'number' },
-                                    requiredStackSize: { type: 'integer' }
-                                }
-                            }
-                        },
-                        required: ['agentId', 'rules']
-                    }
-                }
-            },
-            {
-                type: 'function',
-                function: {
-                    name: 'cooperate_with_agent',
-                    description: 'Initiates a structured Peer-to-Peer contract proposal with the partner agent.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            agentId: { type: 'string', description: 'Target partner ID.' },
-                            contract: {
-                                type: 'object',
-                                properties: {
-                                    coopId: { type: 'string' },
-                                    type: { type: 'string', enum: ['RENDEZVOUS', 'CLEARING'] },
-                                    x: { type: 'integer' },
-                                    y: { type: 'integer' }
-                                },
-                                required: ['type', 'x', 'y']
-                            }
-                        },
-                        required: ['agentId', 'contract']
-                    }
-                }
-            },
-            {
-                type: 'function',
-                function: {
-                    name: 'instruct_agent_to_say',
-                    description: 'Instructs the partner agent to speak a specific message.',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            agentId: { type: 'string' },
-                            message: { type: 'string' }
-                        },
-                        required: ['agentId', 'message']
-                    }
-                }
+    _cleanJsonResponse(text) {
+        let cleaned = text.trim();
+        if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```(?:json)?\n?/i, '');
+            cleaned = cleaned.replace(/\n?```$/, '');
+        }
+        return cleaned.trim();
+    }
+
+    /**
+     * Validates that the parsed JSON object or array conforms to the expected schemas.
+     * @param {any} obj - Parsed JSON value.
+     * @returns {string|null} Validation error message, or null if valid.
+     * @private
+     */
+    _validateJsonStructure(obj) {
+        if (!obj || typeof obj !== 'object') {
+            return 'Response must be a JSON object or JSON array';
+        }
+        if (Array.isArray(obj)) {
+            if (obj.length === 0) return 'JSON array cannot be empty';
+            for (let i = 0; i < obj.length; i++) {
+                const err = this._validateSingleObject(obj[i]);
+                if (err) return `Item at index ${i}: ${err}`;
             }
-        ];
+            return null;
+        }
+        return this._validateSingleObject(obj);
+    }
+
+    /**
+     * Validates a single instruction object.
+     * @param {Object} item - Candidate instruction object.
+     * @returns {string|null} Validation error message, or null if valid.
+     * @private
+     */
+    _validateSingleObject(item) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            return 'Expected a JSON object';
+        }
+        if (!item.instruction) {
+            return 'Missing required key: "instruction"';
+        }
+        if (item.instruction !== 'answer' && item.instruction !== 'tool') {
+            return `Invalid value for "instruction". Expected "answer" or "tool", got "${item.instruction}"`;
+        }
+        if (item.instruction === 'answer' && item.body === undefined) {
+            return 'Missing key "body" for "answer" instruction';
+        }
+        if (item.instruction === 'tool') {
+            if (!item.name || typeof item.name !== 'string') {
+                return 'Missing or invalid key "name" for "tool" instruction';
+            }
+            if (!item.args || typeof item.args !== 'object' || Array.isArray(item.args)) {
+                return 'Missing or invalid key "args" for "tool" instruction';
+            }
+        }
+        return null;
     }
 }

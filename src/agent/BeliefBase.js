@@ -15,9 +15,9 @@ export class BeliefBase {
     constructor() {
         /**
          * Information about the agent itself.
-         * @type {{id: string, name: string, x: number, y: number, score: number, status: string}}
+         * @type {{id: string, name: string, x: number, y: number, score: number, status: string, nextStep: Object|null, path: Array<Object>}}
          */
-        this.me = { id: '', name: '', x: 0, y: 0, score: 0, status: 'free' };
+        this.me = { id: '', name: '', x: 0, y: 0, score: 0, status: 'free', nextStep: null, path: [] };
 
         /**
          * List of parcel IDs currently carried by the agent.
@@ -166,12 +166,33 @@ export class BeliefBase {
 
         // 3. Revise Peers
         if (sensorPayload.agents) {
-            this.peers.clear();
+            const visibleIds = new Set();
             sensorPayload.agents.forEach(p => {
                 if (p.id !== this.me.id) {
-                    this.peers.set(p.id, p);
+                    visibleIds.add(p.id);
+                    const existing = this.peers.get(p.id);
+                    this.peers.set(p.id, {
+                        ...existing,
+                        id: p.id,
+                        name: p.name || p.id,
+                        x: Math.round(p.x),
+                        y: Math.round(p.y),
+                        score: p.score || 0,
+                        source: 'sensor',
+                        lastSeen: Date.now()
+                    });
                 }
             });
+
+            // Clean up sensor-sighted peers that are no longer visible but should be
+            for (const [id, peer] of this.peers.entries()) {
+                if (!visibleIds.has(id) && peer.source === 'sensor') {
+                    const dist = Math.abs(peer.x - this.me.x) + Math.abs(peer.y - this.me.y);
+                    if (dist < this.observationDistance) {
+                        this.peers.delete(id);
+                    }
+                }
+            }
         }
 
         // 4. Revise Crates (Spatial Memory Grid)
@@ -195,21 +216,142 @@ export class BeliefBase {
      * @private
      */
     _reviseCratesSpatialMemory(sensedCrates) {
-        const sensedCrateMap = new Map();
-        sensedCrates.forEach(c => {
-            sensedCrateMap.set(c.id, c);
-            this.crates.set(c.id, { id: c.id, x: c.x, y: c.y });
-        });
+        if (!this.map) return;
 
-        // Loop through existing memory and remove any that should be visible but are not sensed.
+        // 0. Lazy initialize crates on all CRATE_SPAWN (4) tiles if memory is empty
+        if (this.crates.size === 0) {
+            for (let x = 0; x < this.map.width; x++) {
+                for (let y = 0; y < this.map.height; y++) {
+                    if (this.map.getTileCode(x, y) === 4) { // CRATE_SPAWN
+                        const cid = `crate_init_${x}_${y}`;
+                        this.crates.set(cid, { id: cid, x, y });
+                    }
+                }
+            }
+            console.log(`[BDI Beliefs] Lazy-initialized ${this.crates.size} crates on CRATE_SPAWN tiles.`);
+        }
+
+        // Count spawn tiles to calculate capacity cap
+        let spawnCount = 0;
+        for (let x = 0; x < this.map.width; x++) {
+            for (let y = 0; y < this.map.height; y++) {
+                if (this.map.getTileCode(x, y) === 4) {
+                    spawnCount++;
+                }
+            }
+        }
+
+        const me = this.me;
+        const visibilityDist = this.observationDistance;
+
+        // 1. Map sensed crates by coordinate for quick lookups
+        const sensedByCoord = new Map();
+        for (const c of sensedCrates) {
+            const roundedX = Math.round(c.x);
+            const roundedY = Math.round(c.y);
+            sensedByCoord.set(`${roundedX},${roundedY}`, c);
+        }
+
+        // 2. Purge memory of crates only if their last known tile is visible but empty
+        const matchedCrateIds = new Set();
+        for (const [id, c] of this.crates.entries()) {
+            const dist = Math.abs(c.x - me.x) + Math.abs(c.y - me.y);
+            if (dist < visibilityDist) {
+                const key = `${c.x},${c.y}`;
+                if (!sensedByCoord.has(key)) {
+                    this.crates.delete(id);
+                } else {
+                    matchedCrateIds.add(id);
+                }
+            }
+        }
+
+        // 3. Process newly sensed crates: Match to existing out-of-view crates if possible
+        for (const c of sensedCrates) {
+            const roundedX = Math.round(c.x);
+            const roundedY = Math.round(c.y);
+
+            // Check if there is already a crate at this coordinate in our beliefs
+            let existingCrate = null;
+            for (const ec of this.crates.values()) {
+                if (Math.round(ec.x) === roundedX && Math.round(ec.y) === roundedY) {
+                    existingCrate = ec;
+                    break;
+                }
+            }
+
+            if (existingCrate) {
+                matchedCrateIds.add(existingCrate.id);
+                existingCrate.x = roundedX;
+                existingCrate.y = roundedY;
+                if (c.id && c.id !== existingCrate.id) {
+                    this.crates.delete(existingCrate.id);
+                    matchedCrateIds.delete(existingCrate.id);
+                    existingCrate.id = c.id;
+                    this.crates.set(c.id, existingCrate);
+                    matchedCrateIds.add(c.id);
+                }
+                continue;
+            }
+
+            // No crate at this coordinate in our beliefs. Try to associate with closest unmatched out-of-view crate
+            let closestCrate = null;
+            let minDistance = Infinity;
+
+            for (const ec of this.crates.values()) {
+                if (matchedCrateIds.has(ec.id)) continue;
+
+                const distToMe = Math.abs(ec.x - me.x) + Math.abs(ec.y - me.y);
+                if (distToMe >= visibilityDist) {
+                    const distToSensed = Math.abs(ec.x - roundedX) + Math.abs(ec.y - roundedY);
+                    if (distToSensed < minDistance) {
+                        minDistance = distToSensed;
+                        closestCrate = ec;
+                    }
+                }
+            }
+
+            if (closestCrate) {
+                this.crates.delete(closestCrate.id);
+                closestCrate.x = roundedX;
+                closestCrate.y = roundedY;
+                const cid = c.id || closestCrate.id;
+                closestCrate.id = cid;
+                this.crates.set(cid, closestCrate);
+                matchedCrateIds.add(cid);
+            } else {
+                const cid = c.id || `crate_${roundedX}_${roundedY}`;
+                this.crates.set(cid, { id: cid, x: roundedX, y: roundedY });
+                matchedCrateIds.add(cid);
+            }
+        }
+
+        // 4. Enforce that crates can only sit on crate-capable tiles (codes 4 or 5)
         for (const [id, crate] of this.crates.entries()) {
-            if (sensedCrateMap.has(id)) continue;
-
-            // Calculate Manhattan distance.
-            const distance = Math.abs(crate.x - this.me.x) + Math.abs(crate.y - this.me.y);
-            if (distance < this.observationDistance) {
-                // If it should be visible in line-of-sight but isn't, it must have been moved or removed.
+            const code = this.map.getTileCode(crate.x, crate.y);
+            if (code !== 4 && code !== 5) {
+                console.log(`[BDI Crate Clean] Removing crate ${id} at (${crate.x}, ${crate.y}) since tile code ${code} is not crate-capable.`);
                 this.crates.delete(id);
+            }
+        }
+
+        // 5. Enforce maximum crate limit based on spawnCount
+        if (spawnCount > 0 && this.crates.size > spawnCount) {
+            console.log(`[BDI Crate Clean] Crates memory size (${this.crates.size}) exceeds spawn tiles count (${spawnCount}). Pruning furthest crates.`);
+            const outOfViewCrates = [];
+            for (const [id, c] of this.crates.entries()) {
+                const distToMe = Math.abs(c.x - me.x) + Math.abs(c.y - me.y);
+                if (distToMe >= visibilityDist) {
+                    outOfViewCrates.push({ id, distToMe });
+                }
+            }
+
+            outOfViewCrates.sort((a, b) => b.distToMe - a.distToMe);
+
+            while (this.crates.size > spawnCount && outOfViewCrates.length > 0) {
+                const toRemove = outOfViewCrates.shift();
+                console.log(`[BDI Crate Clean] Pruning furthest crate ${toRemove.id} from memory.`);
+                this.crates.delete(toRemove.id);
             }
         }
     }
@@ -295,6 +437,12 @@ export class BeliefBase {
         for (const [key, ts] of this.blockedTargets.entries()) {
             if (now - ts > 3000) {
                 this.blockedTargets.delete(key);
+            }
+        }
+        // Clean stale P2P peer status info (older than 5000ms)
+        for (const [id, peer] of this.peers.entries()) {
+            if (peer.source === 'p2p' && now - peer.lastSeen > 5000) {
+                this.peers.delete(id);
             }
         }
     }
