@@ -265,7 +265,7 @@ export class P2PManager {
             this.beliefs.activeContracts.set(message.coopId, {
                 coopId: message.coopId,
                 senderId: senderId,
-                type: message.type,
+                type: message.contractType || message.type,
                 x: message.x,
                 y: message.y,
                 radius: message.radius !== undefined ? message.radius : null,

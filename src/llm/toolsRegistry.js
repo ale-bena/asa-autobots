@@ -180,7 +180,7 @@ export const TOOLS_REGISTRY = {
                 "x": number, 
                 "y": number,
                 "radius": number | null,
-                "holdDuration": number | null
+                "holdDuration": number | "indefinite" | null // Duration (in seconds) to wait after BOTH agents arrive. Defaults to 3 seconds if null or not set. Use -1 or "indefinite" for indefinite waiting (no timer, wait until manual resume).
             } 
         }`,
         isAction: true,
@@ -202,7 +202,16 @@ export const TOOLS_REGISTRY = {
 
             const coopId = contract.coopId || `coop_${Date.now()}`;
             const radius = contract.radius !== undefined ? Number(contract.radius) : null;
-            const holdDuration = contract.holdDuration !== undefined ? Number(contract.holdDuration) : null;
+            
+            let holdDuration = null;
+            if (contract.holdDuration !== undefined && contract.holdDuration !== null) {
+                if (contract.holdDuration === 'indefinite') {
+                    holdDuration = -1;
+                } else {
+                    const parsed = Number(contract.holdDuration);
+                    holdDuration = isNaN(parsed) ? null : parsed;
+                }
+            }
 
             // CRITICAL: Store proposed contract locally in coordinator's beliefs so coordinator also acts on it
             coordinator.beliefs.activeContracts.set(coopId, {
@@ -220,7 +229,7 @@ export const TOOLS_REGISTRY = {
                 {
                     type: 'PROPOSE_CONTRACT',
                     coopId: coopId,
-                    type: contract.type,
+                    contractType: contract.type,
                     x: Number(contract.x),
                     y: Number(contract.y),
                     radius: radius,

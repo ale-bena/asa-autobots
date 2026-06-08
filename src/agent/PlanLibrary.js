@@ -5,6 +5,7 @@
  */
 
 import { findAStarPath } from '../mapping/Pathfinding.js';
+import { AGENT_IDS } from '../config/config.js';
 
 /**
  * Computes the A*-based path distance between two coordinates.
@@ -194,11 +195,18 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
     targetY = Math.max(0, Math.min(targetY, beliefs.map.height - 1));
 
     // Check if we are already within Manhattan distance radius of the target coordinates
+    // and standing on a valid (walkable, crate-free, peer-free) tile.
     const distanceToTarget = Math.abs(Math.round(beliefs.me.x) - targetX) + Math.abs(Math.round(beliefs.me.y) - targetY);
     if (distanceToTarget <= radius) {
-        beliefs.me.nextStep = null;
-        beliefs.me.path = [];
-        return true;
+        const myX = Math.round(beliefs.me.x);
+        const myY = Math.round(beliefs.me.y);
+        const hasCrate = Array.from(beliefs.crates.values()).some(c => Math.round(c.x) === myX && Math.round(c.y) === myY);
+        const hasPeer = Array.from(beliefs.peers.values()).some(p => p.id !== AGENT_IDS.ADMIN_ID && Math.round(p.x) === myX && Math.round(p.y) === myY);
+        if (beliefs.map.isWalkableTile(myX, myY) && !hasCrate && !hasPeer) {
+            beliefs.me.nextStep = null;
+            beliefs.me.path = [];
+            return true;
+        }
     }
 
     let actualTargetX = targetX;
@@ -206,9 +214,7 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
 
     if (radius > 0) {
         // Find the best walkable tile within radius of the target
-        let bestTile = null;
-        let minDistance = Infinity;
-
+        const candidates = [];
         for (let dx = -radius; dx <= radius; dx++) {
             const maxDy = radius - Math.abs(dx);
             for (let dy = -maxDy; dy <= maxDy; dy++) {
@@ -218,13 +224,56 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
                 if (tx >= 0 && tx < beliefs.map.width && ty >= 0 && ty < beliefs.map.height) {
                     if (beliefs.map.isWalkableTile(tx, ty)) {
                         const hasCrate = Array.from(beliefs.crates.values()).some(c => Math.round(c.x) === tx && Math.round(c.y) === ty);
-                        const distFromMe = Math.abs(Math.round(beliefs.me.x) - tx) + Math.abs(Math.round(beliefs.me.y) - ty);
-                        if (!hasCrate && distFromMe < minDistance) {
-                            minDistance = distFromMe;
-                            bestTile = { x: tx, y: ty };
+                        if (!hasCrate) {
+                            candidates.push({ x: tx, y: ty });
                         }
                     }
                 }
+            }
+        }
+
+        let bestTile = null;
+
+        if (candidates.length > 0) {
+            // Sort candidates in a stable, consistent way: distance to target, then X, then Y
+            candidates.sort((a, b) => {
+                const distA = Math.abs(a.x - targetX) + Math.abs(a.y - targetY);
+                const distB = Math.abs(b.x - targetX) + Math.abs(b.y - targetY);
+                if (distA !== distB) return distA - distB;
+                if (a.x !== b.x) return a.x - b.x;
+                return a.y - b.y;
+            });
+
+            // Identify tiles occupied or heading-to by peer agents
+            const peerTiles = new Set();
+            for (const peer of beliefs.peers.values()) {
+                if (peer.id === AGENT_IDS.ADMIN_ID) continue;
+                const px = Math.round(peer.x);
+                const py = Math.round(peer.y);
+                peerTiles.add(`${px},${py}`);
+                if (peer.nextStep) {
+                    peerTiles.add(`${Math.round(peer.nextStep.x)},${Math.round(peer.nextStep.y)}`);
+                }
+                if (peer.path && peer.path.length > 0) {
+                    const lastStep = peer.path[peer.path.length - 1];
+                    peerTiles.add(`${Math.round(lastStep.x)},${Math.round(lastStep.y)}`);
+                }
+            }
+
+            // Filter out peer occupied or targeted tiles
+            const peerFreeCandidates = candidates.filter(c => !peerTiles.has(`${c.x},${c.y}`));
+
+            const myId = beliefs.me.id;
+            const peerId = Array.from(beliefs.peers.keys()).find(id => id !== myId) || (myId === AGENT_IDS.BDI_AGENT_ID ? AGENT_IDS.LLM_AGENT_ID : AGENT_IDS.BDI_AGENT_ID);
+            const amFirst = myId < peerId;
+
+            // Pick the appropriate list
+            const listToUse = peerFreeCandidates.length > 0 ? peerFreeCandidates : candidates;
+
+            if (listToUse.length >= 2) {
+                bestTile = amFirst ? listToUse[0] : listToUse[1];
+            } else {
+                bestTile = listToUse[0];
             }
         }
 

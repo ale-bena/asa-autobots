@@ -258,22 +258,51 @@ export class IntentionEngine {
             case 'rendezvous':
                 return (function* (beliefs, tx, ty, coopId) {
                     const contract = beliefs.activeContracts.get(coopId);
-                    const radius = (contract && contract.radius !== undefined) ? contract.radius : 0;
+                    const radius = (contract && contract.radius !== undefined && contract.radius !== null) ? Number(contract.radius) : 0;
                     const holdDuration = (contract && contract.holdDuration !== undefined) ? contract.holdDuration : null;
 
                     const success = yield* NavigateTo(beliefs, tx, ty, radius);
                     if (success) {
-                        console.log(`[BDI] Reached rendezvous coordinate (${tx}, ${ty}) (radius ${radius}) for contract ${coopId}. Waiting still...`);
+                        console.log(`[BDI] Reached rendezvous coordinate (${tx}, ${ty}) (radius ${radius}) for contract ${coopId}. Waiting for peer to arrive...`);
                         
-                        if (holdDuration && holdDuration > 0) {
-                            console.log(`[BDI] Scheduling automatic resume for rendezvous ${coopId} in ${holdDuration} seconds.`);
-                            setTimeout(() => {
-                                console.log(`[BDI] Rendezvous timer expired. Deleting contract ${coopId} to resume.`);
-                                beliefs.activeContracts.delete(coopId);
-                            }, holdDuration * 1000);
-                        }
+                        let timerStarted = false;
 
                         while (beliefs.activeContracts.has(coopId)) {
+                            // Check if the peer has also arrived in the neighborhood
+                            const peerArrived = Array.from(beliefs.peers.values()).some(peer => {
+                                if (peer.id === AGENT_IDS.ADMIN_ID) return false;
+                                const px = Math.round(peer.x);
+                                const py = Math.round(peer.y);
+                                const dist = Math.abs(px - tx) + Math.abs(py - ty);
+                                return dist <= radius;
+                            });
+
+                            if (peerArrived && !timerStarted) {
+                                timerStarted = true;
+                                // Determine wait/hold duration.
+                                // Defaults to 3 seconds if not set (null/undefined).
+                                // If -1 or "indefinite", we do not set a timer (wait indefinitely for admin/coordinator resume).
+                                // Otherwise, wait the specified holdDuration.
+                                let duration = 3;
+                                if (holdDuration === -1 || holdDuration === 'indefinite') {
+                                    duration = null;
+                                } else if (holdDuration !== null && holdDuration !== undefined) {
+                                    duration = Number(holdDuration);
+                                }
+
+                                if (duration !== null) {
+                                    console.log(`[BDI] Both agents arrived in neighborhood of (${tx}, ${ty}). Scheduling automatic resume in ${duration} seconds.`);
+                                    setTimeout(() => {
+                                        if (beliefs.activeContracts.has(coopId)) {
+                                            console.log(`[BDI] Rendezvous timer expired. Deleting contract ${coopId} to resume.`);
+                                            beliefs.activeContracts.delete(coopId);
+                                        }
+                                    }, duration * 1000);
+                                } else {
+                                    console.log(`[BDI] Both agents arrived. Configured for indefinite wait (until admin resume).`);
+                                }
+                            }
+
                             yield { action: 'wait' };
                         }
                     } else {

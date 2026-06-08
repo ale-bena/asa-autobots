@@ -340,4 +340,12 @@ export class LLMCoordinator {
         }
         return null;
     }
+
+    /**
+     * Resolves the peer agent ID.
+     * @returns {string} Peer ID.
+     */
+    getPeerAgentId() {
+        return (this.beliefs.me.id === AGENT_IDS.BDI_AGENT_ID) ? AGENT_IDS.LLM_AGENT_ID : AGENT_IDS.BDI_AGENT_ID;
+    }
 }
