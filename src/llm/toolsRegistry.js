@@ -22,8 +22,8 @@ export const TOOLS_REGISTRY = {
     },
 
     move_agent_to_coordinate: {
-        description: "Directs the BDI partner agent to navigate to a specific grid coordinate.",
-        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "x": number, "y": number }`,
+        description: "Directs an agent to navigate to a specific grid coordinate.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number }`,
         isAction: true,
         handler: async (args, coordinator) => {
             // Guardrail: check if any stored variable related to reward is <= 0
@@ -31,9 +31,9 @@ export const TOOLS_REGISTRY = {
                 if (key.toLowerCase().includes('reward')) {
                     const numVal = Number(val);
                     if (!isNaN(numVal) && numVal <= 0) {
-                        return { 
-                            success: false, 
-                            error: `Movement rejected: variable '${key}' has non-positive value (${val}). Tasks with negative or zero rewards are unfeasible and should not be executed.` 
+                        return {
+                            success: false,
+                            error: `Movement rejected: variable '${key}' has non-positive value (${val}). Tasks with negative or zero rewards are unfeasible and should not be executed.`
                         };
                     }
                 }
@@ -47,82 +47,96 @@ export const TOOLS_REGISTRY = {
                 targetY = Math.max(0, Math.min(targetY, coordinator.beliefs.map.height - 1));
             }
 
-            await coordinator.broadcastP2P({
-                type: 'MOVE_TO',
-                x: targetX,
-                y: targetY
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'MOVE_TO',
+                    x: targetX,
+                    y: targetY
+                });
             return { success: true, message: `Directed agent to (${targetX}, ${targetY})` };
         }
     },
 
     apply_agent_rules: {
-        description: "Modifies behavioral policies/rules in the partner agent. Supports avoidTiles, minRewardThreshold, maxRewardLimit, requiredStackSize, multiplierRules (condition and multiplier), and bonusRules (condition and bonus).",
+        description: `Modifies behavioral policies/rules of the environment for an agent. 
+        Rules override in order, so the first rule that applies takes priority.
+        
+        - all_tiles: if true, the rule applies to all tiles
+        - tiles: an array of coordinates, the rule applies to those tiles, if empty, the rule applies to no tiles
+        - stackSizeBounds: an array of bounds, the rule applies if the agent's stack size is within these bounds, if empty, the rule applies to all stack sizes
+        - minReward: the minimum reward of a parcel for it to count
+        - maxReward: the maximum reward of a parcel for it to count
+        - multiplier: the multiplier to apply to the agent's reward (may be negative)
+        - bonus: the bonus to apply to the agent's reward (may be negative)
+    `,
         getArgsSchema: () => `{ 
-       "agentId": "${AGENT_IDS.BDI_AGENT_ID}", 
-       "rules": { 
-         "avoidTiles": ["x,y", ...], 
-         "minRewardThreshold": number, 
-         "maxRewardLimit": number,
-         "requiredStackSize": number,
-         "multiplierRules": [ { "condition": "carrying.size == 3", "multiplier": 2 } ],
-         "bonusRules": [ { "condition": "path.traverses_15_15", "bonus": -200 } ]
-       } 
+        "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}", 
+        "rules": [{
+            "all_tiles": boolean,
+            "tiles": ["x,y", ...],
+            "stackSizeBounds": [{"min": number | null, "max": number | null}], // the max is not inclusive, for an unbounded use null
+            "minReward": number | null, 
+            "maxReward": number | null,
+            "multiplier": number  | null,
+            "bonus": number | null
+        }]
      }`,
         isAction: true,
         handler: async (args, coordinator) => {
-            await coordinator.broadcastP2P({
-                type: 'APPLY_RULES',
-                rules: args.rules
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'APPLY_RULES',
+                    rules: args.rules
+                });
             return { success: true };
         }
     },
 
     cooperate_with_agent: {
         description: "Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.",
-        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "contract": { "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", "x": number, "y": number } }`,
+        getArgsSchema: () => `{ 
+            "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
+            "contract": { 
+                "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", 
+                "x": number, 
+                "y": number,
+                "radius": number | null,
+            } 
+        }`,
         isAction: true,
         handler: async (args, coordinator) => {
             const contract = args.contract;
             if (contract.type === 'CLOSE') {
                 for (const coopId of coordinator.beliefs.activeContracts.keys()) {
                     if (coopId === 'admin_move') continue;
-                    await coordinator.broadcastP2P({
-                        type: 'CLOSE_CONTRACT',
-                        coopId: coopId
-                    });
+                    await coordinator.P2P(
+                        args.id,
+                        {
+                            type: 'CLOSE_CONTRACT',
+                            coopId: coopId
+                        });
                     coordinator.beliefs.activeContracts.delete(coopId);
                 }
                 return { success: true, message: 'Closed active cooperation contracts.' };
             }
 
-            await coordinator.broadcastP2P({
-                type: 'PROPOSE_CONTRACT',
-                coopId: contract.coopId || `coop_${Date.now()}`,
-                type: contract.type,
-                x: Number(contract.x),
-                y: Number(contract.y)
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'PROPOSE_CONTRACT',
+                    coopId: contract.coopId || `coop_${Date.now()}`,
+                    type: contract.type,
+                    x: Number(contract.x),
+                    y: Number(contract.y)
+                });
             return { success: true, message: 'Broadcast proposed contract.' };
         }
     },
 
-    instruct_agent_to_say: {
-        description: "Instructs the partner agent to speak a message publicly.",
-        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "message": "text" }`,
-        isAction: true,
-        handler: async (args, coordinator) => {
-            await coordinator.broadcastP2P({
-                type: 'INSTRUCT_SAY',
-                message: args.message
-            });
-            return { success: true };
-        }
-    },
-
     get_local_context: {
-        description: "Fetches the agent's current state (me position/score/status, variables, carried items, rules, parcels, and peers).",
+        description: "Fetches an agent's current state (id/name/position/score/status, variables, carried items, rules, parcels, and peers).",
         getArgsSchema: () => `{}`,
         isAction: false,
         handler: async (args, coordinator) => {
@@ -166,41 +180,51 @@ export const TOOLS_REGISTRY = {
 
     set_agent_variable: {
         description: "Saves a variable to agent memory.",
-        getArgsSchema: () => `{ "name": "var_name", "value": any }`,
+        getArgsSchema: () => `{ 
+            "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
+            "name": "var_name",
+            "value": any 
+        }`,
         isAction: true,
         handler: async (args, coordinator) => {
             coordinator.beliefs.variables[args.name] = args.value;
-            await coordinator.broadcastP2P({
-                type: 'SET_VARIABLE',
-                name: args.name,
-                value: args.value
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'SET_VARIABLE',
+                    name: args.name,
+                    value: args.value
+                });
             return { success: true, message: `Successfully set variable '${args.name}' to ${JSON.stringify(args.value)}` };
         }
     },
 
     hold_agent: {
-        description: "Stops/pauses the partner agent (red light). The agent will cease all movement and actions until explicitly resumed. Use this for 'stop', 'freeze', 'red light', or 'hold' commands.",
-        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}" }`,
+        description: "Stops/pauses an agent (red light). The agent will cease all movement and actions until explicitly resumed. Use this for 'stop', 'freeze', 'red light', or 'hold' commands.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" }`,
         isAction: true,
         handler: async (args, coordinator) => {
             coordinator.beliefs.hold = true;
-            await coordinator.broadcastP2P({
-                type: 'HOLD'
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'HOLD'
+                });
             return { success: true, message: 'Agent paused (HOLD state activated).' };
         }
     },
 
     resume_agent: {
-        description: "Resumes the partner agent (green light). Cancels a previous hold and lets the agent continue normal operation. Use this for 'go', 'resume', 'green light', or 'continue' commands.",
-        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}" }`,
+        description: "Resumes an agent (green light). Cancels a previous hold and lets the agent continue normal operation. Use this for 'go', 'resume', 'green light', or 'continue' commands.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" }`,
         isAction: true,
         handler: async (args, coordinator) => {
             coordinator.beliefs.hold = false;
-            await coordinator.broadcastP2P({
-                type: 'RESUME'
-            });
+            await coordinator.P2P(
+                args.id,
+                {
+                    type: 'RESUME'
+                });
             return { success: true, message: 'Agent resumed (HOLD state deactivated).' };
         }
     }
@@ -211,12 +235,14 @@ export const TOOLS_REGISTRY = {
  * @returns {string} Text snippet containing the tools manifest.
  */
 export function generateToolsPrompt() {
-    let index = 1;
+    let index = 0;
     let promptStr = '';
     for (const [name, tool] of Object.entries(TOOLS_REGISTRY)) {
-        promptStr += `${index}. ${name}\n`;
+        promptStr += `<tool${index}>\n`;
+        promptStr += `   ${index}. ${name}\n`;
         promptStr += `   - Description: ${tool.description}\n`;
         promptStr += `   - Args: ${tool.getArgsSchema()}\n`;
+        promptStr += `</tool${index}>\n`;
         index++;
     }
     return promptStr.trim();

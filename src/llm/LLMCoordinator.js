@@ -34,10 +34,16 @@ export class LLMCoordinator {
         });
 
         /**
-         * Chat history database for multi-turn admin prompts.
+         * Chat history database.
          * @type {Array<Object>}
          */
         this.chatHistory = [];
+
+        /**
+         * Log history database for multi-turn admin prompts.
+         * @type {Array<Object>}
+         */
+        this.log = [];
 
         this._initializeSystemPrompt();
     }
@@ -50,73 +56,9 @@ export class LLMCoordinator {
         this.systemPrompt = SYSTEM_PROMPT;
     }
 
-    /**
-     * Checks if the user prompt text contains a negative or zero reward pattern.
-     * @param {string} promptText 
-     * @returns {boolean} True if negative/zero reward is detected.
-     * @private
-     */
-    _checkPromptForNegativeReward(promptText) {
-        if (!promptText) return false;
-        // Look for patterns like "reward of <expr>" or "reward: <expr>" or "reward = <expr>"
-        const rewardRegex = /reward\s*(?:of|is|=|\:)?\s*([-\d\s\+\*\/\(\)]+)/i;
-        const match = promptText.match(rewardRegex);
-        if (match) {
-            const expr = match[1].trim();
-            const cleanExprMatch = expr.match(/^([-\d\s\+\*\/\(\)]+)/);
-            if (cleanExprMatch) {
-                const cleanExpr = cleanExprMatch[1].trim();
-                if (cleanExpr) {
-                    try {
-                        const val = evaluateExpression(cleanExpr, this.beliefs);
-                        const numVal = Number(val);
-                        if (!isNaN(numVal) && numVal <= 0) {
-                            return true;
-                        }
-                    } catch (e) {
-                        // ignore evaluation errors
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Handles and processes natural language prompts from the Admin.
-     * Entry point that resets the action tool execution state.
-     * @param {string} promptText - The raw instruction from the Admin.
-     * @returns {Promise<string>} The LLM text output or action status.
-     */
-    async handleAdminPrompt(promptText) {
-        this.hasExecutedActionTool = false;
-        this.isRewardNegative = false;
-        if (this._checkPromptForNegativeReward(promptText)) {
-            console.log('[LLM Guardrail] Negative/zero reward detected in prompt. Suppressing output to ignore the task.');
-            this.isRewardNegative = true;
-            return '';
-        }
-        const result = await this._handleAdminPromptInternal(promptText);
-        if (this.isRewardNegative) {
-            console.log('[LLM Guardrail] Negative/zero reward detected. Suppressing output to ignore the task.');
-            return '';
-        }
-        if (this.hasExecutedActionTool && result) {
-            logger.actionConfirmation(result);
-            return ''; // Suppress from public chat
-        }
-        return result;
-    }
-
-    /**
-     * Internal recursive handler for prompt processing.
-     * @param {string} promptText - The raw instruction/tool result.
-     * @returns {Promise<string>} The LLM text output.
-     * @private
-     */
-    async _handleAdminPromptInternal(promptText, accumulatedAnswers = []) {
+    async model_call(prompt_text) {
         // Append user prompt/tool output to chat history
-        this.chatHistory.push({ role: 'user', content: promptText });
+        this.chatHistory.push({ role: 'user', content: prompt_text });
 
         let parsed = null;
         let retryMessages = [];
@@ -126,7 +68,7 @@ export class LLMCoordinator {
             let content = '';
             try {
                 console.log(`[LLM] Invoking LLM reasoning cycle (Attempt ${attempt}/${maxRetries})...`);
-                
+
                 const messagesToSend = [
                     { role: 'system', content: this.systemPrompt },
                     ...this.chatHistory,
@@ -140,6 +82,7 @@ export class LLMCoordinator {
 
                 content = response.choices[0]?.message?.content || '';
                 const cleanedContent = this._cleanJsonResponse(content);
+                console.log("\n" + cleanedContent + "\n");
 
                 // Parse the response
                 parsed = JSON.parse(cleanedContent);
@@ -181,29 +124,66 @@ export class LLMCoordinator {
             throw new Error('[LLM] Failed to receive a valid JSON response from LLM after maximum retries.');
         }
 
-        // Process the instructions
-        const instructions = Array.isArray(parsed) ? parsed : [parsed];
+        return parsed;
+    }
 
-        // Execute any tool calls first
-        const toolInst = instructions.find(inst => inst.instruction === 'tool');
-        if (toolInst) {
-            const toolResult = await this.executeTool(toolInst.name, toolInst.args);
-            return await this._handleAdminPromptInternal(
-                `[TOOL_RESULT] ${toolInst.name} output: ${JSON.stringify(toolResult)}`,
-                accumulatedAnswers
-            );
+    /**
+     * Handles and processes natural language prompts from the Admin.
+     * Entry point that resets the action tool execution state.
+     * @param {string} promptText - The raw instruction from the Admin.
+     * @param {Array<string>} accumulatedAnswers - Accumulated answers from previous tool calls.
+     * @returns {Promise<string>} The LLM text output or action status.
+     */
+    async handleAdminPrompt(promptText, accumulatedAnswers = []) {
+        const historyStartIndex = this.chatHistory.length;
+
+        try {
+            let response = await this.model_call(promptText + ".\nWhat is the first step?");
+            let stop = false;
+
+            while (!stop) {
+                switch (response.type) {
+                    case "tool":
+                        const toolResult = await this.executeTool(response.name, response.args);
+                        response = await this.model_call(
+                            `[TOOL_RESULT] ${response.name} output: ${JSON.stringify(toolResult)}.
+                            What is the next step? Remember only one response at a time, 
+                            also don't provide the reasoning or the possible future outcomes.`
+                        );
+                        break;
+                    case "answer":
+                        accumulatedAnswers.push(response.body);
+                        response = await this.model_call(
+                            `[ACCUMULATED_ANSWERS] output: ${accumulatedAnswers.join('\n')}.
+                            What is the next step? Remember only one response at a time, 
+                            also don't provide the reasoning or the possible future outcomes.`
+                        );
+                        break;
+                    case "stop":
+                        stop = true;
+                        break;
+                    default:
+                        logger.error('[LLM] Unknown response type:', response.type);
+                        stop = true;
+                }
+            }
+
+            if (accumulatedAnswers.length === 0) {
+                // Remove intermediate chat history of this run
+                this.chatHistory.splice(historyStartIndex);
+                return null;
+            }
+
+            const answers = accumulatedAnswers.join('\n');
+            // Clean up the intermediate chat history of this run and replace with the final summarization
+            this.chatHistory.splice(historyStartIndex);
+            this.chatHistory.push({ role: 'user', content: promptText });
+            this.chatHistory.push({ role: 'assistant', content: answers });
+            return answers;
+        } catch (error) {
+            this.chatHistory.splice(historyStartIndex);
+            throw error;
         }
-
-        // If no more tool calls, accumulate and concatenate the answers from this final response
-        const answers = instructions
-            .filter(inst => inst.instruction === 'answer' && inst.body !== undefined && String(inst.body).trim() !== '')
-            .map(ans => String(ans.body).trim());
-
-        if (answers.length > 0) {
-            accumulatedAnswers.push(...answers);
-        }
-
-        return accumulatedAnswers.join('\n');
     }
 
     /**
@@ -217,10 +197,6 @@ export class LLMCoordinator {
         const tool = TOOLS_REGISTRY[name];
         if (tool) {
             try {
-                if (tool.isAction) {
-                    this.hasExecutedActionTool = true;
-                }
-
                 const result = await tool.handler(args, this);
 
                 // Specific logger category triggers
@@ -230,33 +206,6 @@ export class LLMCoordinator {
                     logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
                 } else if (name === 'evaluate_math_expression' && result.success) {
                     logger.math(args.expression, result.result);
-                }
-
-                // Programmatic checks for negative reward
-                if (name === 'evaluate_math_expression' && result.success) {
-                    const val = Number(result.result);
-                    if (!isNaN(val) && val <= 0) {
-                        const hasRewardInHistory = this.chatHistory.some(m => 
-                            m.role === 'user' && m.content.toLowerCase().includes('reward')
-                        );
-                        if (hasRewardInHistory) {
-                            console.log(`[LLM Guardrail] Math expression "${args.expression}" evaluated to non-positive reward: ${val}`);
-                            this.isRewardNegative = true;
-                        }
-                    }
-                } else if (name === 'set_agent_variable' && result.success) {
-                    if (args.name && args.name.toLowerCase().includes('reward')) {
-                        const val = Number(args.value);
-                        if (!isNaN(val) && val <= 0) {
-                            console.log(`[LLM Guardrail] Variable "${args.name}" set to non-positive reward: ${val}`);
-                            this.isRewardNegative = true;
-                        }
-                    }
-                } else if (name === 'move_agent_to_coordinate') {
-                    if (!result.success && result.error && result.error.includes('reward')) {
-                        console.log(`[LLM Guardrail] Move tool failed due to negative reward check: ${result.error}`);
-                        this.isRewardNegative = true;
-                    }
                 }
 
                 return result;
@@ -269,39 +218,18 @@ export class LLMCoordinator {
     }
 
     /**
-     * Resolves the BDI agent ID dynamically.
-     * @returns {string} The BDI agent ID.
-     */
-    getBDIAgentId() {
-        // Try to find a peer whose name contains 'pddl' or starts with 'autobots_pddl'
-        for (const [peerId, peer] of this.beliefs.peers.entries()) {
-            if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('pddl') || peer.name.includes('executor') || peer.name.startsWith('autobots_pddl'))) {
-                return peerId;
-            }
-        }
-        // Fallback to the first peer that is not ourselves
-        for (const peerId of this.beliefs.peers.keys()) {
-            if (peerId !== this.beliefs.me.id) {
-                return peerId;
-            }
-        }
-        // Last fallback to config
-        return AGENT_IDS.BDI_AGENT_ID;
-    }
-
-    /**
-     * Sends a private message to the BDI partner agent to avoid cluttering the public chat.
+     * Sends a private message to other agents to avoid cluttering the public chat.
+     * @param {string} id - The ID of the receiver.
      * @param {Object} payload - Message details.
      */
-    async broadcastP2P(payload) {
+    async P2P(id, payload) {
         const rawString = JSON.stringify(payload);
-        const recipient = this.getBDIAgentId();
 
         try {
-            console.log(`[LLM] Attempting private emitSay to ${recipient}...`);
-            const status = await this.socket.emitSay(recipient, rawString);
+            console.log(`[LLM] Attempting private emitSay to ${id}...`);
+            const status = await this.socket.emitSay(id, rawString);
             if (status === 'successful') {
-                logger.p2p(payload.type, payload, recipient, true);
+                logger.p2p(payload.type, payload, id, true);
                 return;
             }
             console.warn(`[LLM] Private emitSay to ${recipient} returned status: ${status}. Falling back to emitShout.`);
@@ -330,56 +258,33 @@ export class LLMCoordinator {
 
     /**
      * Validates that the parsed JSON object or array conforms to the expected schemas.
-     * @param {any} obj - Parsed JSON value.
+     * @param {any} item - Parsed JSON value.
      * @returns {string|null} Validation error message, or null if valid.
      * @private
      */
-    _validateJsonStructure(obj) {
-        if (!obj || typeof obj !== 'object') {
-            return 'Response must be a JSON object or JSON array';
-        }
-        if (Array.isArray(obj)) {
-            if (obj.length === 0) return 'JSON array cannot be empty';
-            for (let i = 0; i < obj.length; i++) {
-                const err = this._validateSingleObject(obj[i]);
-                if (err) return `Item at index ${i}: ${err}`;
-            }
-            return null;
-        }
-        return this._validateSingleObject(obj);
-    }
-
-    /**
-     * Validates a single instruction object.
-     * @param {Object} item - Candidate instruction object.
-     * @returns {string|null} Validation error message, or null if valid.
-     * @private
-     */
-    _validateSingleObject(item) {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    _validateJsonStructure(item) {
+        if (!item || typeof item !== 'object') {
             return 'Expected a JSON object';
         }
-        if (!item.instruction) {
-            return 'Missing required key: "instruction"';
+        if (!item.type) {
+            return 'Missing required key: "type"';
         }
-        if (item.instruction !== 'answer' && item.instruction !== 'tool') {
-            return `Invalid value for "instruction". Expected "answer" or "tool", got "${item.instruction}"`;
+        if (!(item.type === 'tool' || item.type === 'stop' || item.type === 'answer')) {
+            return `Invalid value for "type". Expected "answer" or "tool" or "stop", got "${item.type}"`;
         }
-        if (item.instruction === 'answer') {
-            if (item.body === undefined) {
-                return 'Missing key "body" for "answer" instruction';
-            }
-            if (this.hasExecutedActionTool && String(item.body).trim() !== '') {
-                return `An action tool was executed. You must return an empty answer body (i.e. body: "") to signal completion, instead of outputting conversational text: "${item.body}"`;
-            }
-        }
-        if (item.instruction === 'tool') {
-            if (!item.name || typeof item.name !== 'string') {
-                return 'Missing or invalid key "name" for "tool" instruction';
-            }
-            if (!item.args || typeof item.args !== 'object' || Array.isArray(item.args)) {
-                return 'Missing or invalid key "args" for "tool" instruction';
-            }
+        switch (item.type) {
+            case "tool":
+                if (!item.name || typeof item.name !== 'string') {
+                    return 'Missing or invalid key "name" for "tool" instruction';
+                }
+                if (!item.args || typeof item.args !== 'object' || Array.isArray(item.args)) {
+                    return 'Missing or invalid key "args" for "tool" instruction';
+                }
+                break;
+            case "answer":
+                if (item.body === undefined) {
+                    return 'Missing key "body" for "answer" instruction';
+                }
         }
         return null;
     }

@@ -152,12 +152,7 @@ export class P2PManager {
                     break;
 
                 case 'INSTRUCT_SAY':
-                    logger.toolCall('instruct_agent_to_say', { message: message.message, adminId: message.adminId });
-                    if (message.adminId) {
-                        await this.socket.emitSay(message.adminId, message.message);
-                    } else {
-                        await this.socket.emitShout(message.message);
-                    }
+                    await this.socket.emitSay(AGENT_IDS.ADMIN_ID, message.message);
                     break;
 
                 case 'SET_VARIABLE':
@@ -174,33 +169,7 @@ export class P2PManager {
      * @returns {string|null} Peer ID.
      */
     getPeerAgentId() {
-        const isBdiMe = this.beliefs.me.id === AGENT_IDS.BDI_AGENT_ID || (this.beliefs.me.name && (this.beliefs.me.name.includes('pddl') || this.beliefs.me.name.includes('executor') || this.beliefs.me.name.startsWith('autobots_pddl')));
-        
-        if (isBdiMe) {
-            // We are BDI executor. Try to find LLM coordinator.
-            for (const [peerId, peer] of this.beliefs.peers.entries()) {
-                if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('llm') || peer.name.includes('coordinator') || peer.name.startsWith('autobots_llm'))) {
-                    return peerId;
-                }
-            }
-            // Fallback to the first peer that is not ourselves
-            for (const peerId of this.beliefs.peers.keys()) {
-                if (peerId !== this.beliefs.me.id) return peerId;
-            }
-            return AGENT_IDS.LLM_AGENT_ID;
-        } else {
-            // We are LLM coordinator. Try to find BDI executor.
-            for (const [peerId, peer] of this.beliefs.peers.entries()) {
-                if (peerId !== this.beliefs.me.id && peer.name && (peer.name.includes('pddl') || peer.name.includes('executor') || peer.name.startsWith('autobots_pddl'))) {
-                    return peerId;
-                }
-            }
-            // Fallback to the first peer that is not ourselves
-            for (const peerId of this.beliefs.peers.keys()) {
-                if (peerId !== this.beliefs.me.id) return peerId;
-            }
-            return AGENT_IDS.BDI_AGENT_ID;
-        }
+        return (this.beliefs.me.id === AGENT_IDS.BDI_AGENT_ID) ? AGENT_IDS.LLM_AGENT_ID : AGENT_IDS.BDI_AGENT_ID;
     }
 
     /**
