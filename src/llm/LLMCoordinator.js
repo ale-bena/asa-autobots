@@ -214,23 +214,14 @@ export class LLMCoordinator {
      */
     async executeTool(name, args) {
         logger.toolCall(name, args);
-        const handler = TOOLS_REGISTRY[name];
-        if (handler) {
+        const tool = TOOLS_REGISTRY[name];
+        if (tool) {
             try {
-                // Check if it's an action tool
-                const isActionTool = [
-                    'move_agent_to_coordinate',
-                    'apply_agent_rules',
-                    'cooperate_with_agent',
-                    'instruct_agent_to_say',
-                    'set_agent_variable'
-                ].includes(name);
-
-                if (isActionTool) {
+                if (tool.isAction) {
                     this.hasExecutedActionTool = true;
                 }
 
-                const result = await handler(args, this);
+                const result = await tool.handler(args, this);
 
                 // Specific logger category triggers
                 if (name === 'move_agent_to_coordinate' && result.success) {

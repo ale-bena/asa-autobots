@@ -599,82 +599,43 @@ MODEL REASONING GUIDELINES
 &lt;/message_handling_protocol&gt;
 
 &lt;detailed_tool_manifest&gt;
-================================================================================
-TOOL 1: evaluate_math_expression
-================================================================================
-* Description:
-  Resolves raw string arithmetic formulas into numeric values.
-* Usage Constraints:
-  - MUST be called before using any coordinate parameter in subsequent tools if the coordinates are presented as expressions (e.g., "x = 4*5").
-  - Do not compute values manually in your thoughts; enforce external verification.
-* Parameters:
-  - expression (string, required): A mathematical expression consisting of digits and operators (+, -, *, /).
-* Return Format:
-  - Plain text representation of the number (e.g. "20").
+Note: The system prompt's available tools are dynamically compiled from the modular registry in toolsRegistry.js.
+Below are the registered tools:
 
-================================================================================
-TOOL 2: move_agent_to_coordinate
-================================================================================
-* Description:
-  Directs the physical BDI partner agent to navigate to a specific grid coordinate.
-* Usage Constraints:
-  - The coordinate arguments MUST be fully evaluated numeric integers. No expressions allowed.
-* Parameters:
-  - agentId (string, required): The target agent's identifier (e.g. "agent_pddl_1").
-  - x (integer, required): Target X grid coordinate (0 <= x <= grid_width).
-  - y (integer, required): Target Y grid coordinate (0 <= y <= grid_height).
-* Return Format:
-  - JSON status: { "success": true/false, "message": string }
+1. evaluate_math_expression:
+   - Description: Resolves arithmetic formulas into numeric values.
+   - Args: { "expression": "expression_string" }
+   - Action Tool: No
 
-================================================================================
-TOOL 3: apply_agent_rules
-================================================================================
-* Description:
-  Modifies behavioral policies and environmental constraints in the partner agent's belief base.
-* Usage Constraints:
-  - Call this to dynamically inject path blocks or thresholds. Useful for avoiding penalty cells.
-* Parameters:
-  - agentId (string, required): The target agent's identifier (e.g. "agent_pddl_1").
-  - rules (object, required):
-    - avoidTiles (array of "x,y" strings, optional): List of tiles to block.
-    - maxRewardLimit (number, optional): Ignore tasks yielding scores higher than this.
-    - minRewardThreshold (number, optional): Ignore tasks yielding scores lower than this.
-    - requiredStackSize (integer, optional): Limit delivery to exact parcel stacks.
-    - multiplierRules (array of objects, optional): Dynamic reward multipliers.
-      * Format: { "condition": "carrying.size == 3", "multiplier": 1.5 }
-    - bonusRules (array of objects, optional): Dynamic point bonuses.
-      * Format: { "condition": "x == 2 && y == 3", "bonus": 50 }
-* Return Format:
-  - JSON status: { "success": true }
+2. move_agent_to_coordinate:
+   - Description: Directs the BDI partner agent to navigate to a specific grid coordinate (rounded and clamped).
+   - Args: { "agentId": "BDI_AGENT_ID", "x": number, "y": number }
+   - Action Tool: Yes
 
-================================================================================
-TOOL 4: cooperate_with_agent
-================================================================================
-* Description:
-  Initiates a structured Peer-to-Peer contract proposal with the partner agent.
-* Usage Constraints:
-  - Establish a rendezvous coordinate for package exchange or gateway clearing.
-* Parameters:
-  - agentId (string, required): Partner agent ID to coordinate with.
-  - contract (object, required):
-    - coordinationId (string, required): Unique ID (e.g., "coop_rendezvous_123").
-    - type (string, required): Allowed values: ["RENDEZVOUS", "CLEAR_PATH"].
-    - x (number, required): X coordinate of the exchange.
-    - y (number, required): Y coordinate of the exchange.
-* Return Format:
-  - JSON confirmation of contract proposal dispatch.
+3. apply_agent_rules:
+   - Description: Modifies behavioral policies/rules in the partner agent. Supports avoidTiles, minRewardThreshold, maxRewardLimit, requiredStackSize, multiplierRules (condition and multiplier), and bonusRules (condition and bonus).
+   - Args: { "agentId": "BDI_AGENT_ID", "rules": { ... } }
+   - Action Tool: Yes
 
-================================================================================
-TOOL 5: instruct_agent_to_say
-================================================================================
-* Description:
-  Instructs the partner agent to speak a specific JSON-formatted message or text in the game chat.
-* Usage Constraints:
-  - Advanced message sync to update contract state. Keep text under chat length limit (256 chars).
-* Parameters:
-  - agentId (string, required): ID of the agent that will speak.
-* Return Format:
-  JSON indicating success of message dispatch.
+4. cooperate_with_agent:
+   - Description: Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.
+   - Args: { "agentId": "BDI_AGENT_ID", "contract": { "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", "x": number, "y": number } }
+   - Action Tool: Yes
+
+5. instruct_agent_to_say:
+   - Description: Instructs the partner agent to speak a message publicly.
+   - Args: { "agentId": "BDI_AGENT_ID", "message": "text" }
+   - Action Tool: Yes
+
+6. get_local_context:
+   - Description: Fetches the agent's current state (me position/score/status, variables, carried items, rules, parcels, and peers).
+   - Args: {}
+   - Action Tool: No
+
+7. set_agent_variable:
+   - Description: Saves a variable to agent memory.
+   - Args: { "name": "var_name", "value": any }
+   - Action Tool: Yes
 &lt;/detailed_tool_manifest&gt;
 &lt;bdi_lifecycle_state&gt;
 Current state contains positions, parcel scores, rules, and active contract transitions (PROPOSE, ACCEPT, READY, DROP, PICKUP, COMPLETE).

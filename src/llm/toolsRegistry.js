@@ -177,6 +177,32 @@ export const TOOLS_REGISTRY = {
             });
             return { success: true, message: `Successfully set variable '${args.name}' to ${JSON.stringify(args.value)}` };
         }
+    },
+
+    hold_agent: {
+        description: "Stops/pauses the partner agent (red light). The agent will cease all movement and actions until explicitly resumed. Use this for 'stop', 'freeze', 'red light', or 'hold' commands.",
+        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}" }`,
+        isAction: true,
+        handler: async (args, coordinator) => {
+            coordinator.beliefs.hold = true;
+            await coordinator.broadcastP2P({
+                type: 'HOLD'
+            });
+            return { success: true, message: 'Agent paused (HOLD state activated).' };
+        }
+    },
+
+    resume_agent: {
+        description: "Resumes the partner agent (green light). Cancels a previous hold and lets the agent continue normal operation. Use this for 'go', 'resume', 'green light', or 'continue' commands.",
+        getArgsSchema: () => `{ "agentId": "${AGENT_IDS.BDI_AGENT_ID}" }`,
+        isAction: true,
+        handler: async (args, coordinator) => {
+            coordinator.beliefs.hold = false;
+            await coordinator.broadcastP2P({
+                type: 'RESUME'
+            });
+            return { success: true, message: 'Agent resumed (HOLD state deactivated).' };
+        }
     }
 };
 

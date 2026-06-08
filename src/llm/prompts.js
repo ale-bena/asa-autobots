@@ -68,37 +68,7 @@ If the user asks multiple distinct questions/requests, return a JSON array conta
 </response_format>
 
 <available_tools>
-1. evaluate_math_expression
-   - Description: Resolves arithmetic formulas into numeric values.
-   - Args: { "expression": "expression_string" }
-2. move_agent_to_coordinate
-   - Description: Directs the BDI partner agent to navigate to a specific grid coordinate.
-   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "x": number, "y": number }
-3. apply_agent_rules
-   - Description: Modifies behavioral policies/rules in the partner agent. Supports avoidTiles, minRewardThreshold, maxRewardLimit, requiredStackSize, multiplierRules (condition and multiplier), and bonusRules (condition and bonus).
-   - Args: { 
-       "agentId": "${AGENT_IDS.BDI_AGENT_ID}", 
-       "rules": { 
-         "avoidTiles": ["x,y", ...], 
-         "minRewardThreshold": number, 
-         "maxRewardLimit": number,
-         "requiredStackSize": number,
-         "multiplierRules": [ { "condition": "carrying.size == 3", "multiplier": 2 } ],
-         "bonusRules": [ { "condition": "path.traverses_15_15", "bonus": -200 } ]
-       } 
-     }
-4. cooperate_with_agent
-   - Description: Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.
-   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "contract": { "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", "x": number, "y": number } }
-5. instruct_agent_to_say
-   - Description: Instructs the partner agent to speak a message publicly.
-   - Args: { "agentId": "${AGENT_IDS.BDI_AGENT_ID}", "message": "text" }
-6. get_local_context
-   - Description: Fetches the agent's current state (me position/score/status, variables, carried items, rules, parcels, and peers).
-   - Args: {}
-7. set_agent_variable
-   - Description: Saves a variable to agent memory.
-   - Args: { "name": "var_name", "value": any }
+${generateToolsPrompt()}
 </available_tools>
 
 <few_shot_examples>
