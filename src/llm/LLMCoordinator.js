@@ -232,7 +232,7 @@ export class LLMCoordinator {
                 logger.p2p(payload.type, payload, id, true);
                 return;
             }
-            console.warn(`[LLM] Private emitSay to ${recipient} returned status: ${status}. Falling back to emitShout.`);
+            console.warn(`[LLM] Private emitSay to ${id} returned status: ${status}. Falling back to emitShout.`);
         } catch (e) {
             console.error(`[LLM] Private emitSay failed with error: ${e.message}. Falling back to emitShout.`);
         }
@@ -248,12 +248,64 @@ export class LLMCoordinator {
      * @private
      */
     _cleanJsonResponse(text) {
-        let cleaned = text.trim();
-        if (cleaned.startsWith('```')) {
-            cleaned = cleaned.replace(/^```(?:json)?\n?/i, '');
-            cleaned = cleaned.replace(/\n?```$/, '');
+        try {
+            let cleaned = text.trim();
+
+            // 1. Strip reasoning tags or extract answer tags if present
+            const answerMatch = cleaned.match(/\[ANSWER\]([\s\S]*?)\[\/ANSWER\]/i);
+            if (answerMatch) {
+                cleaned = answerMatch[1].trim();
+            } else {
+                cleaned = cleaned.replace(/\[REASONING\][\s\S]*?\[\/REASONING\]/i, '').trim();
+            }
+
+            // 2. Remove standard markdown json block wrappers if they surround the remaining text
+            if (cleaned.startsWith('```')) {
+                cleaned = cleaned.replace(/^```(?:json)?\n?/i, '');
+                cleaned = cleaned.replace(/\n?```$/, '');
+                cleaned = cleaned.trim();
+            }
+
+            // 3. Extract exactly the first balanced JSON object
+            let firstOpenBrace = cleaned.indexOf('{');
+            if (firstOpenBrace !== -1) {
+                let braceCount = 0;
+                let inStringChar = null; // can be '"', "'", or '`'
+                let escape = false;
+                for (let i = firstOpenBrace; i < cleaned.length; i++) {
+                    const char = cleaned[i];
+                    if (escape) {
+                        escape = false;
+                        continue;
+                    }
+                    if (char === '\\') {
+                        escape = true;
+                        continue;
+                    }
+                    if (inStringChar) {
+                        if (char === inStringChar) {
+                            inStringChar = null;
+                        }
+                    } else {
+                        if (char === '"' || char === "'" || char === '`') {
+                            inStringChar = char;
+                        } else if (char === '{') {
+                            braceCount++;
+                        } else if (char === '}') {
+                            braceCount--;
+                            if (braceCount === 0) {
+                                cleaned = cleaned.substring(firstOpenBrace, i + 1);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            return cleaned.trim();
+        } catch (e) {
+            console.error('[LLM] Error while cleaning JSON response:', e.message);
+            return text.trim();
         }
-        return cleaned.trim();
     }
 
     /**

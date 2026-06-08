@@ -50,8 +50,10 @@ Pre-compiled execution plans represented as generator functions:
 </p>
 
 <h3>2.1. NavigateTo</h3>
-<p class="commentable" data-comment-id="nav-to-desc">Routes an agent to coordinates while respecting active policy constraints (avoided cells, directional arrows).</p>
-<pre><code class="language-javascript">function* NavigateTo(beliefs, targetX, targetY) {
+<p class="commentable" data-comment-id="nav-to-desc">Routes an agent to coordinates while respecting active policy constraints (avoided cells, directional arrows) and Manhattan distance radius.</p>
+<pre><code class="language-javascript">function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
+    // Check if within radius to target. If so, succeed immediately.
+    // If not, find closest walkable, obstacle-free tile in radius and route to it.
     const path = beliefs.grid.findAStarPath(
         beliefs.me.x, beliefs.me.y, targetX, targetY, beliefs.policy
     );
@@ -79,6 +81,20 @@ Pre-compiled execution plans represented as generator functions:
     const escape = beliefs.grid.findAdjacentClearTile(x, y);
     yield* NavigateTo(beliefs, escape.x, escape.y);
     yield { action: 'say', payload: { type: 'RELEASE_CARGO', coopId } };
+}</code></pre>
+
+<h3>2.4. Handoff</h3>
+<p class="commentable" data-comment-id="handoff-desc">Navigates to the handoff region, drops cargo, steps aside, waits for peer, returns to collect swapped cargo, and marks handoffCompleted.</p>
+<pre><code class="language-javascript">function* Handoff(beliefs, hx, hy, coopId) {
+    yield* NavigateTo(beliefs, hx, hy, radius);
+    while (beliefs.carried.length > 0) yield { action: 'putdown' };
+    const escape = beliefs.grid.findAdjacentClearTile(hx, hy);
+    yield* NavigateTo(beliefs, escape.x, escape.y);
+    yield { action: 'say', payload: { type: 'SIGNAL_READY', coopId } };
+    while (!peerReady) yield { action: 'wait' };
+    yield* NavigateTo(beliefs, hx, hy);
+    while (beliefs.carried.length < capacity) yield { action: 'pickup' };
+    beliefs.variables.handoffCompleted = true;
 }</code></pre>
 </section>
 
@@ -113,8 +129,11 @@ Messages are serialized JSON strings sent over the standard game chat.
 </tr>
 <tr class="commentable" data-comment-id="msg-propose">
 <td><code>PROPOSE_CONTRACT</code></td>
-<td><code>{"type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y"}</code></td>
-<td>Proposes a handoff or corridor clearing task.</td>
+<td><code>{"type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y", "radius", "holdDuration"}</code></td>
+<td>Proposes a handoff, rendezvous, or corridor clearing task with optional radius/timers.</td>
+<td><code>MOVE_TO</code></td>
+<td><code>{"type": "MOVE_TO", "x", "y", "holdOnArrival", "holdDuration"}</code></td>
+<td>Commands movement with optional timer pause on arrival.</td>
 </tr>
 <tr class="commentable" data-comment-id="msg-accept">
 <td><code>ACCEPT_CONTRACT</code></td>
@@ -134,7 +153,7 @@ Messages are serialized JSON strings sent over the standard game chat.
 <tr class="commentable" data-comment-id="msg-close">
 <td><code>CLOSE_CONTRACT</code></td>
 <td><code>{"type": "CLOSE_CONTRACT", "coopId"}</code></td>
-<td>Handoff complete; returns both to standard queues.</td>
+<td>Handoff/cooperation complete; returns both to standard queues.</td>
 </tr>
 <tr class="commentable" data-comment-id="msg-lock">
 <td><code>LOCK_TARGET</code></td>
@@ -146,6 +165,11 @@ Messages are serialized JSON strings sent over the standard game chat.
 <td><code>{"type": "RELEASE_TARGET", "targetId"}</code></td>
 <td>Releases a locked target.</td>
 </tr>
+<tr class="commentable" data-comment-id="msg-apply-custom-rule">
+<td><code>APPLY_CUSTOM_PARCEL_RULE</code></td>
+<td><code>{"type": "APPLY_CUSTOM_PARCEL_RULE", "rule"}</code></td>
+<td>Sets dynamically evaluated parcel value policies.</td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -156,16 +180,24 @@ Messages are serialized JSON strings sent over the standard game chat.
 <div class="section-num">4</div>
 <h2>AST Policy Rules Schema</h2>
 </div>
-<p class="commentable" data-comment-id="ast-desc">
-Level 2 challenge restrictions are applied to Agent 1 via the tool call <code>apply_agent_rules(agentId, rules)</code>:
-</p>
-<pre><code class="language-json">{
+ <h3>4.1. General Evaluation Engine Identifiers</h3>
+ <p class="commentable" data-comment-id="ast-desc">
+ Level 2/3 challenge restrictions are evaluated by checking AST condition assertions at every tick. Standard identifiers supported:
+ </p>
+ <ul>
+ <li><code>x</code>, <code>y</code>: Current agent coordinate.</li>
+ <li><code>score</code>: Current agent score.</li>
+ <li><code>carrying.size</code> / <code>stack_size</code>: Current inventory count.</li>
+ <li><code>parcel.id</code>, <code>parcel.reward</code>, <code>parcel.x</code>, <code>parcel.y</code>, <code>parcel.carriedBy</code>: Candidate/carried parcel properties.</li>
+ <li><code>parcel.previouslyCarriedByOther</code>: Evaluates to true if the parcel history contains other agent IDs.</li>
+ </ul>
+ <pre><code class="language-json">{
   "avoidTiles": ["x,y"],
   "maxRewardLimit": 100,
   "minRewardThreshold": 5,
   "requiredStackSize": 3,
   "multiplierRules": [
-    { "condition": "carrying.size == 3", "multiplier": 2.0 }
+    { "condition": "parcel.previouslyCarriedByOther == true", "multiplier": 0.5 }
   ],
   "bonusRules": [
     { "condition": "x == 2 && y == 3", "bonus": 100 }

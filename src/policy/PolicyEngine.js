@@ -49,6 +49,28 @@ function resolveIdentifier(name, state, localVars = {}) {
 
     const beliefs = state.beliefs || state;
 
+    if (name.startsWith('parcel.')) {
+        const parcel = localVars.parcel || state.parcel;
+        if (!parcel) return 0;
+        
+        if (name === 'parcel.previouslyCarriedByOther') {
+            if (beliefs.parcelHistory) {
+                const history = beliefs.parcelHistory.get(parcel.id);
+                if (history) {
+                    const myId = beliefs.me ? beliefs.me.id : '';
+                    return Array.from(history).some(agentId => agentId !== myId);
+                }
+            }
+            return false;
+        }
+
+        const prop = name.split('.')[1];
+        if (parcel[prop] !== undefined) {
+            return parcel[prop];
+        }
+        return 0;
+    }
+
     switch (name) {
         case 'x':
             return beliefs.me ? beliefs.me.x : 0;

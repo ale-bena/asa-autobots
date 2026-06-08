@@ -32,7 +32,8 @@ export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
         carried: {
             length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : beliefs.carried.length
         },
-        path: projectedState.path || []
+        path: projectedState.path || [],
+        parcel: projectedState.parcel || null
     };
 
     // 1. Apply multiplier rules
@@ -84,6 +85,10 @@ export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
 export function selectBestGoal(beliefs, engineState) {
     const engineUpdates = {};
 
+    if (beliefs.carried.length === 0) {
+        beliefs.variables.handoffCompleted = false;
+    }
+
     // 1. Prioritize coordinator direct MOVE_TO commands
     const adminMove = beliefs.activeContracts.get('admin_move');
     if (adminMove && adminMove.status === 'ACTIVE') {
@@ -96,17 +101,29 @@ export function selectBestGoal(beliefs, engineState) {
         };
     }
 
-    // 2. Prioritize active cooperative contracts (e.g. RENDEZVOUS)
+    // 2. Prioritize active cooperative contracts (e.g. RENDEZVOUS / HANDOFF)
     for (const [coopId, contract] of beliefs.activeContracts.entries()) {
         if (coopId === 'admin_move') continue;
         if (contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY') {
-            return {
-                type: 'rendezvous',
-                targetId: coopId,
-                x: contract.x,
-                y: contract.y,
-                engineUpdates: null
-            };
+            if (contract.type === 'HANDOFF') {
+                if (beliefs.carried.length > 0 && !beliefs.variables.handoffCompleted) {
+                    return {
+                        type: 'handoff',
+                        targetId: coopId,
+                        x: contract.x,
+                        y: contract.y,
+                        engineUpdates: null
+                    };
+                }
+            } else {
+                return {
+                    type: 'rendezvous',
+                    targetId: coopId,
+                    x: contract.x,
+                    y: contract.y,
+                    engineUpdates: null
+                };
+            }
         }
     }
 
@@ -187,22 +204,22 @@ export function selectBestGoal(beliefs, engineState) {
         const atDynamicLimit = (beliefs.carried.length >= dynamicCapacityLimit);
 
         // Compute utility of delivering now, adjusted by policy rules
-        let carriedRewardSum = 0;
+        let carriedValueAtDelivery = 0;
         for (const cid of beliefs.carried) {
             const cp = beliefs.parcels.get(cid);
             if (cp) {
-                carriedRewardSum += cp.reward;
+                const cpDecay = decayEnabled ? (T_direct * decayPerMs) : 0;
+                const cpVal = Math.max(0, cp.reward - cpDecay);
+                carriedValueAtDelivery += evaluatePolicyReward(beliefs, cpVal, {
+                    carriedSize: beliefs.carried.length,
+                    x: deliveryZone ? deliveryZone.x : beliefs.me.x,
+                    y: deliveryZone ? deliveryZone.y : beliefs.me.y,
+                    path: deliveryPath || [],
+                    parcel: cp
+                });
             }
         }
-
-        const carriedDecay = decayEnabled ? (T_direct * decayPerMs) * beliefs.carried.length : 0;
-        const carriedValueAtDelivery = Math.max(0, carriedRewardSum - carriedDecay);
-        const utilityDeliver = evaluatePolicyReward(beliefs, carriedValueAtDelivery, {
-            carriedSize: beliefs.carried.length,
-            x: deliveryZone ? deliveryZone.x : beliefs.me.x,
-            y: deliveryZone ? deliveryZone.y : beliefs.me.y,
-            path: deliveryPath || []
-        }) / (T_direct + 1);
+        const utilityDeliver = carriedValueAtDelivery / (T_direct + 1);
 
         let bestPickup = null;
         let bestPickupUtility = -Infinity;
@@ -255,13 +272,27 @@ export function selectBestGoal(beliefs, engineState) {
             for (const cid of beliefs.carried) {
                 const cp = beliefs.parcels.get(cid);
                 if (cp) {
-                    if (decayEnabled) {
-                        carriedRewardAfterDetour += Math.max(0, cp.reward - ((T_detour + safetyMarginMs) * decayPerMs));
-                        carriedRewardDirect += Math.max(0, cp.reward - (T_direct * decayPerMs));
-                    } else {
-                        carriedRewardAfterDetour += cp.reward;
-                        carriedRewardDirect += cp.reward;
-                    }
+                    const cpDecayDetour = decayEnabled ? ((T_detour + safetyMarginMs) * decayPerMs) : 0;
+                    const cpDecayDirect = decayEnabled ? (T_direct * decayPerMs) : 0;
+                    
+                    const valDetour = Math.max(0, cp.reward - cpDecayDetour);
+                    const valDirect = Math.max(0, cp.reward - cpDecayDirect);
+                    
+                    carriedRewardAfterDetour += evaluatePolicyReward(beliefs, valDetour, {
+                        carriedSize: beliefs.carried.length + 1,
+                        x: deliveryZoneFromParcel.x,
+                        y: deliveryZoneFromParcel.y,
+                        path: detourPath,
+                        parcel: cp
+                    });
+                    
+                    carriedRewardDirect += evaluatePolicyReward(beliefs, valDirect, {
+                        carriedSize: beliefs.carried.length,
+                        x: deliveryZone ? deliveryZone.x : beliefs.me.x,
+                        y: deliveryZone ? deliveryZone.y : beliefs.me.y,
+                        path: deliveryPath || [],
+                        parcel: cp
+                    });
                 }
             }
 
@@ -273,10 +304,18 @@ export function selectBestGoal(beliefs, engineState) {
                 newParcelRewardAfterDetour = parcel.reward;
             }
 
-            const totalRewardAfterDetour = carriedRewardAfterDetour + newParcelRewardAfterDetour;
+            const newParcelRewardAfterDetourVal = evaluatePolicyReward(beliefs, newParcelRewardAfterDetour, {
+                carriedSize: beliefs.carried.length + 1,
+                x: deliveryZoneFromParcel.x,
+                y: deliveryZoneFromParcel.y,
+                path: detourPath,
+                parcel: parcel
+            });
+
+            const totalRewardAfterDetour = carriedRewardAfterDetour + newParcelRewardAfterDetourVal;
             const totalRewardDirect = carriedRewardDirect;
 
-            const canDeliverInTimeAfterDetour = (newParcelRewardAfterDetour > 0) && (totalRewardAfterDetour >= totalRewardDirect * 0.8);
+            const canDeliverInTimeAfterDetour = (newParcelRewardAfterDetourVal > 0) && (totalRewardAfterDetour >= totalRewardDirect * 0.8);
             
             const extraSteps = (distToParcel + deliveryDistFromP) - deliveryDist;
             const isMovingBackwards = (deliveryDistFromP > deliveryDist);
@@ -299,13 +338,7 @@ export function selectBestGoal(beliefs, engineState) {
                 continue;
             }
 
-            const remainingReward = Math.max(0, totalRewardAfterDetour);
-            const adjustedDetourReward = evaluatePolicyReward(beliefs, remainingReward, {
-                carriedSize: beliefs.carried.length + 1,
-                x: deliveryZoneFromParcel.x,
-                y: deliveryZoneFromParcel.y,
-                path: detourPath
-            });
+            const adjustedDetourReward = totalRewardAfterDetour;
 
             if (adjustedDetourReward <= 0) continue;
 
@@ -402,7 +435,8 @@ export function selectBestGoal(beliefs, engineState) {
             carriedSize: 1,
             x: deliveryZoneForScoring ? deliveryZoneForScoring.x : beliefs.me.x,
             y: deliveryZoneForScoring ? deliveryZoneForScoring.y : beliefs.me.y,
-            path: tripPath
+            path: tripPath,
+            parcel: parcel
         });
         if (adjustedReward <= 0) continue;
 

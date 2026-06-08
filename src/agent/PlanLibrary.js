@@ -184,7 +184,7 @@ export function findAdjacentClearTile(beliefs, x, y) {
  * @param {number} targetY - Target Y coordinate.
  * @yields {Object} Yields move action steps.
  */
-export function* NavigateTo(beliefs, targetX, targetY) {
+export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
     if (!beliefs.map) return false;
 
     // Ensure target coordinates are whole integers within map bounds
@@ -193,25 +193,67 @@ export function* NavigateTo(beliefs, targetX, targetY) {
     targetX = Math.max(0, Math.min(targetX, beliefs.map.width - 1));
     targetY = Math.max(0, Math.min(targetY, beliefs.map.height - 1));
 
-    if (Math.round(beliefs.me.x) === targetX && Math.round(beliefs.me.y) === targetY) {
+    // Check if we are already within Manhattan distance radius of the target coordinates
+    const distanceToTarget = Math.abs(Math.round(beliefs.me.x) - targetX) + Math.abs(Math.round(beliefs.me.y) - targetY);
+    if (distanceToTarget <= radius) {
         beliefs.me.nextStep = null;
         beliefs.me.path = [];
         return true;
     }
 
+    let actualTargetX = targetX;
+    let actualTargetY = targetY;
+
+    if (radius > 0) {
+        // Find the best walkable tile within radius of the target
+        let bestTile = null;
+        let minDistance = Infinity;
+
+        for (let dx = -radius; dx <= radius; dx++) {
+            const maxDy = radius - Math.abs(dx);
+            for (let dy = -maxDy; dy <= maxDy; dy++) {
+                const tx = targetX + dx;
+                const ty = targetY + dy;
+
+                if (tx >= 0 && tx < beliefs.map.width && ty >= 0 && ty < beliefs.map.height) {
+                    if (beliefs.map.isWalkableTile(tx, ty)) {
+                        const hasCrate = Array.from(beliefs.crates.values()).some(c => Math.round(c.x) === tx && Math.round(c.y) === ty);
+                        const distFromMe = Math.abs(Math.round(beliefs.me.x) - tx) + Math.abs(Math.round(beliefs.me.y) - ty);
+                        if (!hasCrate && distFromMe < minDistance) {
+                            minDistance = distFromMe;
+                            bestTile = { x: tx, y: ty };
+                        }
+                    }
+                }
+            }
+        }
+
+        if (bestTile) {
+            actualTargetX = bestTile.x;
+            actualTargetY = bestTile.y;
+            
+            // Check if we are already at this best tile
+            if (Math.round(beliefs.me.x) === actualTargetX && Math.round(beliefs.me.y) === actualTargetY) {
+                beliefs.me.nextStep = null;
+                beliefs.me.path = [];
+                return true;
+            }
+        }
+    }
+
     let path = findAStarPath(
         beliefs.map,
         { x: beliefs.me.x, y: beliefs.me.y },
-        { x: targetX, y: targetY },
+        { x: actualTargetX, y: actualTargetY },
         beliefs.policyRules,
         beliefs
     );
 
     if (!path || path.length < 2) {
-        const tileCode = beliefs.map.getTileCode(targetX, targetY);
+        const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
         // Do not block delivery (2) or spawn (1) zones
         if (tileCode !== 1 && tileCode !== 2) {
-            beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+            beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
         }
         beliefs.me.nextStep = null;
         beliefs.me.path = [];
@@ -227,14 +269,14 @@ export function* NavigateTo(beliefs, targetX, targetY) {
             path = findAStarPath(
                 beliefs.map,
                 { x: beliefs.me.x, y: beliefs.me.y },
-                { x: targetX, y: targetY },
+                { x: actualTargetX, y: actualTargetY },
                 beliefs.policyRules,
                 beliefs
             );
             if (!path || path.length < 2) {
-                const tileCode = beliefs.map.getTileCode(targetX, targetY);
+                const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
                 if (tileCode !== 1 && tileCode !== 2) {
-                    beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+                    beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
                 }
                 beliefs.me.nextStep = null;
                 beliefs.me.path = [];
@@ -255,14 +297,14 @@ export function* NavigateTo(beliefs, targetX, targetY) {
             path = findAStarPath(
                 beliefs.map,
                 { x: beliefs.me.x, y: beliefs.me.y },
-                { x: targetX, y: targetY },
+                { x: actualTargetX, y: actualTargetY },
                 beliefs.policyRules,
                 beliefs
             );
             if (!path || path.length < 2) {
-                const tileCode = beliefs.map.getTileCode(targetX, targetY);
+                const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
                 if (tileCode !== 1 && tileCode !== 2) {
-                    beliefs.blockedTargets.set(`${targetX},${targetY}`, Date.now());
+                    beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
                 }
                 beliefs.me.nextStep = null;
                 beliefs.me.path = [];

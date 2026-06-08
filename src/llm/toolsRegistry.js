@@ -7,6 +7,61 @@ import { evaluateExpression } from '../policy/PolicyEngine.js';
 import { AGENT_IDS } from '../config/config.js';
 
 /**
+ * Helper to retrieve an agent's current coordinates.
+ */
+function getAgentPosition(agentId, beliefs) {
+    if (agentId === beliefs.me.id) {
+        return { x: beliefs.me.x, y: beliefs.me.y };
+    }
+    const peer = beliefs.peers.get(agentId);
+    if (peer) {
+        return { x: peer.x, y: peer.y };
+    }
+    return null;
+}
+
+/**
+ * Blocking wait until the agent has reached the target coordinates or timed out.
+ */
+async function waitUntilReached(agentId, targetX, targetY, coordinator) {
+    const beliefs = coordinator.beliefs;
+    const initialPos = getAgentPosition(agentId, beliefs);
+    let distance = 10;
+    if (initialPos) {
+        distance = Math.abs(initialPos.x - targetX) + Math.abs(initialPos.y - targetY);
+    }
+    const timeoutMs = Math.max(30000, distance * 2000); // 2 seconds per tile, min 30s
+    const startTime = Date.now();
+
+    console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to reach (${targetX}, ${targetY}). Distance: ${distance}. Timeout: ${timeoutMs / 1000}s`);
+
+    while (Date.now() - startTime < timeoutMs) {
+        const pos = getAgentPosition(agentId, beliefs);
+        if (pos) {
+            const rx = Math.round(pos.x);
+            const ry = Math.round(pos.y);
+            if (rx === targetX && ry === targetY) {
+                console.log(`[LLM Tool Wait] Agent ${agentId} successfully reached (${targetX}, ${targetY}).`);
+                return { success: true, message: `Agent reached (${targetX}, ${targetY})` };
+            }
+        }
+
+        // If it's ourselves and the admin_move contract was cleared (indicating path failure)
+        if (agentId === beliefs.me.id) {
+            if (!beliefs.activeContracts.has('admin_move')) {
+                console.log(`[LLM Tool Wait] admin_move contract cleared for coordinator agent.`);
+                break;
+            }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.warn(`[LLM Tool Wait] Timeout/failure waiting for agent ${agentId} to reach (${targetX}, ${targetY}).`);
+    return { success: false, error: `Agent failed to reach (${targetX}, ${targetY}) within timeout.` };
+}
+
+/**
  * Registry of tool objects.
  * Each tool object contains description, getArgsSchema function, isAction flag, and its handler function.
  */
@@ -22,8 +77,8 @@ export const TOOLS_REGISTRY = {
     },
 
     move_agent_to_coordinate: {
-        description: "Directs an agent to navigate to a specific grid coordinate.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number }`,
+        description: "Directs an agent to navigate to a specific grid coordinate. Set holdOnArrival to true if the agent should pause/stay still immediately upon reaching the destination. You can optionally specify a holdDuration in seconds.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number, "holdOnArrival": boolean, "holdDuration": number | null }`,
         isAction: true,
         handler: async (args, coordinator) => {
             // Guardrail: check if any stored variable related to reward is <= 0
@@ -41,10 +96,24 @@ export const TOOLS_REGISTRY = {
 
             let targetX = Math.round(Number(args.x));
             let targetY = Math.round(Number(args.y));
+            const holdOnArrival = args.holdOnArrival === true;
+            const holdDuration = args.holdDuration ? Number(args.holdDuration) : null;
 
             if (coordinator.beliefs.map) {
                 targetX = Math.max(0, Math.min(targetX, coordinator.beliefs.map.width - 1));
                 targetY = Math.max(0, Math.min(targetY, coordinator.beliefs.map.height - 1));
+            }
+
+            if (args.id === coordinator.beliefs.me.id) {
+                coordinator.beliefs.activeContracts.set('admin_move', {
+                    coopId: 'admin_move',
+                    type: 'MOVE_TO',
+                    x: targetX,
+                    y: targetY,
+                    holdOnArrival: holdOnArrival,
+                    holdDuration: holdDuration,
+                    status: 'ACTIVE'
+                });
             }
 
             await coordinator.P2P(
@@ -52,9 +121,14 @@ export const TOOLS_REGISTRY = {
                 {
                     type: 'MOVE_TO',
                     x: targetX,
-                    y: targetY
+                    y: targetY,
+                    holdOnArrival: holdOnArrival,
+                    holdDuration: holdDuration
                 });
-            return { success: true, message: `Directed agent to (${targetX}, ${targetY})` };
+
+            // Blocking wait until coordinate is reached
+            const result = await waitUntilReached(args.id, targetX, targetY, coordinator);
+            return result;
         }
     },
 
@@ -84,6 +158,9 @@ export const TOOLS_REGISTRY = {
      }`,
         isAction: true,
         handler: async (args, coordinator) => {
+            if (args.id === coordinator.beliefs.me.id) {
+                Object.assign(coordinator.beliefs.policyRules, args.rules);
+            }
             await coordinator.P2P(
                 args.id,
                 {
@@ -95,14 +172,15 @@ export const TOOLS_REGISTRY = {
     },
 
     cooperate_with_agent: {
-        description: "Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.",
+        description: "Proposes a Peer-to-Peer rendezvous, handoff, or gate clearing contract, or cancels/closes active cooperation.",
         getArgsSchema: () => `{ 
             "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
             "contract": { 
-                "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", 
+                "type": "RENDEZVOUS" | "CLEARING" | "HANDOFF" | "CLOSE", 
                 "x": number, 
                 "y": number,
                 "radius": number | null,
+                "holdDuration": number | null
             } 
         }`,
         isAction: true,
@@ -122,16 +200,33 @@ export const TOOLS_REGISTRY = {
                 return { success: true, message: 'Closed active cooperation contracts.' };
             }
 
+            const coopId = contract.coopId || `coop_${Date.now()}`;
+            const radius = contract.radius !== undefined ? Number(contract.radius) : null;
+            const holdDuration = contract.holdDuration !== undefined ? Number(contract.holdDuration) : null;
+
+            // CRITICAL: Store proposed contract locally in coordinator's beliefs so coordinator also acts on it
+            coordinator.beliefs.activeContracts.set(coopId, {
+                coopId: coopId,
+                type: contract.type,
+                x: Number(contract.x),
+                y: Number(contract.y),
+                radius: radius,
+                holdDuration: holdDuration,
+                status: 'ACTIVE'
+            });
+
             await coordinator.P2P(
                 args.id,
                 {
                     type: 'PROPOSE_CONTRACT',
-                    coopId: contract.coopId || `coop_${Date.now()}`,
+                    coopId: coopId,
                     type: contract.type,
                     x: Number(contract.x),
-                    y: Number(contract.y)
+                    y: Number(contract.y),
+                    radius: radius,
+                    holdDuration: holdDuration
                 });
-            return { success: true, message: 'Broadcast proposed contract.' };
+            return { success: true, message: `Broadcast proposed ${contract.type} contract.` };
         }
     },
 
@@ -200,32 +295,132 @@ export const TOOLS_REGISTRY = {
     },
 
     hold_agent: {
-        description: "Stops/pauses an agent (red light). The agent will cease all movement and actions until explicitly resumed. Use this for 'stop', 'freeze', 'red light', or 'hold' commands.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" }`,
+        description: "Stops/pauses an agent (red light). The agent will cease all movement and actions. Use this for 'stop', 'freeze', 'red light', or 'hold' commands. You can specify a duration in seconds to automatically resume.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all", "duration": number | null }`,
         isAction: true,
         handler: async (args, coordinator) => {
-            coordinator.beliefs.hold = true;
-            await coordinator.P2P(
-                args.id,
-                {
-                    type: 'HOLD'
-                });
-            return { success: true, message: 'Agent paused (HOLD state activated).' };
+            const holdId = args.id || 'all';
+            const duration = args.duration ? Number(args.duration) : null;
+
+            if (holdId === 'all' || holdId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.hold = true;
+            }
+            if (holdId === 'all' || holdId === coordinator.getPeerAgentId()) {
+                await coordinator.P2P(
+                    coordinator.getPeerAgentId(),
+                    {
+                        type: 'HOLD'
+                    });
+            }
+
+            if (duration && duration > 0) {
+                console.log(`[LLM Tool] Scheduling automatic resume for ${holdId} in ${duration} seconds.`);
+                setTimeout(async () => {
+                    console.log(`[LLM Tool] Timer expired. Automatically resuming agent(s) [${holdId}].`);
+                    if (holdId === 'all' || holdId === coordinator.beliefs.me.id) {
+                        coordinator.beliefs.hold = false;
+                    }
+                    if (holdId === 'all' || holdId === coordinator.getPeerAgentId()) {
+                        await coordinator.P2P(
+                            coordinator.getPeerAgentId(),
+                            {
+                                type: 'RESUME'
+                            });
+                    }
+
+                    // Auto-clear active RENDEZVOUS contracts on timer expiration
+                    for (const [coopId, contract] of coordinator.beliefs.activeContracts.entries()) {
+                        if (coopId === 'admin_move') continue;
+                        if (contract.type === 'RENDEZVOUS') {
+                            if (holdId === 'all' || holdId === coordinator.getPeerAgentId()) {
+                                await coordinator.P2P(
+                                    coordinator.getPeerAgentId(),
+                                    {
+                                        type: 'CLOSE_CONTRACT',
+                                        coopId: coopId
+                                    });
+                            }
+                            coordinator.beliefs.activeContracts.delete(coopId);
+                        }
+                    }
+                }, duration * 1000);
+            }
+
+            return { success: true, message: `Agent(s) [${holdId}] paused (HOLD state activated)${duration ? ` for ${duration}s` : ''}.` };
         }
     },
 
     resume_agent: {
         description: "Resumes an agent (green light). Cancels a previous hold and lets the agent continue normal operation. Use this for 'go', 'resume', 'green light', or 'continue' commands.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" }`,
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all" }`,
         isAction: true,
         handler: async (args, coordinator) => {
-            coordinator.beliefs.hold = false;
-            await coordinator.P2P(
-                args.id,
-                {
-                    type: 'RESUME'
-                });
-            return { success: true, message: 'Agent resumed (HOLD state deactivated).' };
+            const resumeId = args.id || 'all';
+
+            if (resumeId === 'all' || resumeId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.hold = false;
+            }
+            if (resumeId === 'all' || resumeId === coordinator.getPeerAgentId()) {
+                await coordinator.P2P(
+                    coordinator.getPeerAgentId(),
+                    {
+                        type: 'RESUME'
+                    });
+            }
+
+            // CRITICAL: Automatically close all active RENDEZVOUS contracts to release agents from wait loops
+            for (const [coopId, contract] of coordinator.beliefs.activeContracts.entries()) {
+                if (coopId === 'admin_move') continue;
+                if (contract.type === 'RENDEZVOUS') {
+                    if (resumeId === 'all' || resumeId === coordinator.getPeerAgentId()) {
+                        await coordinator.P2P(
+                            coordinator.getPeerAgentId(),
+                            {
+                                type: 'CLOSE_CONTRACT',
+                                coopId: coopId
+                            });
+                    }
+                    coordinator.beliefs.activeContracts.delete(coopId);
+                }
+            }
+
+            return { success: true, message: `Agent(s) [${resumeId}] resumed and cooperative contracts cleared.` };
+        }
+    },
+
+    apply_custom_parcel_rule: {
+        description: "Applies a custom reward multiplier or bonus modifier for parcels that meet a specific condition (e.g. previously carried by another agent). Example condition: 'parcel.previouslyCarriedByOther == true'.",
+        getArgsSchema: () => `{
+            "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all",
+            "condition": "string",
+            "multiplier": number | null,
+            "bonus": number | null
+        }`,
+        isAction: true,
+        handler: async (args, coordinator) => {
+            const rule = {
+                condition: args.condition,
+                multiplier: args.multiplier !== undefined && args.multiplier !== null ? Number(args.multiplier) : null,
+                bonus: args.bonus !== undefined && args.bonus !== null ? Number(args.bonus) : null
+            };
+
+            const targetId = args.id || 'all';
+
+            if (targetId === 'all' || targetId === coordinator.beliefs.me.id) {
+                if (rule.multiplier !== null) coordinator.beliefs.policyRules.multiplierRules.push(rule);
+                if (rule.bonus !== null) coordinator.beliefs.policyRules.bonusRules.push(rule);
+            }
+
+            if (targetId === 'all' || targetId === coordinator.getPeerAgentId()) {
+                await coordinator.P2P(
+                    coordinator.getPeerAgentId(),
+                    {
+                        type: 'APPLY_CUSTOM_PARCEL_RULE',
+                        rule: rule
+                    });
+            }
+
+            return { success: true, message: `Applied custom parcel rule to ${targetId}.` };
         }
     }
 };

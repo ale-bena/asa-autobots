@@ -147,8 +147,29 @@ export class P2PManager {
                         type: 'MOVE_TO',
                         x: message.x,
                         y: message.y,
+                        holdOnArrival: message.holdOnArrival === true,
+                        holdDuration: message.holdDuration !== undefined ? message.holdDuration : null,
                         status: 'ACTIVE'
                     });
+                    break;
+
+                case 'APPLY_CUSTOM_PARCEL_RULE':
+                    if (message.rule.multiplier !== null) {
+                        this.beliefs.policyRules.multiplierRules.push(message.rule);
+                    }
+                    if (message.rule.bonus !== null) {
+                        this.beliefs.policyRules.bonusRules.push(message.rule);
+                    }
+                    break;
+
+                case 'HOLD':
+                    this.beliefs.hold = true;
+                    console.log(`[P2P] Activated HOLD state for agent ${this.beliefs.me.id}.`);
+                    break;
+
+                case 'RESUME':
+                    this.beliefs.hold = false;
+                    console.log(`[P2P] Deactivated HOLD state for agent ${this.beliefs.me.id}.`);
                     break;
 
                 case 'INSTRUCT_SAY':
@@ -247,6 +268,8 @@ export class P2PManager {
                 type: message.type,
                 x: message.x,
                 y: message.y,
+                radius: message.radius !== undefined ? message.radius : null,
+                holdDuration: message.holdDuration !== undefined ? message.holdDuration : null,
                 status: 'ACCEPTED'
             });
             this.broadcast({ type: 'ACCEPT_CONTRACT', coopId: message.coopId }, senderId);

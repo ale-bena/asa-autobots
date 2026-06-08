@@ -32,6 +32,12 @@ export class BeliefBase {
         this.parcels = new Map();
 
         /**
+         * Map of parcelId -> Set of agentIds who carried it.
+         * @type {Map<string, Set<string>>}
+         */
+        this.parcelHistory = new Map();
+
+        /**
          * Map of agentId -> peer details.
          * @type {Map<string, {id: string, name: string, x: number, y: number, score: number}>}
          */
@@ -370,10 +376,25 @@ export class BeliefBase {
         sensedParcels.forEach(p => {
             sensedParcelMap.set(p.id, p);
             this.parcels.set(p.id, p);
+
+            // Track carriage history
+            if (p.carriedBy) {
+                if (!this.parcelHistory.has(p.id)) {
+                    this.parcelHistory.set(p.id, new Set());
+                }
+                this.parcelHistory.get(p.id).add(p.carriedBy);
+            }
         });
 
         // Ensure all carried parcels exist in this.parcels
         for (const cid of this.carried) {
+            if (!this.parcelHistory.has(cid)) {
+                this.parcelHistory.set(cid, new Set());
+            }
+            if (this.me.id) {
+                this.parcelHistory.get(cid).add(this.me.id);
+            }
+
             if (!this.parcels.has(cid)) {
                 this.parcels.set(cid, {
                     id: cid,

@@ -10,7 +10,7 @@
  * - PddlIntegration.js — crate solving and PDDL recipe execution
  */
 
-import { NavigateTo, CollectAndDeliver, findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone } from './PlanLibrary.js';
+import { NavigateTo, CollectAndDeliver, findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, findAdjacentClearTile } from './PlanLibrary.js';
 import { selectBestGoal, evaluatePolicyReward } from './GoalSelector.js';
 import { shouldPreemptActivePlan } from './PreemptionManager.js';
 import { dispatchAction, getDirection } from './ActionDispatcher.js';
@@ -84,7 +84,7 @@ export class IntentionEngine {
          * @type {boolean}
          */
         this.mustDeliver = false;
-        
+
         /**
          * Cached size of carried inventory to detect changes.
          * @type {number}
@@ -192,6 +192,7 @@ export class IntentionEngine {
         switch (goal.type) {
             case 'admin_move':
                 return (function* (beliefs, tx, ty, engine) {
+                    console.log(`[BDI] admin_move: Starting movement to target tile (${tx}, ${ty}). Current position: (${beliefs.me.x}, ${beliefs.me.y})`);
                     // Primary: try A* with crate awareness
                     let path = findAStarPath(
                         beliefs.map,
@@ -224,28 +225,123 @@ export class IntentionEngine {
                         return;
                     }
 
+                    console.log(`[BDI] admin_move: Path found with length ${path.length}. Executing NavigateTo...`);
+                    const contract = beliefs.activeContracts.get('admin_move');
+                    const holdOnArrival = contract ? contract.holdOnArrival : false;
+                    const holdDuration = contract ? contract.holdDuration : null;
+
                     const success = yield* NavigateTo(beliefs, tx, ty);
                     // Always clear the contract when done — success or not
                     beliefs.activeContracts.delete('admin_move');
                     engine.adminMoveRetries = 0;
-                    if (success) {
-                        console.log(`[BDI] admin_move to (${tx}, ${ty}) completed successfully.`);
+
+                    const reachedX = Math.round(beliefs.me.x);
+                    const reachedY = Math.round(beliefs.me.y);
+                    if (success && reachedX === tx && reachedY === ty) {
+                        console.log(`[BDI] admin_move to (${tx}, ${ty}) completed successfully. Reached target tile (${reachedX}, ${reachedY}).`);
+                        if (holdOnArrival) {
+                            console.log(`[BDI] holdOnArrival is true. Activating HOLD state for agent.`);
+                            beliefs.hold = true;
+                            if (holdDuration && holdDuration > 0) {
+                                console.log(`[BDI] Auto-resume timer scheduled in ${holdDuration} seconds.`);
+                                setTimeout(() => {
+                                    console.log(`[BDI] Auto-resume timer expired. Releasing hold.`);
+                                    beliefs.hold = false;
+                                }, holdDuration * 1000);
+                            }
+                        }
                     } else {
-                        console.log(`[BDI] admin_move to (${tx}, ${ty}) navigation failed. Contract cleared.`);
+                        console.log(`[BDI] admin_move to (${tx}, ${ty}) failed. Ended at (${reachedX}, ${reachedY}). Success flag: ${success}`);
                     }
                 })(this.beliefs, goal.x, goal.y, this);
 
             case 'rendezvous':
                 return (function* (beliefs, tx, ty, coopId) {
-                    const success = yield* NavigateTo(beliefs, tx, ty);
+                    const contract = beliefs.activeContracts.get(coopId);
+                    const radius = (contract && contract.radius !== undefined) ? contract.radius : 0;
+                    const holdDuration = (contract && contract.holdDuration !== undefined) ? contract.holdDuration : null;
+
+                    const success = yield* NavigateTo(beliefs, tx, ty, radius);
                     if (success) {
-                        console.log(`[BDI] Reached rendezvous coordinate (${tx}, ${ty}) for contract ${coopId}. Waiting still...`);
+                        console.log(`[BDI] Reached rendezvous coordinate (${tx}, ${ty}) (radius ${radius}) for contract ${coopId}. Waiting still...`);
+                        
+                        if (holdDuration && holdDuration > 0) {
+                            console.log(`[BDI] Scheduling automatic resume for rendezvous ${coopId} in ${holdDuration} seconds.`);
+                            setTimeout(() => {
+                                console.log(`[BDI] Rendezvous timer expired. Deleting contract ${coopId} to resume.`);
+                                beliefs.activeContracts.delete(coopId);
+                            }, holdDuration * 1000);
+                        }
+
                         while (beliefs.activeContracts.has(coopId)) {
                             yield { action: 'wait' };
                         }
                     } else {
                         console.log(`[BDI] Rendezvous to (${tx}, ${ty}) failed/blocked, retrying...`);
                     }
+                })(this.beliefs, goal.x, goal.y, goal.targetId);
+
+            case 'handoff':
+                return (function* (beliefs, hx, ty, coopId) {
+                    const contract = beliefs.activeContracts.get(coopId);
+                    const radius = (contract && contract.radius !== undefined) ? contract.radius : 0;
+                    
+                    console.log(`[BDI Handoff] Starting handoff. Navigating to (${hx}, ${ty}) with radius ${radius}`);
+                    const reached = yield* NavigateTo(beliefs, hx, ty, radius);
+                    if (!reached) {
+                        console.log(`[BDI Handoff] Failed to navigate to handoff tile (${hx}, ${ty}). Retrying...`);
+                        return;
+                    }
+                    
+                    console.log(`[BDI Handoff] Arrived in handoff zone. Dropping all carried parcels...`);
+                    while (beliefs.carried.length > 0) {
+                        yield { action: 'putdown' };
+                    }
+                    
+                    const escapeTile = findAdjacentClearTile(beliefs, hx, ty);
+                    console.log(`[BDI Handoff] Stepping aside to (${escapeTile.x}, ${escapeTile.y}) to clear space.`);
+                    yield* NavigateTo(beliefs, escapeTile.x, escapeTile.y);
+                    
+                    yield { action: 'say', payload: { type: 'SIGNAL_READY', coopId } };
+                    
+                    console.log(`[BDI Handoff] Cargo dropped. Waiting for peer agent to be ready or parcels to appear...`);
+                    
+                    let peerReady = false;
+                    while (!peerReady) {
+                        const currentContract = beliefs.activeContracts.get(coopId);
+                        if (!currentContract) break;
+                        
+                        const parcelsOnHandoff = Array.from(beliefs.parcels.values()).some(
+                            p => !p.carriedBy && Math.round(p.x) === hx && Math.round(p.y) === ty
+                        );
+                        if (currentContract.status === 'READY' || parcelsOnHandoff) {
+                            peerReady = true;
+                        } else {
+                            yield { action: 'wait' };
+                        }
+                    }
+                    
+                    console.log(`[BDI Handoff] Peer ready or parcels detected. Navigating back to (${hx}, ${ty}) to collect swapped cargo.`);
+                    yield* NavigateTo(beliefs, hx, ty);
+                    
+                    let capacity = beliefs.config?.GAME?.player?.capacity;
+                    if (capacity === undefined || capacity < 0) capacity = Infinity;
+                    
+                    let pickedUpAny = false;
+                    while (beliefs.carried.length < capacity) {
+                        const parcelToPick = Array.from(beliefs.parcels.values()).find(
+                            p => !p.carriedBy && Math.round(p.x) === hx && Math.round(p.y) === ty
+                        );
+                        if (parcelToPick) {
+                            yield { action: 'pickup', target: parcelToPick.id };
+                            pickedUpAny = true;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    console.log(`[BDI Handoff] Swap complete. Picked up cargo: ${pickedUpAny}. Proceeding to deliver.`);
+                    beliefs.variables.handoffCompleted = true;
                 })(this.beliefs, goal.x, goal.y, goal.targetId);
 
             case 'deliver':
