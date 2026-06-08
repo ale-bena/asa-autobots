@@ -72,6 +72,7 @@ export class P2PManager {
                             score: message.payload.score || 0,
                             nextStep: message.payload.nextStep || null,
                             path: message.payload.path || [],
+                            carried: message.payload.carried || [],
                             source: 'p2p',
                             lastSeen: Date.now()
                         });
@@ -136,7 +137,7 @@ export class P2PManager {
                     break;
 
                 case 'APPLY_RULES':
-                    Object.assign(this.beliefs.policyRules, message.rules);
+                    this.beliefs.applyPolicyRules(message.rules);
                     logger.policyUpdate(this.beliefs.me.id || 'me', message.rules);
                     break;
 
@@ -149,6 +150,26 @@ export class P2PManager {
                         y: message.y,
                         holdOnArrival: message.holdOnArrival === true,
                         holdDuration: message.holdDuration !== undefined ? message.holdDuration : null,
+                        status: 'ACTIVE'
+                    });
+                    break;
+
+                case 'PICKUP_PARCEL':
+                    this.beliefs.activeContracts.set('admin_pickup', {
+                        coopId: 'admin_pickup',
+                        type: 'PICKUP',
+                        parcelId: message.parcelId,
+                        status: 'ACTIVE'
+                    });
+                    break;
+
+                case 'DELIVER_PARCEL':
+                    this.beliefs.activeContracts.set('admin_deliver', {
+                        coopId: 'admin_deliver',
+                        type: 'DELIVER',
+                        parcelId: message.parcelId,
+                        x: message.x,
+                        y: message.y,
                         status: 'ACTIVE'
                     });
                     break;

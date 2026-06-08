@@ -16,6 +16,24 @@ export function shouldPreemptActivePlan(currentGoal, activeGenerator, bestGoal, 
     if (!activeGenerator) return true;
     if (!currentGoal) return true;
 
+    // 1. Admin commands handling (highest priority)
+    const isAdminType = (type) => type === 'admin_move' || type === 'admin_pickup' || type === 'admin_deliver';
+
+    if (isAdminType(bestGoal.type)) {
+        if (currentGoal.type !== bestGoal.type || 
+            bestGoal.targetId !== currentGoal.targetId ||
+            bestGoal.x !== currentGoal.x || 
+            bestGoal.y !== currentGoal.y) {
+            return true;
+        }
+    }
+
+    if (isAdminType(currentGoal.type)) {
+        if (!isAdminType(bestGoal.type)) {
+            return false;
+        }
+    }
+
     // If we are in rendezvous, but the contract is no longer active or the goal changed
     if (currentGoal.type === 'rendezvous') {
         if (bestGoal.type !== 'rendezvous' || bestGoal.targetId !== currentGoal.targetId) {
@@ -23,30 +41,21 @@ export function shouldPreemptActivePlan(currentGoal, activeGenerator, bestGoal, 
         }
     }
 
-    // clear_corridor should never be preempted except by admin_move.
-    if (currentGoal.type === 'clear_corridor' && bestGoal.type !== 'admin_move') {
+    // clear_corridor should never be preempted except by admin commands.
+    if (currentGoal.type === 'clear_corridor') {
         return false;
     }
 
-    // admin_move always preempts everything, including a different admin_move coordinate.
-    if (bestGoal.type === 'admin_move') {
-        if (currentGoal.type !== 'admin_move' || 
-            bestGoal.x !== currentGoal.x || 
-            bestGoal.y !== currentGoal.y) {
-            return true;
-        }
-    }
-
     // Cooperative contracts (e.g. rendezvous drop) always preempt normal tasks.
-    const activeContracts = Array.from(beliefs.activeContracts.values());
-    if (activeContracts.length > 0 && currentGoal.type !== 'rendezvous' && currentGoal.type !== 'admin_move') {
+    const hasCoop = Array.from(beliefs.activeContracts.values()).some(
+        c => c.coopId !== 'admin_move' && c.coopId !== 'admin_pickup' && c.coopId !== 'admin_deliver'
+    );
+    if (hasCoop && currentGoal.type !== 'rendezvous' && currentGoal.type !== 'handoff') {
         return true;
     }
 
-    // deliveries preempt everything except admin_move and active deliveries.
-    if (bestGoal.type === 'deliver' && 
-        currentGoal.type !== 'deliver' && 
-        currentGoal.type !== 'admin_move') {
+    // deliveries preempt everything except active deliveries.
+    if (bestGoal.type === 'deliver' && currentGoal.type !== 'deliver') {
         return true;
     }
 
@@ -57,8 +66,7 @@ export function shouldPreemptActivePlan(currentGoal, activeGenerator, bestGoal, 
 
     // pickups preempt patrols.
     if (bestGoal.type === 'pickup' && 
-        (currentGoal.type === 'patrol' || currentGoal.type === 'patrol_spawn') && 
-        currentGoal.type !== 'admin_move') {
+        (currentGoal.type === 'patrol' || currentGoal.type === 'patrol_spawn')) {
         return true;
     }
 

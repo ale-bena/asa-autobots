@@ -101,9 +101,53 @@ export function selectBestGoal(beliefs, engineState) {
         };
     }
 
+    // 1.2 Prioritize coordinator direct PICKUP commands
+    const adminPickup = beliefs.activeContracts.get('admin_pickup');
+    if (adminPickup && adminPickup.status === 'ACTIVE') {
+        const parcel = beliefs.parcels.get(adminPickup.parcelId);
+        if (parcel) {
+            return {
+                type: 'admin_pickup',
+                targetId: adminPickup.parcelId,
+                x: parcel.x,
+                y: parcel.y,
+                engineUpdates: null
+            };
+        } else {
+            console.log(`[BDI] admin_pickup target parcel ${adminPickup.parcelId} not found. Clearing contract.`);
+            beliefs.activeContracts.delete('admin_pickup');
+        }
+    }
+
+    // 1.3 Prioritize coordinator direct DELIVER commands
+    const adminDeliver = beliefs.activeContracts.get('admin_deliver');
+    if (adminDeliver && adminDeliver.status === 'ACTIVE') {
+        let tx = adminDeliver.x;
+        let ty = adminDeliver.y;
+        if (tx === null || ty === null || tx === undefined || ty === undefined) {
+            const zone = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
+            if (zone) {
+                tx = zone.x;
+                ty = zone.y;
+            }
+        }
+        if (tx !== null && ty !== null && tx !== undefined && ty !== undefined) {
+            return {
+                type: 'admin_deliver',
+                targetId: adminDeliver.parcelId,
+                x: tx,
+                y: ty,
+                engineUpdates: null
+            };
+        } else {
+            console.log(`[BDI] admin_deliver: No target destination (no zone found). Clearing contract.`);
+            beliefs.activeContracts.delete('admin_deliver');
+        }
+    }
+
     // 2. Prioritize active cooperative contracts (e.g. RENDEZVOUS / HANDOFF)
     for (const [coopId, contract] of beliefs.activeContracts.entries()) {
-        if (coopId === 'admin_move') continue;
+        if (coopId === 'admin_move' || coopId === 'admin_pickup' || coopId === 'admin_deliver') continue;
         if (contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY') {
             if (contract.type === 'HANDOFF') {
                 if (beliefs.carried.length > 0 && !beliefs.variables.handoffCompleted) {

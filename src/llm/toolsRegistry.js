@@ -62,6 +62,76 @@ async function waitUntilReached(agentId, targetX, targetY, coordinator) {
 }
 
 /**
+ * Blocking wait until the agent has successfully picked up the specified parcel or timed out.
+ */
+async function waitUntilPickedUp(agentId, parcelId, coordinator) {
+    const beliefs = coordinator.beliefs;
+    const timeoutMs = 45000; // 45 seconds
+    const startTime = Date.now();
+
+    console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to pick up parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
+
+    while (Date.now() - startTime < timeoutMs) {
+        if (agentId === beliefs.me.id) {
+            if (beliefs.carried.includes(parcelId)) {
+                console.log(`[LLM Tool Wait] Coordinator successfully picked up parcel ${parcelId}.`);
+                return { success: true, message: `Agent picked up parcel ${parcelId}` };
+            }
+            if (!beliefs.activeContracts.has('admin_pickup')) {
+                console.log(`[LLM Tool Wait] admin_pickup contract cleared for coordinator.`);
+                break;
+            }
+        } else {
+            const peer = beliefs.peers.get(agentId);
+            if (peer && peer.carried && peer.carried.includes(parcelId)) {
+                console.log(`[LLM Tool Wait] Agent ${agentId} successfully picked up parcel ${parcelId}.`);
+                return { success: true, message: `Agent ${agentId} picked up parcel ${parcelId}` };
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.warn(`[LLM Tool Wait] Timeout/failure waiting for agent ${agentId} to pick up parcel ${parcelId}.`);
+    return { success: false, error: `Agent failed to pick up parcel ${parcelId} within timeout.` };
+}
+
+/**
+ * Blocking wait until the agent has successfully delivered/dropped the specified parcel or timed out.
+ */
+async function waitUntilDelivered(agentId, parcelId, coordinator) {
+    const beliefs = coordinator.beliefs;
+    const timeoutMs = 45000; // 45 seconds
+    const startTime = Date.now();
+
+    console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to deliver parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
+
+    while (Date.now() - startTime < timeoutMs) {
+        if (agentId === beliefs.me.id) {
+            if (!beliefs.carried.includes(parcelId)) {
+                console.log(`[LLM Tool Wait] Coordinator successfully delivered parcel ${parcelId}.`);
+                return { success: true, message: `Agent delivered parcel ${parcelId}` };
+            }
+            if (!beliefs.activeContracts.has('admin_deliver')) {
+                console.log(`[LLM Tool Wait] admin_deliver contract cleared for coordinator.`);
+                break;
+            }
+        } else {
+            const peer = beliefs.peers.get(agentId);
+            if (peer) {
+                if (peer.carried && !peer.carried.includes(parcelId)) {
+                    console.log(`[LLM Tool Wait] Agent ${agentId} successfully delivered parcel ${parcelId}.`);
+                    return { success: true, message: `Agent ${agentId} delivered parcel ${parcelId}` };
+                }
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.warn(`[LLM Tool Wait] Timeout/failure waiting for agent ${agentId} to deliver parcel ${parcelId}.`);
+    return { success: false, error: `Agent failed to deliver parcel ${parcelId} within timeout.` };
+}
+
+/**
  * Registry of tool objects.
  * Each tool object contains description, getArgsSchema function, isAction flag, and its handler function.
  */
@@ -145,7 +215,7 @@ export const TOOLS_REGISTRY = {
         - bonus: the bonus to apply to the agent's reward (may be negative)
     `,
         getArgsSchema: () => `{ 
-        "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}", 
+        "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all", 
         "rules": [{
             "all_tiles": boolean,
             "tiles": ["x,y", ...],
@@ -158,15 +228,21 @@ export const TOOLS_REGISTRY = {
      }`,
         isAction: true,
         handler: async (args, coordinator) => {
-            if (args.id === coordinator.beliefs.me.id) {
-                Object.assign(coordinator.beliefs.policyRules, args.rules);
+            const targetId = args.id || 'all';
+
+            if (targetId === 'all' || targetId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.applyPolicyRules(args.rules);
             }
-            await coordinator.P2P(
-                args.id,
-                {
-                    type: 'APPLY_RULES',
-                    rules: args.rules
-                });
+
+            if (targetId === 'all' || targetId === coordinator.getPeerAgentId()) {
+                await coordinator.P2P(
+                    coordinator.getPeerAgentId(),
+                    {
+                        type: 'APPLY_RULES',
+                        rules: args.rules
+                    });
+            }
+
             return { success: true };
         }
     },
@@ -430,6 +506,70 @@ export const TOOLS_REGISTRY = {
             }
 
             return { success: true, message: `Applied custom parcel rule to ${targetId}.` };
+        }
+    },
+
+    pickup_parcel_by_id: {
+        description: "Directs a specific agent to navigate to a parcel and pick it up by its ID. Blocks until picked up or timeout.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "parcelId": "string" }`,
+        isAction: true,
+        handler: async (args, coordinator) => {
+            const targetId = args.id;
+            const parcelId = args.parcelId;
+
+            if (targetId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.activeContracts.set('admin_pickup', {
+                    coopId: 'admin_pickup',
+                    type: 'PICKUP',
+                    parcelId: parcelId,
+                    status: 'ACTIVE'
+                });
+            }
+
+            await coordinator.P2P(
+                targetId,
+                {
+                    type: 'PICKUP_PARCEL',
+                    parcelId: parcelId
+                });
+
+            const result = await waitUntilPickedUp(targetId, parcelId, coordinator);
+            return result;
+        }
+    },
+
+    deliver_parcel_by_id: {
+        description: "Directs a specific agent to navigate to a coordinate (or nearest delivery zone if x/y are null) and deliver/drop a specific parcel by its ID. Blocks until delivered or timeout.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "parcelId": "string", "x": number | null, "y": number | null }`,
+        isAction: true,
+        handler: async (args, coordinator) => {
+            const targetId = args.id;
+            const parcelId = args.parcelId;
+            const tx = args.x !== undefined ? args.x : null;
+            const ty = args.y !== undefined ? args.y : null;
+
+            if (targetId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.activeContracts.set('admin_deliver', {
+                    coopId: 'admin_deliver',
+                    type: 'DELIVER',
+                    parcelId: parcelId,
+                    x: tx,
+                    y: ty,
+                    status: 'ACTIVE'
+                });
+            }
+
+            await coordinator.P2P(
+                targetId,
+                {
+                    type: 'DELIVER_PARCEL',
+                    parcelId: parcelId,
+                    x: tx,
+                    y: ty
+                });
+
+            const result = await waitUntilDelivered(targetId, parcelId, coordinator);
+            return result;
         }
     }
 };

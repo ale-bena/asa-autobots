@@ -373,6 +373,38 @@ export class IntentionEngine {
                     beliefs.variables.handoffCompleted = true;
                 })(this.beliefs, goal.x, goal.y, goal.targetId);
 
+            case 'admin_pickup':
+                return (function* (beliefs, parcelId, engine) {
+                    const parcel = beliefs.parcels.get(parcelId);
+                    if (!parcel) {
+                        console.log(`[BDI] admin_pickup: parcel ${parcelId} not found in beliefs.`);
+                        beliefs.activeContracts.delete('admin_pickup');
+                        return;
+                    }
+                    console.log(`[BDI] admin_pickup: Starting pickup of parcel ${parcelId} at (${parcel.x}, ${parcel.y})`);
+                    const success = yield* NavigateTo(beliefs, parcel.x, parcel.y);
+                    if (success) {
+                        yield { action: 'pickup', target: parcelId };
+                        console.log(`[BDI] admin_pickup: Successfully picked up parcel ${parcelId}.`);
+                    } else {
+                        console.log(`[BDI] admin_pickup: Failed to navigate to parcel ${parcelId}.`);
+                    }
+                    beliefs.activeContracts.delete('admin_pickup');
+                })(this.beliefs, goal.targetId, this);
+
+            case 'admin_deliver':
+                return (function* (beliefs, parcelId, engine) {
+                    console.log(`[BDI] admin_deliver: Navigating to (${goal.x}, ${goal.y}) to drop parcel ${parcelId || 'all'}`);
+                    const success = yield* NavigateTo(beliefs, goal.x, goal.y);
+                    if (success) {
+                        yield { action: 'putdown', target: parcelId };
+                        console.log(`[BDI] admin_deliver: Successfully dropped parcel ${parcelId || 'all'} at (${goal.x}, ${goal.y}).`);
+                    } else {
+                        console.log(`[BDI] admin_deliver: Failed to navigate to drop coordinate (${goal.x}, ${goal.y}).`);
+                    }
+                    beliefs.activeContracts.delete('admin_deliver');
+                })(this.beliefs, goal.targetId, this);
+
             case 'deliver':
                 return this._deliverRecipe(goal.x, goal.y);
 
@@ -617,6 +649,7 @@ export class IntentionEngine {
                 score: this.beliefs.me.score,
                 nextStep: this.beliefs.me.nextStep || null,
                 path: this.beliefs.me.path || [],
+                carried: this.beliefs.carried,
                 crates: Array.from(this.beliefs.crates.values()).map(c => ({ id: c.id, x: c.x, y: c.y }))
             }
         };

@@ -501,6 +501,92 @@ Assistant:
 [REASONING]
 Custom policy rule successfully applied. We stop.
 [/REASONING]
+[/ANSWER]
+</example>
+
+<example>
+Admin: "Avoid cells 1,1 and 1,2 for all agents, then pick up parcel p1 and deliver it to coordinate 5,5 for 30 points"
+Assistant:
+[REASONING]
+Check feasibility of 30 points.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "evaluate_math_expression",
+  "args": { "expression": "30 > 0" }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
+Assistant:
+[REASONING]
+Feasible. Apply avoidance rule to all agents.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "apply_agent_rules",
+  "args": {
+    "id": "all",
+    "rules": [
+      {
+        "all_tiles": false,
+        "tiles": ["1,1", "1,2"],
+        "stackSizeBounds": [],
+        "minReward": null,
+        "maxReward": null,
+        "multiplier": null,
+        "bonus": -9999
+      }
+    ]
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] apply_agent_rules output: {\"success\":true}"
+Assistant:
+[REASONING]
+Now direct BDI agent to pick up parcel p1 by ID.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "pickup_parcel_by_id",
+  "args": {
+    "id": "${AGENT_IDS.BDI_AGENT_ID}",
+    "parcelId": "p1"
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] pickup_parcel_by_id output: {\"success\":true}"
+Assistant:
+[REASONING]
+Parcel p1 picked up. Now direct BDI agent to deliver parcel p1 to (5, 5).
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "deliver_parcel_by_id",
+  "args": {
+    "id": "${AGENT_IDS.BDI_AGENT_ID}",
+    "parcelId": "p1",
+    "x": 5,
+    "y": 5
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] deliver_parcel_by_id output: {\"success\":true}"
+Assistant:
+[REASONING]
+Handoff/delivery completed. We can stop.
+[/REASONING]
 [ANSWER]
 {
   "type": "stop"

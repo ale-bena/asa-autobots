@@ -471,4 +471,76 @@ export class BeliefBase {
             }
         }
     }
+
+    /**
+     * Translates LLM coordinator-structured rules into the internal BDI policy representation.
+     * @param {Array<Object>|Object} rulesInput - Rules from coordinator.
+     */
+    applyPolicyRules(rulesInput) {
+        if (!rulesInput) return;
+        
+        if (Array.isArray(rulesInput)) {
+            // Overwrite/apply properties from each rule object in the array
+            for (const r of rulesInput) {
+                if (r.tiles && Array.isArray(r.tiles)) {
+                    // If rule has negative bonus/penalty, these tiles should be avoided
+                    if (r.bonus !== null && r.bonus < -500) {
+                        for (const t of r.tiles) {
+                            if (!this.policyRules.avoidTiles.includes(t)) {
+                                this.policyRules.avoidTiles.push(t);
+                            }
+                        }
+                    }
+                }
+                
+                if (r.minReward !== null && r.minReward !== undefined) {
+                    this.policyRules.minRewardThreshold = Number(r.minReward);
+                }
+                
+                if (r.maxReward !== null && r.maxReward !== undefined) {
+                    this.policyRules.maxRewardLimit = Number(r.maxReward);
+                }
+                
+                if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds) && r.stackSizeBounds.length > 0) {
+                    const firstBound = r.stackSizeBounds[0];
+                    if (firstBound && firstBound.min !== null && firstBound.min !== undefined) {
+                        this.policyRules.requiredStackSize = Number(firstBound.min);
+                    }
+                }
+                
+                // Build and add multiplier/bonus rules if present
+                if (r.multiplier !== null || r.bonus !== null) {
+                    let conds = [];
+                    if (r.tiles && r.tiles.length > 0 && !r.all_tiles) {
+                        const tileCond = r.tiles.map(t => {
+                            const [tx, ty] = t.split(',');
+                            return `(x == ${tx} && y == ${ty})`;
+                        }).join(' || ');
+                        conds.push(`(${tileCond})`);
+                    }
+                    
+                    if (r.stackSizeBounds && r.stackSizeBounds.length > 0) {
+                        const sizeCond = r.stackSizeBounds.map(b => {
+                            if (b.min !== null && b.max !== null) return `(carrying.size >= ${b.min} && carrying.size < ${b.max})`;
+                            if (b.min !== null) return `(carrying.size >= ${b.min})`;
+                            if (b.max !== null) return `(carrying.size < ${b.max})`;
+                            return 'true';
+                        }).join(' || ');
+                        conds.push(`(${sizeCond})`);
+                    }
+                    
+                    const condition = conds.length > 0 ? conds.join(' && ') : 'true';
+                    
+                    if (r.multiplier !== null && r.multiplier !== undefined) {
+                        this.policyRules.multiplierRules.push({ condition, multiplier: Number(r.multiplier) });
+                    }
+                    if (r.bonus !== null && r.bonus !== undefined) {
+                        this.policyRules.bonusRules.push({ condition, bonus: Number(r.bonus) });
+                    }
+                }
+            }
+        } else if (typeof rulesInput === 'object') {
+            Object.assign(this.policyRules, rulesInput);
+        }
+    }
 }
