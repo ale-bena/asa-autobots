@@ -77,7 +77,17 @@ runGameLoop();
 // 6. Intercept Admin challenge instructions and run LLM Coordinator loop
 const processedMessages = new Map();
 
-socket.onMsg(async (senderId, name, msg) => {
+// Serialize message handling so concurrent admin/P2P messages can't interleave
+// reads/writes of the shared coordinator chatHistory and beliefs state.
+let messageQueue = Promise.resolve();
+
+socket.onMsg((senderId, name, msg) => {
+    messageQueue = messageQueue
+        .then(() => processIncomingMessage(senderId, name, msg))
+        .catch(e => console.error('[LLM] Error processing queued message:', e.message));
+});
+
+async function processIncomingMessage(senderId, name, msg) {
     // Check if direct or forwarded admin prompt
     let actualMsg = msg;
 
@@ -123,7 +133,7 @@ socket.onMsg(async (senderId, name, msg) => {
         // Delegate P2P messages to coordination manager
         await p2pManager.handleIncomingChat(senderId, msg);
     }
-});
+}
 
 socket.onDisconnect(() => {
     console.warn('[LLM] Socket connection disconnected.');

@@ -13,6 +13,21 @@ import { logger } from '../utils/logger.js';
 import { evaluateExpression } from '../policy/PolicyEngine.js';
 
 /**
+ * Task tools that change world/rule state and require a confirmed positive
+ * reward (via evaluate_math_expression) before they are allowed to execute.
+ * @type {Set<string>}
+ */
+const REWARD_GATED_TOOLS = new Set([
+    'move_agent_to_coordinate',
+    'pickup_parcel_by_id',
+    'deliver_parcel_by_id',
+    'apply_agent_rules',
+    'apply_custom_parcel_rule',
+    'set_agent_variable',
+    'cooperate_with_agent'
+]);
+
+/**
  * Master Coordinator Agent class wrapping LLM API calls and tool execution.
  */
 export class LLMCoordinator {
@@ -44,6 +59,14 @@ export class LLMCoordinator {
          * @type {Array<Object>}
          */
         this.log = [];
+
+        /**
+         * Tracks whether the current admin prompt has a confirmed positive reward
+         * (set by a successful evaluate_math_expression call evaluating to "true").
+         * Gates execution of reward-gated task tools.
+         * @type {boolean}
+         */
+        this.rewardConfirmed = false;
 
         this._initializeSystemPrompt();
     }
@@ -77,7 +100,8 @@ export class LLMCoordinator {
 
                 const response = await this.openai.chat.completions.create({
                     model: OPENAI_CONFIG.model,
-                    messages: messagesToSend
+                    messages: messagesToSend,
+                    temperature:0
                 });
 
                 content = response.choices[0]?.message?.content || '';
@@ -136,6 +160,7 @@ export class LLMCoordinator {
      */
     async handleAdminPrompt(promptText, accumulatedAnswers = []) {
         const historyStartIndex = this.chatHistory.length;
+        this.rewardConfirmed = false;
 
         try {
             let response = await this.model_call(promptText + ".\nWhat is the first step?");
@@ -168,18 +193,15 @@ export class LLMCoordinator {
                 }
             }
 
+            // Remove intermediate chat history of this run so unrelated future
+            // prompts don't inherit reward values, tool results, or task context
+            this.chatHistory.splice(historyStartIndex);
+
             if (accumulatedAnswers.length === 0) {
-                // Remove intermediate chat history of this run
-                this.chatHistory.splice(historyStartIndex);
                 return null;
             }
 
-            const answers = accumulatedAnswers.join('\n');
-            // Clean up the intermediate chat history of this run and replace with the final summarization
-            this.chatHistory.splice(historyStartIndex);
-            this.chatHistory.push({ role: 'user', content: promptText });
-            this.chatHistory.push({ role: 'assistant', content: answers });
-            return answers;
+            return accumulatedAnswers.join('\n');
         } catch (error) {
             this.chatHistory.splice(historyStartIndex);
             throw error;
@@ -195,26 +217,40 @@ export class LLMCoordinator {
     async executeTool(name, args) {
         logger.toolCall(name, args);
         const tool = TOOLS_REGISTRY[name];
-        if (tool) {
-            try {
-                const result = await tool.handler(args, this);
-
-                // Specific logger category triggers
-                if (name === 'move_agent_to_coordinate' && result.success) {
-                    logger.movement(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.x, args.y);
-                } else if (name === 'apply_agent_rules' && result.success) {
-                    logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
-                } else if (name === 'evaluate_math_expression' && result.success) {
-                    logger.math(args.expression, result.result);
-                }
-
-                return result;
-            } catch (e) {
-                logger.error(`executeTool:${name}`, e);
-                return { error: `Execution error: ${e.message}` };
-            }
+        if (!tool) {
+            return { error: `Unknown tool call: ${name}` };
         }
-        return { error: `Unknown tool call: ${name}` };
+
+        // Reward gate: task actions that change world/rule state require a
+        // confirmed positive reward for the current admin prompt.
+        // cooperate_with_agent is exempt only for CLOSE (cancellation).
+        const isCooperateClose = name === 'cooperate_with_agent' && args?.contract?.type === 'CLOSE';
+        if (REWARD_GATED_TOOLS.has(name) && !isCooperateClose && !this.rewardConfirmed) {
+            return {
+                success: false,
+                error: 'No positive reward confirmed for this task - action not executed.'
+            };
+        }
+
+        try {
+            const result = await tool.handler(args, this);
+
+            // Specific logger category triggers
+            if (name === 'move_agent_to_coordinate' && result.success) {
+                logger.movement(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.x, args.y);
+            } else if (name === 'apply_agent_rules' && result.success) {
+                logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
+            } else if (name === 'evaluate_math_expression' && result.success) {
+                logger.math(args.expression, result.result);
+                // Track whether the latest feasibility check passed
+                this.rewardConfirmed = (String(result.result) === 'true');
+            }
+
+            return result;
+        } catch (e) {
+            logger.error(`executeTool:${name}`, e);
+            return { error: `Execution error: ${e.message}` };
+        }
     }
 
     /**
