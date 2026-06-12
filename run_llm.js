@@ -62,7 +62,7 @@ socket.onSensing((sensing) => {
 // Start LLM Coordinator physical reasoning game loop
 async function runGameLoop() {
     while (true) {
-        if (mapInitialized) {
+        if (mapInitialized && socket.connected) {
             try {
                 await intentionEngine.tick();
             } catch (e) {
@@ -82,6 +82,28 @@ const processedMessages = new Map();
 let messageQueue = Promise.resolve();
 
 socket.onMsg((senderId, name, msg) => {
+    // Deduplicate identical Admin prompts at ARRIVAL time (e.g. from both direct
+    // Admin and BDI forwarding). This must NOT happen inside the queued handler:
+    // a duplicate would sit in the queue while the first copy's (potentially
+    // minutes-long) reasoning cycle runs, land outside the dedup window, and
+    // re-trigger the whole sequence.
+    if (senderId == AGENT_IDS.ADMIN_ID) {
+        const now = Date.now();
+        const lastTime = processedMessages.get(msg);
+        if (lastTime !== undefined && now - lastTime < 3000) {
+            console.log(`[LLM] Ignored duplicate Admin prompt (arrival dedup): "${msg}"`);
+            return;
+        }
+        processedMessages.set(msg, now);
+
+        // Clean up map to prevent memory growth
+        for (const [m, t] of processedMessages.entries()) {
+            if (now - t > 10000) {
+                processedMessages.delete(m);
+            }
+        }
+    }
+
     messageQueue = messageQueue
         .then(() => processIncomingMessage(senderId, name, msg))
         .catch(e => console.error('[LLM] Error processing queued message:', e.message));
@@ -92,24 +114,6 @@ async function processIncomingMessage(senderId, name, msg) {
     let actualMsg = msg;
 
     if (senderId == AGENT_IDS.ADMIN_ID) {
-        // Deduplicate recent identical messages (e.g. from both direct Admin and BDI forwarding)
-        const now = Date.now();
-        if (processedMessages.has(actualMsg)) {
-            const lastTime = processedMessages.get(actualMsg);
-            if (now - lastTime < 3000) {
-                console.log(`[LLM] Ignored duplicate Admin prompt: "${actualMsg}"`);
-                return;
-            }
-        }
-        processedMessages.set(actualMsg, now);
-
-        // Clean up map to prevent memory growth
-        for (const [m, t] of processedMessages.entries()) {
-            if (now - t > 10000) {
-                processedMessages.delete(m);
-            }
-        }
-
         console.log(`\n[LLM] Intercepted Admin console message (origin/forwarded) from "${name}" (Admin: ${AGENT_IDS.ADMIN_ID}): "${actualMsg}"`);
 
         try {
@@ -135,6 +139,14 @@ async function processIncomingMessage(senderId, name, msg) {
     }
 }
 
-socket.onDisconnect(() => {
-    console.warn('[LLM] Socket connection disconnected.');
+socket.onDisconnect((reason) => {
+    console.warn(`[LLM] Socket connection disconnected (${reason}).`);
+    // 'io server disconnect' = the server deliberately closed the session;
+    // socket.io does NOT auto-reconnect in that case - retry manually.
+    if (reason === 'io server disconnect') {
+        console.warn('[LLM] Server-initiated disconnect. Attempting manual reconnect in 2s...');
+        setTimeout(() => {
+            if (!socket.connected) socket.connect();
+        }, 2000);
+    }
 });

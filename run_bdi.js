@@ -62,7 +62,7 @@ socket.onSensing((sensing) => {
 // Start BDI physical reasoning game loop
 async function runGameLoop() {
     while (true) {
-        if (mapInitialized) {
+        if (mapInitialized && socket.connected) {
             try {
                 await intentionEngine.tick();
             } catch (e) {
@@ -81,6 +81,14 @@ socket.onMsg(async (senderId, _, msg) => {
     }
 });
 
-socket.onDisconnect(() => {
-    console.warn('[BDI] Socket connection disconnected.');
+socket.onDisconnect((reason) => {
+    console.warn(`[BDI] Socket connection disconnected (${reason}).`);
+    // 'io server disconnect' = the server deliberately closed the session;
+    // socket.io does NOT auto-reconnect in that case - retry manually.
+    if (reason === 'io server disconnect') {
+        console.warn('[BDI] Server-initiated disconnect. Attempting manual reconnect in 2s...');
+        setTimeout(() => {
+            if (!socket.connected) socket.connect();
+        }, 2000);
+    }
 });
