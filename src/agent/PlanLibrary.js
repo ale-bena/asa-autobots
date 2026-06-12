@@ -5,6 +5,7 @@
  */
 
 import { findAStarPath } from '../mapping/Pathfinding.js';
+import { evaluatePolicyReward } from '../policy/PolicyEngine.js';
 import { AGENT_IDS } from '../config/config.js';
 
 /**
@@ -30,18 +31,32 @@ export function pathDistance(beliefs, fromX, fromY, toX, toY, ignoreCrates = fal
 }
 
 /**
- * Helper to locate the nearest delivery zone from coordinates.
+ * Helper to locate the best delivery tile from coordinates.
+ * Candidate tiles are scored by policy-adjusted value over distance, so
+ * tile-conditioned rules ("deliver at (x,y) -> 5x / 0 pts") steer the choice;
+ * with no tile rules active every tile scores the same modifier and this
+ * degenerates to nearest-tile selection.
  * @param {import('./BeliefBase.js').BeliefBase} beliefs - Current agent beliefs.
  * @param {number} fromX - X coordinate.
  * @param {number} fromY - Y coordinate.
  * @param {Map<string, number>} [blockedZones=null] - Optional map of "x,y" -> timestamp for zones to skip.
- * @returns {{x: number, y: number}|null} Coordinates of the nearest delivery zone.
+ * @returns {{x: number, y: number}|null} Coordinates of the best delivery tile.
  */
 export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = null) {
     if (!beliefs.map) return null;
     let bestZone = null;
-    let minDistance = Infinity;
+    let bestScore = -Infinity;
+    let bestDistance = Infinity;
     const now = Date.now();
+
+    // Value basis for the policy rules: the carried stack's raw reward, or a
+    // neutral 1 when idle so multiplier rules still differentiate tiles.
+    let carriedValue = 0;
+    for (const cid of beliefs.carried) {
+        const p = beliefs.parcels.get(cid);
+        if (p) carriedValue += p.reward;
+    }
+    if (carriedValue <= 0) carriedValue = 1;
 
     for (let x = 0; x < beliefs.map.width; x++) {
         for (let y = 0; y < beliefs.map.height; y++) {
@@ -58,8 +73,18 @@ export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = nu
                     }
                 }
                 const dist = Math.abs(x - fromX) + Math.abs(y - fromY);
-                if (dist < minDistance) {
-                    minDistance = dist;
+                // General rules (e.g. stack multipliers) shift all tiles
+                // equally and cancel out of the ranking; tile-conditioned
+                // rules are what differentiates candidates.
+                const modValue = evaluatePolicyReward(beliefs, carriedValue, {
+                    x: x,
+                    y: y,
+                    carriedSize: beliefs.carried.length
+                });
+                const score = modValue / (dist + 1);
+                if (score > bestScore || (score === bestScore && dist < bestDistance)) {
+                    bestScore = score;
+                    bestDistance = dist;
                     bestZone = { x, y };
                 }
             }

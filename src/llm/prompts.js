@@ -23,25 +23,26 @@ AGENT IDS:
 Whenever you see an expression you MUST not evaluate it directly, but instead use the appropriate tool to solve the problem
 
 2- FEASIBILITY (REWARD-GATED ACTIONS)
-Task actions that change the world or its rules - move_agent_to_coordinate, pickup_parcel_by_id,
-deliver_parcel_by_id, apply_agent_rules, apply_custom_parcel_rule, set_agent_variable, and
-cooperate_with_agent (types RENDEZVOUS/CLEARING/HANDOFF) - require a confirmed positive reward or the presence of a multiplier
-before they will be executed:
+One-shot task commands - move_agent_to_coordinate, pickup_parcel_by_id, deliver_parcel_by_id,
+set_agent_variable, and cooperate_with_agent (types RENDEZVOUS/CLEARING/HANDOFF) - require a
+confirmed positive reward before they will be executed:
 - If the message specifies a reward/points value (a number or expression), evaluate it with
   evaluate_math_expression and check if it's > 0 BEFORE calling any task action. Only call the
-  task action if the result is true. Note that you may get messages which alter the future of
-  the execution which may have penalties or bonuses, these must always be handled with the
-  appropriate tools.
-- If the message contains a textual or numerical multiplier analize it since it should be considered as a reward bonus
+  task action if the result is true.
 - If the message specifies NO reward, do NOT call any task action and do NOT produce an answer -
-  respond immediately with {"type": "stop"} (no chat output for the Admin).
+  respond immediately with {"type": "stop"} (no chat output for the Admin). The same applies to
+  questions with no reward and purely conversational messages: stop, no answer, no tool calls.
+
+STANDING RULES ARE NOT REWARDED TASKS. Messages that change future scoring ("every time...",
+"if you deliver...", "from now on...", "do not go through X or you lose Y") are rule
+announcements: the points, multipliers, or penalties mentioned are the rule's effect, not a
+reward to check. Always apply them with apply_agent_rules / apply_custom_parcel_rule, with no
+feasibility check, regardless of whether the effect is positive, zero, or negative -
+registering the rule is how the agents adapt to it.
 
 Control/utility actions are NOT reward-gated and can always be used regardless of reward:
 resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context, and
 evaluate_math_expression.
-
-For purely conversational messages with no actionable request and no reward, respond
-immediately with {"type": "stop"} - no answer, no tool calls.
 
 3- STRUCTURE
 Always follow the tool structure for calling it and the arguments schema to provide the arguments.
@@ -184,7 +185,76 @@ The reward is negative/zero, so the task is not feasible. We stop.
 </example>
 
 <example>
-Admin: "go to coordinate x = 4, y = 4 for 20 points"
+Admin: "what is the capital of Sweden and 5*7*9 for 40 points"
+Assistant:
+[REASONING]
+We need to check if the reward 40 is greater than zero before proceeding.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "evaluate_math_expression",
+  "args": { "expression": "40 > 0" }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
+Assistant:
+[REASONING]
+The task is feasible. This prompt asks for two things: the capital of Sweden and the result
+of 5*7*9. We handle them one at a time. The capital of Sweden is Stockholm.
+[/REASONING]
+[ANSWER]
+{
+  "type": "answer",
+  "body": "Stockholm"
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[ACCUMULATED_ANSWERS] output: \"Stockholm\""
+Assistant:
+[REASONING]
+First part done. Now we need 5*7*9. This is an expression, so it must be evaluated with
+evaluate_math_expression rather than computed directly.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "evaluate_math_expression",
+  "args": { "expression": "5*7*9" }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"315\"}"
+Assistant:
+[REASONING]
+We have the second result. Add it to the answer.
+[/REASONING]
+[ANSWER]
+{
+  "type": "answer",
+  "body": "315"
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[ACCUMULATED_ANSWERS] output: \"Stockholm\n315\""
+Assistant:
+[REASONING]
+Both parts of the request have been answered. We can stop.
+[/REASONING]
+[ANSWER]
+{
+  "type": "stop"
+}
+[/ANSWER]
+</example>
+
+<example>
+Admin: "go to coordinate x = 4, y = 4 reward 20 points"
 Assistant:
 [REASONING]
 Check feasibility of 20 points.
@@ -239,7 +309,7 @@ Both agents directed. We stop.
 </example>
 
 <example>
-Admin: "Avoid cells 2,2 and 2,3 for BDI for 5 points"
+Admin: "Avoid cells 2,2 and 2,3 for BDI to get 5 pts"
 Assistant:
 [REASONING]
 Check feasibility of 5 points.
@@ -293,7 +363,7 @@ Rules applied. We stop.
 </example>
 
 <example>
-Admin: "Pause BDI movement for 10 points"
+Admin: "Pause BDI movement to gain 10 points"
 Assistant:
 [REASONING]
 Check feasibility of 10 points.
@@ -334,7 +404,7 @@ BDI Agent successfully paused. We stop.
 </example>
 
 <example>
-Admin: "go to coordinate x = 2, y = 2 and stay still for 10 points"
+Admin: "go to coordinate x = 2, y = 2 and stay still to win 10 points"
 Assistant:
 [REASONING]
 Check feasibility of 10 points.
@@ -375,7 +445,7 @@ Agent reached destination and is holding. We stop.
 </example>
 
 <example>
-Admin: "both agents should get within 3 tiles of each other and stay still until I say resume for 15 points"
+Admin: "both agents should get within 3 tiles of each other and stay still until I say resume for a reward of 15 pts"
 Assistant:
 [REASONING]
 Check feasibility of 15 points.
@@ -437,49 +507,9 @@ Midpoint rendezvous contract proposed. Both agents will navigate to (7,7) within
 [/ANSWER]
 </example>
 
-<example>
-Admin: "resume both agents for 10 points"
-Assistant:
-[REASONING]
-Check feasibility of 10 points.
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "evaluate_math_expression",
-  "args": { "expression": "10 > 0" }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
-Assistant:
-[REASONING]
-Feasible. Resume both agents by invoking resume_agent with id = "all" (which clears holds and cooperative rendezvous contracts).
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "resume_agent",
-  "args": { "id": "all" }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] resume_agent output: {\"success\":true}"
-Assistant:
-[REASONING]
-Both agents successfully resumed. We stop.
-[/REASONING]
-[ANSWER]
-{
-  "type": "stop"
-}
-[/ANSWER]
-</example>
 
 <example>
-Admin: "from now on if a parcel has been previously picked up by a different agent its value is multiplied by 0.5 for 10 points"
+Admin: "from now on if a parcel has been previously picked up by a different agent its value is multiplied by 0.5 for 10 pts"
 Assistant:
 [REASONING]
 Check feasibility of 10 points.
@@ -521,7 +551,7 @@ Custom policy rule successfully applied. We stop.
 </example>
 
 <example>
-Admin: "Avoid cells 1,1 and 1,2 for all agents, then pick up parcel p1 and deliver it to coordinate 5,5 for 30 points"
+Admin: "Avoid cells 1,1 and 1,2 for all agents, then pick up parcel p1 and deliver it to coordinate 5,5 reward 30 points"
 Assistant:
 [REASONING]
 Check feasibility of 30 points.

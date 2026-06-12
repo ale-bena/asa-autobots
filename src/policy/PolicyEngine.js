@@ -10,7 +10,7 @@
  * @returns {Array<string>} Array of tokens.
  */
 function tokenize(expr) {
-    const regex = /\s*(&&|\|\||==|!=|<=|>=|[+\-*/()<>!]|(?:[a-zA-Z_$][a-zA-Z0-9_$.]*)|(?:\d+(?:\.\d+)?))\s*/g;
+    const regex = /\s*(&&|\|\||==|!=|<=|>=|[+\-*/%()<>!]|(?:[a-zA-Z_$][a-zA-Z0-9_$.]*)|(?:\d+(?:\.\d+)?))\s*/g;
     const tokens = [];
     let match;
     while ((match = regex.exec(expr)) !== null) {
@@ -121,7 +121,7 @@ export function evaluateExpression(expr, state, localVars = {}) {
         '&&': 2,
         '==': 3, '!=': 3, '<': 3, '>': 3, '<=': 3, '>=': 3,
         '+': 4, '-': 4,
-        '*': 5, '/': 5,
+        '*': 5, '/': 5, '%': 5,
         'unary-': 6,
         '!': 6
     };
@@ -150,6 +150,7 @@ export function evaluateExpression(expr, state, localVars = {}) {
             case '-': values.push(Number(left) - Number(right)); break;
             case '*': values.push(Number(left) * Number(right)); break;
             case '/': values.push(Number(left) / Number(right)); break;
+            case '%': values.push(Number(left) % Number(right)); break;
             case '==': values.push(left == right); break;
             case '!=': values.push(left != right); break;
             case '<': values.push(left < right); break;
@@ -208,6 +209,73 @@ export function evaluateExpression(expr, state, localVars = {}) {
     }
 
     return values[0];
+}
+
+/**
+ * Evaluates policy rules (multipliers, bonuses) for a projected delivery.
+ * @param {Object} beliefs - Current agent beliefs.
+ * @param {number} baseReward - The base reward before modifications.
+ * @param {Object} projectedState - Mock state representing delivery conditions.
+ * @returns {number} The policy-adjusted reward.
+ */
+export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
+    let reward = baseReward;
+
+    // Context object for evaluateExpression
+    const context = {
+        beliefs: beliefs,
+        variables: beliefs.variables,
+        me: {
+            x: projectedState.x !== undefined ? projectedState.x : beliefs.me.x,
+            y: projectedState.y !== undefined ? projectedState.y : beliefs.me.y,
+            score: beliefs.me.score,
+            status: beliefs.me.status
+        },
+        carried: {
+            length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : beliefs.carried.length
+        },
+        path: projectedState.path || [],
+        parcel: projectedState.parcel || null
+    };
+
+    // localVars take precedence over beliefs state in resolveIdentifier, so the
+    // projected coordinates actually override the agent's current position in
+    // tile-conditioned rules (x == tx && y == ty).
+    const localVars = {
+        'x': context.me.x,
+        'y': context.me.y,
+        'carrying.size': context.carried.length,
+        'carrying.length': context.carried.length,
+        'stack_size': context.carried.length
+    };
+
+    // 1. Apply multiplier rules
+    if (beliefs.policyRules && beliefs.policyRules.multiplierRules) {
+        for (const rule of beliefs.policyRules.multiplierRules) {
+            try {
+                if (evaluateExpression(rule.condition, context, localVars)) {
+                    reward *= rule.multiplier;
+                }
+            } catch (e) {
+                console.error('[BDI Policy] Error evaluating multiplier rule condition:', rule.condition, e.message);
+            }
+        }
+    }
+
+    // 2. Apply bonus rules
+    if (beliefs.policyRules && beliefs.policyRules.bonusRules) {
+        for (const rule of beliefs.policyRules.bonusRules) {
+            try {
+                if (evaluateExpression(rule.condition, context, localVars)) {
+                    reward += rule.bonus;
+                }
+            } catch (e) {
+                console.error('[BDI Policy] Error evaluating bonus rule condition:', rule.condition, e.message);
+            }
+        }
+    }
+
+    return reward;
 }
 
 /**

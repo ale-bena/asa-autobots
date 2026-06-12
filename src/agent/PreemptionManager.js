@@ -47,20 +47,24 @@ export function shouldPreemptActivePlan(currentGoal, activeGenerator, bestGoal, 
     }
 
     // Cooperative contracts (e.g. rendezvous drop) always preempt normal tasks.
+    // RELAY contracts are excluded: they are persistent and drive goals through
+    // the normal carrying logic, so they must not cause constant preemption.
     const hasCoop = Array.from(beliefs.activeContracts.values()).some(
-        c => c.coopId !== 'admin_move' && c.coopId !== 'admin_pickup' && c.coopId !== 'admin_deliver'
+        c => c.coopId !== 'admin_move' && c.coopId !== 'admin_pickup' && c.coopId !== 'admin_deliver' && c.type !== 'RELAY'
     );
     if (hasCoop && currentGoal.type !== 'rendezvous' && currentGoal.type !== 'handoff') {
         return true;
     }
 
-    // deliveries preempt everything except active deliveries.
-    if (bestGoal.type === 'deliver' && currentGoal.type !== 'deliver') {
+    // deliveries (and courier relay drop runs, which behave like deliveries)
+    // preempt everything except themselves.
+    const isDeliverLike = (type) => type === 'deliver' || type === 'handoff_drop';
+    if (isDeliverLike(bestGoal.type) && !isDeliverLike(currentGoal.type)) {
         return true;
     }
 
     // If we are currently delivering, allow pickup to preempt (e.g. for along-the-path detours).
-    if (currentGoal.type === 'deliver' && bestGoal.type === 'pickup') {
+    if (isDeliverLike(currentGoal.type) && bestGoal.type === 'pickup') {
         return true;
     }
 

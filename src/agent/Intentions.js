@@ -373,6 +373,29 @@ export class IntentionEngine {
                     beliefs.variables.handoffCompleted = true;
                 })(this.beliefs, goal.x, goal.y, goal.targetId);
 
+            case 'handoff_drop':
+                // One-way courier drop for persistent RELAY contracts: bring the
+                // cargo to the drop tile, drop everything, step aside, done. No
+                // wait/swap-back (that's the mutual HANDOFF recipe) - the peer
+                // collects the parcels on its own via normal goal selection.
+                return (function* (beliefs, hx, ty) {
+                    console.log(`[BDI Relay] Courier run: bringing ${beliefs.carried.length} parcel(s) to drop tile (${hx}, ${ty}).`);
+                    const reached = yield* NavigateTo(beliefs, hx, ty);
+                    if (!reached) {
+                        console.log(`[BDI Relay] Failed to reach drop tile (${hx}, ${ty}). Retrying next cycle.`);
+                        return;
+                    }
+
+                    while (beliefs.carried.length > 0) {
+                        yield { action: 'putdown' };
+                    }
+                    beliefs.variables.handoffCompleted = true;
+
+                    const escapeTile = findAdjacentClearTile(beliefs, hx, ty);
+                    console.log(`[BDI Relay] Cargo dropped. Stepping aside to (${escapeTile.x}, ${escapeTile.y}).`);
+                    yield* NavigateTo(beliefs, escapeTile.x, escapeTile.y);
+                })(this.beliefs, goal.x, goal.y);
+
             case 'admin_pickup':
                 return (function* (beliefs, parcelId, engine) {
                     const parcel = beliefs.parcels.get(parcelId);

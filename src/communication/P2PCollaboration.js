@@ -43,7 +43,7 @@ export class P2PManager {
 
         try {
             const message = JSON.parse(rawMessage);
-            logger.p2p(message.type, message, senderId, true);
+            logger.p2pReceived(message.type, message, senderId);
 
             switch (message.type) {
                 case 'PING':
@@ -143,6 +143,9 @@ export class P2PManager {
 
                 case 'MOVE_TO':
                     logger.movement(this.beliefs.me.id || 'me', message.x, message.y);
+                    // An explicit move order implies a green light: release any
+                    // standing HOLD or tick() would ignore the contract forever.
+                    this.beliefs.hold = false;
                     this.beliefs.activeContracts.set('admin_move', {
                         coopId: 'admin_move',
                         type: 'MOVE_TO',
@@ -155,6 +158,7 @@ export class P2PManager {
                     break;
 
                 case 'PICKUP_PARCEL':
+                    this.beliefs.hold = false;
                     this.beliefs.activeContracts.set('admin_pickup', {
                         coopId: 'admin_pickup',
                         type: 'PICKUP',
@@ -164,6 +168,7 @@ export class P2PManager {
                     break;
 
                 case 'DELIVER_PARCEL':
+                    this.beliefs.hold = false;
                     this.beliefs.activeContracts.set('admin_deliver', {
                         coopId: 'admin_deliver',
                         type: 'DELIVER',
@@ -291,6 +296,7 @@ export class P2PManager {
                 y: message.y,
                 radius: message.radius !== undefined ? message.radius : null,
                 holdDuration: message.holdDuration !== undefined ? message.holdDuration : null,
+                courierId: message.courierId !== undefined ? message.courierId : null,
                 status: 'ACCEPTED'
             });
             this.broadcast({ type: 'ACCEPT_CONTRACT', coopId: message.coopId }, senderId);

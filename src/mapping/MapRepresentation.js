@@ -125,6 +125,40 @@ export class MapRepresentation {
     }
 
     /**
+     * Locates the extreme walkable tiles of the map. The leftmost walkable tile
+     * may not be at x=0 (walls/void), so callers must use these instead of the
+     * raw bounds. Topmost = highest y, bottommost = lowest y (Cartesian).
+     * Ties at the same extreme coordinate are broken by Manhattan distance to
+     * the reference point.
+     * @param {number} [refX=0] - Reference X for tie-breaking.
+     * @param {number} [refY=0] - Reference Y for tie-breaking.
+     * @returns {{leftmost: {x: number, y: number}|null, rightmost: {x: number, y: number}|null, topmost: {x: number, y: number}|null, bottommost: {x: number, y: number}|null}}
+     */
+    findExtremeWalkableTiles(refX = 0, refY = 0) {
+        const refDist = (t) => Math.abs(t.x - refX) + Math.abs(t.y - refY);
+        const better = (cand, best, key, dir) => {
+            if (!best) return true;
+            if (cand[key] !== best[key]) {
+                return dir > 0 ? cand[key] > best[key] : cand[key] < best[key];
+            }
+            return refDist(cand) < refDist(best);
+        };
+
+        let leftmost = null, rightmost = null, topmost = null, bottommost = null;
+        for (let x = 0; x < this.width; x++) {
+            for (let y = 0; y < this.height; y++) {
+                if (!this.isWalkableTile(x, y)) continue;
+                const t = { x, y };
+                if (better(t, leftmost, 'x', -1)) leftmost = t;
+                if (better(t, rightmost, 'x', +1)) rightmost = t;
+                if (better(t, bottommost, 'y', -1)) bottommost = t;
+                if (better(t, topmost, 'y', +1)) topmost = t;
+            }
+        }
+        return { leftmost, rightmost, topmost, bottommost };
+    }
+
+    /**
      * Validates directed adjacency and checks against one-way gate rules.
      * @param {{x: number, y: number}} from - Origin cell.
      * @param {{x: number, y: number}} to - Destination cell.

@@ -13,16 +13,18 @@ import { logger } from '../utils/logger.js';
 import { evaluateExpression } from '../policy/PolicyEngine.js';
 
 /**
- * Task tools that change world/rule state and require a confirmed positive
- * reward (via evaluate_math_expression) before they are allowed to execute.
+ * Imperative one-shot task tools that require a confirmed positive reward
+ * (via evaluate_math_expression) before they are allowed to execute.
+ * Rule-application tools (apply_agent_rules, apply_custom_parcel_rule) are
+ * deliberately NOT gated: standing scoring-rule announcements must always be
+ * registered regardless of the rule's effect sign, since applying them is how
+ * the agents adapt to penalties.
  * @type {Set<string>}
  */
 const REWARD_GATED_TOOLS = new Set([
     'move_agent_to_coordinate',
     'pickup_parcel_by_id',
     'deliver_parcel_by_id',
-    'apply_agent_rules',
-    'apply_custom_parcel_rule',
     'set_agent_variable',
     'cooperate_with_agent'
 ]);
@@ -223,9 +225,13 @@ export class LLMCoordinator {
 
         // Reward gate: task actions that change world/rule state require a
         // confirmed positive reward for the current admin prompt.
-        // cooperate_with_agent is exempt only for CLOSE (cancellation).
-        const isCooperateClose = name === 'cooperate_with_agent' && args?.contract?.type === 'CLOSE';
-        if (REWARD_GATED_TOOLS.has(name) && !isCooperateClose && !this.rewardConfirmed) {
+        // cooperate_with_agent is exempt for CLOSE (cancellation) and RELAY
+        // (the strategy companion of a standing bonus-rule announcement, which
+        // is itself ungated by design).
+        const cooperateType = args?.contract?.type;
+        const isCooperateExempt = name === 'cooperate_with_agent' &&
+            (cooperateType === 'CLOSE' || cooperateType === 'RELAY');
+        if (REWARD_GATED_TOOLS.has(name) && !isCooperateExempt && !this.rewardConfirmed) {
             return {
                 success: false,
                 error: 'No positive reward confirmed for this task - action not executed.'
@@ -242,8 +248,12 @@ export class LLMCoordinator {
                 logger.policyUpdate(args.agentId || AGENT_IDS.BDI_AGENT_ID, args.rules);
             } else if (name === 'evaluate_math_expression' && result.success) {
                 logger.math(args.expression, result.result);
-                // Track whether the latest feasibility check passed
-                this.rewardConfirmed = (String(result.result) === 'true');
+                // A passing feasibility check unlocks gated tools for the rest of
+                // this admin prompt; numeric evaluations (e.g. coordinates) must
+                // not re-lock the gate, so the flag is sticky once true.
+                if (String(result.result) === 'true') {
+                    this.rewardConfirmed = true;
+                }
             }
 
             return result;

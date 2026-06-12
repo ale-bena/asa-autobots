@@ -4,7 +4,21 @@
  */
 
 import { evaluateExpression } from '../policy/PolicyEngine.js';
+import { findNearestDeliveryZone } from '../agent/PlanLibrary.js';
 import { AGENT_IDS } from '../config/config.js';
+
+/**
+ * Picks a relay drop tile: walkable, adjacent to the best delivery zone, but
+ * NOT a delivery tile itself (a putdown there would count as the courier's own
+ * delivery and void the cross-agent bonus).
+ */
+function pickRelayDropTile(beliefs) {
+    if (!beliefs.map) return null;
+    const zone = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y);
+    if (!zone) return null;
+    const neighbors = beliefs.map.getNeighbors({ x: zone.x, y: zone.y });
+    return neighbors.find(n => beliefs.map.getTileCode(n.x, n.y) !== 2) || neighbors[0] || null;
+}
 
 /**
  * Helper to retrieve an agent's current coordinates.
@@ -147,7 +161,7 @@ export const TOOLS_REGISTRY = {
     },
 
     move_agent_to_coordinate: {
-        description: "Directs an agent to navigate to a specific grid coordinate. Set holdOnArrival to true if the agent should pause/stay still immediately upon reaching the destination. You can optionally specify a holdDuration in seconds.",
+        description: "Directs an agent to navigate to a specific grid coordinate. Set holdOnArrival to true if the agent should pause/stay still immediately upon reaching the destination. You can optionally specify a holdDuration in seconds. When agents must wait at the destination until a later message (e.g. red light/green light games), set holdOnArrival true with holdDuration -1 for EVERY agent moved, and release later with resume_agent. Issuing a new move to a held agent automatically releases its hold.",
         getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number, "holdOnArrival": boolean, "holdDuration": number | null }`,
         isAction: true,
         handler: async (args, coordinator) => {
@@ -175,6 +189,8 @@ export const TOOLS_REGISTRY = {
             }
 
             if (args.id === coordinator.beliefs.me.id) {
+                // Explicit move order implies green light (see P2P MOVE_TO handler)
+                coordinator.beliefs.hold = false;
                 coordinator.beliefs.activeContracts.set('admin_move', {
                     coopId: 'admin_move',
                     type: 'MOVE_TO',
@@ -211,8 +227,12 @@ export const TOOLS_REGISTRY = {
         - stackSizeBounds: an array of bounds, the rule applies if the agent's stack size is within these bounds, if empty, the rule applies to all stack sizes
         - minReward: the minimum reward of a parcel for it to count
         - maxReward: the maximum reward of a parcel for it to count
-        - multiplier: the multiplier to apply to the agent's reward (may be negative)
-        - bonus: the bonus to apply to the agent's reward (may be negative)
+        - multiplier: SCALES the delivery reward (reward = reward * multiplier). Use for proportional
+          effects: "you get 0 pts" -> multiplier 0, "double the reward" -> multiplier 2,
+          "0.3 of the standard reward" -> multiplier 0.3. A bonus of 0 is a no-op; zeroing a reward
+          REQUIRES multiplier 0.
+        - bonus: flat points ADDED to the reward (reward = reward + bonus, may be negative). Use for
+          absolute effects: "+5 pts" -> bonus 5, "lose 50 pts" -> bonus -50.
     `,
         getArgsSchema: () => `{ 
         "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all", 
@@ -248,16 +268,17 @@ export const TOOLS_REGISTRY = {
     },
 
     cooperate_with_agent: {
-        description: "Proposes a Peer-to-Peer rendezvous, handoff, or gate clearing contract, or cancels/closes active cooperation.",
-        getArgsSchema: () => `{ 
+        description: "Proposes a Peer-to-Peer rendezvous, handoff, gate clearing, or persistent courier relay contract, or cancels/closes active cooperation. RELAY: the courier agent repeatedly farms parcels and drops them at the drop tile; the other agent picks them up and delivers them, earning cross-agent delivery bonuses. Propose RELAY together with apply_custom_parcel_rule whenever a rule rewards parcels picked up by one agent and delivered by the other. For RELAY, x/y may be null to auto-pick a drop tile beside the best delivery zone.",
+        getArgsSchema: () => `{
             "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
-            "contract": { 
-                "type": "RENDEZVOUS" | "CLEARING" | "HANDOFF" | "CLOSE", 
-                "x": number, 
-                "y": number,
+            "contract": {
+                "type": "RENDEZVOUS" | "CLEARING" | "HANDOFF" | "RELAY" | "CLOSE",
+                "x": number | null, // RELAY: null = auto-pick a drop tile next to the best delivery zone
+                "y": number | null,
                 "radius": number | null,
-                "holdDuration": number | "indefinite" | null // Duration (in seconds) to wait after BOTH agents arrive. Defaults to 3 seconds if null or not set. Use -1 or "indefinite" for indefinite waiting (no timer, wait until manual resume).
-            } 
+                "holdDuration": number | "indefinite" | null, // Duration (in seconds) to wait after BOTH agents arrive. Defaults to 3 seconds if null or not set. Use -1 or "indefinite" for indefinite waiting (no timer, wait until manual resume).
+                "courierId": "agent id" | null // RELAY only: the agent that farms and drops parcels (defaults to ${AGENT_IDS.BDI_AGENT_ID}); the other agent delivers them
+            }
         }`,
         isAction: true,
         handler: async (args, coordinator) => {
@@ -278,7 +299,7 @@ export const TOOLS_REGISTRY = {
 
             const coopId = contract.coopId || `coop_${Date.now()}`;
             const radius = contract.radius !== undefined ? Number(contract.radius) : null;
-            
+
             let holdDuration = null;
             if (contract.holdDuration !== undefined && contract.holdDuration !== null) {
                 if (contract.holdDuration === 'indefinite') {
@@ -289,14 +310,40 @@ export const TOOLS_REGISTRY = {
                 }
             }
 
+            let cx = (contract.x !== undefined && contract.x !== null) ? Math.round(Number(contract.x)) : null;
+            let cy = (contract.y !== undefined && contract.y !== null) ? Math.round(Number(contract.y)) : null;
+            let courierId = null;
+
+            if (contract.type === 'RELAY') {
+                courierId = contract.courierId || AGENT_IDS.BDI_AGENT_ID;
+                const b = coordinator.beliefs;
+                if (cx === null || cy === null) {
+                    const drop = pickRelayDropTile(b);
+                    if (!drop) {
+                        return { success: false, error: 'Could not determine a relay drop tile (map not ready or no delivery zones).' };
+                    }
+                    cx = drop.x;
+                    cy = drop.y;
+                } else if (b.map && b.map.getTileCode(cx, cy) === 2) {
+                    // Drop tile must not be a delivery tile, or the courier's
+                    // putdown counts as its own delivery and voids the bonus.
+                    const shifted = b.map.getNeighbors({ x: cx, y: cy }).find(n => b.map.getTileCode(n.x, n.y) !== 2);
+                    if (shifted) {
+                        cx = shifted.x;
+                        cy = shifted.y;
+                    }
+                }
+            }
+
             // CRITICAL: Store proposed contract locally in coordinator's beliefs so coordinator also acts on it
             coordinator.beliefs.activeContracts.set(coopId, {
                 coopId: coopId,
                 type: contract.type,
-                x: Number(contract.x),
-                y: Number(contract.y),
+                x: cx,
+                y: cy,
                 radius: radius,
                 holdDuration: holdDuration,
+                courierId: courierId,
                 status: 'ACTIVE'
             });
 
@@ -306,17 +353,18 @@ export const TOOLS_REGISTRY = {
                     type: 'PROPOSE_CONTRACT',
                     coopId: coopId,
                     contractType: contract.type,
-                    x: Number(contract.x),
-                    y: Number(contract.y),
+                    x: cx,
+                    y: cy,
                     radius: radius,
-                    holdDuration: holdDuration
+                    holdDuration: holdDuration,
+                    courierId: courierId
                 });
-            return { success: true, message: `Broadcast proposed ${contract.type} contract.` };
+            return { success: true, message: `Broadcast proposed ${contract.type} contract${contract.type === 'RELAY' ? ` (drop tile (${cx}, ${cy}), courier ${courierId})` : ''}.` };
         }
     },
 
     get_local_context: {
-        description: "Fetches an agent's current state (id/name/position/score/status, variables, carried items, rules, parcels, and peers).",
+        description: "Fetches an agent's current state (id/name/position/score/status, variables, carried items, rules, parcels, peers, and map info including the extreme walkable tiles - use map.extremes for 'leftmost/rightmost/topmost/bottommost tile' requests, NOT the raw bounds, since border coordinates may be walls).",
         getArgsSchema: () => `{}`,
         isAction: false,
         handler: async (args, coordinator) => {
@@ -332,7 +380,8 @@ export const TOOLS_REGISTRY = {
                     minX: 0,
                     maxX: b.map.width - 1,
                     minY: 0,
-                    maxY: b.map.height - 1
+                    maxY: b.map.height - 1,
+                    extremes: b.map.findExtremeWalkableTiles(b.me.x, b.me.y)
                 } : null,
                 parcels: Array.from(b.parcels.values()).map(p => ({
                     id: p.id,
@@ -518,6 +567,7 @@ export const TOOLS_REGISTRY = {
             const parcelId = args.parcelId;
 
             if (targetId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.hold = false;
                 coordinator.beliefs.activeContracts.set('admin_pickup', {
                     coopId: 'admin_pickup',
                     type: 'PICKUP',
@@ -549,6 +599,7 @@ export const TOOLS_REGISTRY = {
             const ty = args.y !== undefined ? args.y : null;
 
             if (targetId === coordinator.beliefs.me.id) {
+                coordinator.beliefs.hold = false;
                 coordinator.beliefs.activeContracts.set('admin_deliver', {
                     coopId: 'admin_deliver',
                     type: 'DELIVER',

@@ -5,75 +5,13 @@
  * with expiration-aware utility calculation and policy rule adjustments.
  */
 
-import { findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, pathDistance } from './PlanLibrary.js';
-import { evaluateExpression } from '../policy/PolicyEngine.js';
+import { findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, findAdjacentClearTile, pathDistance } from './PlanLibrary.js';
+import { evaluatePolicyReward } from '../policy/PolicyEngine.js';
 import { findAStarPath } from '../mapping/Pathfinding.js';
 
-/**
- * Evaluates policy rules (multipliers, bonuses) for a projected delivery.
- * @param {import('./BeliefBase.js').BeliefBase} beliefs - Current agent beliefs.
- * @param {number} baseReward - The base reward before modifications.
- * @param {Object} projectedState - Mock state representing delivery conditions.
- * @returns {number} The policy-adjusted reward.
- */
-export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
-    let reward = baseReward;
-    
-    // Context object for evaluateExpression
-    const context = {
-        beliefs: beliefs,
-        variables: beliefs.variables,
-        me: {
-            x: projectedState.x !== undefined ? projectedState.x : beliefs.me.x,
-            y: projectedState.y !== undefined ? projectedState.y : beliefs.me.y,
-            score: beliefs.me.score,
-            status: beliefs.me.status
-        },
-        carried: {
-            length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : beliefs.carried.length
-        },
-        path: projectedState.path || [],
-        parcel: projectedState.parcel || null
-    };
-
-    // 1. Apply multiplier rules
-    if (beliefs.policyRules && beliefs.policyRules.multiplierRules) {
-        for (const rule of beliefs.policyRules.multiplierRules) {
-            try {
-                const matched = evaluateExpression(rule.condition, context, {
-                    'carrying.size': context.carried.length,
-                    'carrying.length': context.carried.length,
-                    'stack_size': context.carried.length
-                });
-                if (matched) {
-                    reward *= rule.multiplier;
-                }
-            } catch (e) {
-                console.error('[BDI Policy] Error evaluating multiplier rule condition:', rule.condition, e.message);
-            }
-        }
-    }
-
-    // 2. Apply bonus rules
-    if (beliefs.policyRules && beliefs.policyRules.bonusRules) {
-        for (const rule of beliefs.policyRules.bonusRules) {
-            try {
-                const matched = evaluateExpression(rule.condition, context, {
-                    'carrying.size': context.carried.length,
-                    'carrying.length': context.carried.length,
-                    'stack_size': context.carried.length
-                });
-                if (matched) {
-                    reward += rule.bonus;
-                }
-            } catch (e) {
-                console.error('[BDI Policy] Error evaluating bonus rule condition:', rule.condition, e.message);
-            }
-        }
-    }
-
-    return reward;
-}
+// evaluatePolicyReward moved to PolicyEngine.js (also needed by PlanLibrary for
+// delivery-tile scoring). Re-exported here for existing importers (Intentions.js).
+export { evaluatePolicyReward };
 
 /**
  * Selects the highest utility goal based on current beliefs, policy rules,
@@ -148,6 +86,11 @@ export function selectBestGoal(beliefs, engineState) {
     // 2. Prioritize active cooperative contracts (e.g. RENDEZVOUS / HANDOFF)
     for (const [coopId, contract] of beliefs.activeContracts.entries()) {
         if (coopId === 'admin_move' || coopId === 'admin_pickup' || coopId === 'admin_deliver') continue;
+        // RELAY contracts are persistent and do not force a goal here: the
+        // courier's drop runs go through the normal carrying logic below (so
+        // batching/detour/stack valuation apply), the receiver through normal
+        // pickup valuation plus the idle anchor in section 4.5.
+        if (contract.type === 'RELAY') continue;
         if (contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY') {
             if (contract.type === 'HANDOFF') {
                 if (beliefs.carried.length > 0 && !beliefs.variables.handoffCompleted) {
@@ -170,6 +113,25 @@ export function selectBestGoal(beliefs, engineState) {
             }
         }
     }
+
+    // RELAY bookkeeping: as courier, deliver-like runs target the drop tile and
+    // parcels sitting on it must not be re-targeted (they're our own drops); as
+    // receiver, we anchor near the drop tile when idle (section 4.5).
+    const relayDropTiles = new Set();
+    let courierRelayContract = null;
+    let receiverRelayContract = null;
+    for (const contract of beliefs.activeContracts.values()) {
+        if (contract.type !== 'RELAY') continue;
+        if (!(contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY')) continue;
+        if (contract.courierId === beliefs.me.id) {
+            relayDropTiles.add(`${contract.x},${contract.y}`);
+            if (!courierRelayContract) courierRelayContract = contract;
+        } else {
+            if (!receiverRelayContract) receiverRelayContract = contract;
+        }
+    }
+    // As courier, carried cargo goes to the drop tile instead of a delivery zone.
+    const deliverType = courierRelayContract ? 'handoff_drop' : 'deliver';
 
     // Check if policy rule for requiredStackSize changed and update dynamic baseline
     const currentRequiredStack = beliefs.policyRules.requiredStackSize;
@@ -207,7 +169,9 @@ export function selectBestGoal(beliefs, engineState) {
         }
         console.log(`[BDI Debug] selectBestGoal carrying: capacity=${capacity}, dynamicLimit=${dynamicCapacityLimit}, carried=${beliefs.carried.length}`);
         
-        const deliveryZone = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
+        const deliveryZone = courierRelayContract
+            ? { x: courierRelayContract.x, y: courierRelayContract.y }
+            : findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
         const deliveryPath = deliveryZone
             ? findAStarPath(
                 beliefs.map,
@@ -223,7 +187,7 @@ export function selectBestGoal(beliefs, engineState) {
         if (beliefs.carried.length >= capacity) {
             if (deliveryZone) {
                 return {
-                    type: 'deliver',
+                    type: deliverType,
                     targetId: null,
                     x: deliveryZone.x,
                     y: deliveryZone.y,
@@ -276,7 +240,8 @@ export function selectBestGoal(beliefs, engineState) {
             if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
             if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
             if (parcel.reward > beliefs.policyRules.maxRewardLimit) continue;
-            
+            if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
+
             const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
             candidates.push({ parcel, mDist, roughUtil: parcel.reward / (mDist + 1) });
         }
@@ -405,9 +370,44 @@ export function selectBestGoal(beliefs, engineState) {
                 engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
             };
         } else if (deliveryZone) {
-            console.log(`[BDI] Heading to deliver (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
+            // Below an active required-stack-size target with nothing visible to
+            // pick up: delivering now may forfeit a stack multiplier. Compare the
+            // policy-adjusted value of delivering the current stack now vs. the
+            // same stack delivered at the required size after a bounded search
+            // window (decay-discounted). If waiting wins, hunt at a spawn zone
+            // instead. Penalty stack rules (multiplier < 1) fail this comparison
+            // and deliver as usual; decay erodes the waiting side each tick, so
+            // hunting self-terminates when the carried value drops too far.
+            const requiredStack = beliefs.policyRules.requiredStackSize;
+            if (!bestPickup && requiredStack !== null && requiredStack !== undefined &&
+                beliefs.carried.length < requiredStack && beliefs.carried.length < capacity) {
+                const searchBudgetMs = 40 * avgMoveTime;
+                let valueAtTargetStack = 0;
+                for (const cid of beliefs.carried) {
+                    const cp = beliefs.parcels.get(cid);
+                    if (cp) {
+                        const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
+                        const v = Math.max(0, cp.reward - decayLoss);
+                        valueAtTargetStack += evaluatePolicyReward(beliefs, v, {
+                            carriedSize: requiredStack,
+                            x: deliveryZone.x,
+                            y: deliveryZone.y,
+                            path: deliveryPath || [],
+                            parcel: cp
+                        });
+                    }
+                }
+                if (valueAtTargetStack > carriedValueAtDelivery) {
+                    const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
+                    if (huntZone) {
+                        console.log(`[BDI] Below required stack (${beliefs.carried.length}/${requiredStack}), no visible parcels. Hunting at spawn zone (${huntZone.x}, ${huntZone.y}) instead of early delivery (target-stack value ${valueAtTargetStack.toFixed(1)} > deliver-now ${carriedValueAtDelivery.toFixed(1)}).`);
+                        return { type: 'patrol_spawn', targetId: null, x: huntZone.x, y: huntZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                    }
+                }
+            }
+            console.log(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
             return {
-                type: 'deliver',
+                type: deliverType,
                 targetId: null,
                 x: deliveryZone.x,
                 y: deliveryZone.y,
@@ -432,6 +432,7 @@ export function selectBestGoal(beliefs, engineState) {
         if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
         if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
         if (parcel.reward > beliefs.policyRules.maxRewardLimit) continue;
+        if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
 
         const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
         const roughUtility = parcel.reward / (mDist + 1);
@@ -497,15 +498,28 @@ export function selectBestGoal(beliefs, engineState) {
 
     // 4. If carrying parcels but found nothing better, deliver what we have
     if (beliefs.carried.length > 0) {
-        const fallbackDelivery = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
+        const fallbackDelivery = courierRelayContract
+            ? { x: courierRelayContract.x, y: courierRelayContract.y }
+            : findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
         if (fallbackDelivery) {
             return {
-                type: 'deliver',
+                type: deliverType,
                 targetId: null,
                 x: fallbackDelivery.x,
                 y: fallbackDelivery.y,
                 engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
             };
+        }
+    }
+
+    // 4.5 RELAY receiver anchoring: when idle, wait beside the drop tile so
+    // incoming batches are shuttled to delivery quickly. Anchoring on an
+    // adjacent tile (not the drop tile itself) keeps it clear for the courier.
+    // Pickups preempt this anchor as soon as a batch lands.
+    if (receiverRelayContract && beliefs.map) {
+        const anchor = findAdjacentClearTile(beliefs, receiverRelayContract.x, receiverRelayContract.y);
+        if (anchor) {
+            return { type: 'patrol_spawn', targetId: null, x: anchor.x, y: anchor.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
         }
     }
 
