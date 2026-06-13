@@ -43,9 +43,8 @@ like "if 20 * 3 + 10 > 0, then ...".
 Whenever you see an expression you MUST not evaluate it directly, but instead use the appropriate tool to solve the problem
 
 2- FEASIBILITY (REWARD-GATED ACTIONS)
-One-shot task commands - move_agent_to_coordinate, pickup_parcel_by_id, deliver_parcel_by_id,
-set_agent_variable, and cooperate_with_agent (types RENDEZVOUS/CLEARING/HANDOFF) - require a
-confirmed positive reward before they will be executed:
+One-shot task commands - move_agent_to_coordinate, set_agent_variable, and cooperate_with_agent (types RENDEZVOUS/CLEARING/HANDOFF) - require a
+confirmed positive reward before they will be executed (Note: pickup_parcel_by_id and deliver_parcel_by_id are temporarily disabled and must NOT be used):
 - If the message specifies a reward/points value (a number or expression), evaluate it with
   evaluate_math_expression and check if it's > 0 BEFORE calling any task action. Only call the
   task action if the result is true.
@@ -54,15 +53,17 @@ confirmed positive reward before they will be executed:
   questions with no reward and purely conversational messages: stop, no answer, no tool calls.
 
 - STANDING RULES ARE NOT REWARDED TASKS. Messages that change future scoring ("every time...",
-"if you deliver...", "from now on...", "do not go through X or you lose Y") are rule
-announcements: the points, multipliers, or penalties mentioned are the rule's effect, not a
-reward to check. Always apply them with apply_agent_rules / apply_custom_parcel_rule, with no
-feasibility check, regardless of whether the effect is positive, zero, or negative -
-registering the rule is how the agents adapt to it.
+"if you deliver...", "from now on...", "do not go through X or you lose Y"), the points, multipliers, 
+or penalties mentioned are the effect, not a reward to check. Always apply them with apply_agent_rules /
+cooperate_with_agent, with no feasibility check, regardless of whether the effect is positive, zero, or negative.
 
 - Control/utility actions are NOT reward-gated and can always be used regardless of reward:
 resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context, and
 evaluate_math_expression.
+
+- Note that some cooperation tasks may seem to be declared as parcel rules, however since they involve multiple agents,
+whether it's you and another or multiple other agents they are still cooperation tasks. For example tasks which involve taking 
+a parcel dropped by another agent are still cooperation (RELAY) tasks and are not policy rules.
 
 3- STRUCTURE
 Always follow the tool structure for calling it and the arguments schema to provide the arguments.
@@ -529,51 +530,8 @@ Midpoint rendezvous contract proposed. Both agents will navigate to (7,7) within
 [/ANSWER]
 </example>
 
-
 <example>
-Admin: "from now on if a parcel has been previously picked up by a different agent its value is multiplied by 0.5 for 10 pts"
-Assistant:
-[REASONING]
-Check feasibility of 10 points.
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "evaluate_math_expression",
-  "args": { "expression": "10 > 0" }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
-Assistant:
-[REASONING]
-Feasible. Apply a custom parcel rule targeting all agents where the multiplier is 0.5 when parcel.previouslyCarriedByOther == true.
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "apply_custom_parcel_rule",
-  "args": {
-    "id": "all",
-    "condition": "parcel.previouslyCarriedByOther == true",
-    "multiplier": 0.5,
-    "bonus": null
-  }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] apply_custom_parcel_rule output: {\"success\":true}"
-Assistant:
-[REASONING]
-Custom policy rule successfully applied. We stop.
-[/REASONING]
-[/ANSWER]
-</example>
-
-<example>
-Admin: "Avoid cells 1,1 and 1,2 for all agents, then pick up parcel p1 and deliver it to coordinate 5,5 reward 30 points"
+Admin: "Avoid cells 1,1 and 1,2 for all agents, then go to coordinate 5,5 reward 30 points"
 Assistant:
 [REASONING]
 Check feasibility of 30 points.
@@ -617,32 +575,14 @@ Feasible. Apply avoidance rule to all agents.
 Admin: "[TOOL_RESULT] apply_agent_rules output: {\"success\":true}"
 Assistant:
 [REASONING]
-Now direct BDI agent to pick up parcel p1 by ID.
+Rules applied. Now direct BDI agent to move to coordinate (5, 5).
 [/REASONING]
 [ANSWER]
 {
   "type": "tool",
-  "name": "pickup_parcel_by_id",
+  "name": "move_agent_to_coordinate",
   "args": {
     "id": "${AGENT_IDS.BDI_AGENT_ID}",
-    "parcelId": "p1"
-  }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] pickup_parcel_by_id output: {\"success\":true}"
-Assistant:
-[REASONING]
-Parcel p1 picked up. Now direct BDI agent to deliver parcel p1 to (5, 5).
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "deliver_parcel_by_id",
-  "args": {
-    "id": "${AGENT_IDS.BDI_AGENT_ID}",
-    "parcelId": "p1",
     "x": 5,
     "y": 5
   }
@@ -650,10 +590,76 @@ Parcel p1 picked up. Now direct BDI agent to deliver parcel p1 to (5, 5).
 [/ANSWER]
 
 [Next Turn]
-Admin: "[TOOL_RESULT] deliver_parcel_by_id output: {\"success\":true}"
+Admin: "[TOOL_RESULT] move_agent_to_coordinate output: {\"success\":true}"
 Assistant:
 [REASONING]
-Handoff/delivery completed. We can stop.
+Agent arrived at destination. We can stop.
+[/REASONING]
+[ANSWER]
+{
+  "type": "stop"
+}
+[/ANSWER]
+</example>
+
+<example>
+Admin: "you can only deliver when you have one of the following stack sizes: 3, 5 to 7, 9, or more than 11. Delivery reward is 50 points."
+Assistant:
+[REASONING]
+Check feasibility of 50 points.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "evaluate_math_expression",
+  "args": { "expression": "50 > 0" }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
+Assistant:
+[REASONING]
+Feasible. The allowed stack sizes are 3, 5 to 7 (5, 6, 7), 9, or more than 11 (12+).
+All other stack sizes must be penalized (multiplier 0) to avoid delivery at invalid stack sizes.
+The forbidden stack size ranges are:
+- 0 to 2 (stack size < 3): {"min": 0, "max": 3}
+- 4 (between 3 and 5): {"min": 4, "max": 5}
+- 8 (between 7 and 9): {"min": 8, "max": 9}
+- 10 to 11 (between 9 and 12): {"min": 10, "max": 12}
+I will call apply_agent_rules to apply a multiplier of 0 to these forbidden ranges.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "apply_agent_rules",
+  "args": {
+    "id": "all",
+    "rules": [
+      {
+        "all_tiles": true,
+        "tiles": [],
+        "stackSizeBounds": [
+          { "min": 0, "max": 3 },
+          { "min": 4, "max": 5 },
+          { "min": 8, "max": 9 },
+          { "min": 10, "max": 12 }
+        ],
+        "minReward": null,
+        "maxReward": null,
+        "multiplier": 0,
+        "bonus": null
+      }
+    ]
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] apply_agent_rules output: {\"success\":true}"
+Assistant:
+[REASONING]
+Rules applied. We stop.
 [/REASONING]
 [ANSWER]
 {

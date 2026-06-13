@@ -157,37 +157,6 @@ export class P2PManager {
                     });
                     break;
 
-                case 'PICKUP_PARCEL':
-                    this.beliefs.hold = false;
-                    this.beliefs.activeContracts.set('admin_pickup', {
-                        coopId: 'admin_pickup',
-                        type: 'PICKUP',
-                        parcelId: message.parcelId,
-                        status: 'ACTIVE'
-                    });
-                    break;
-
-                case 'DELIVER_PARCEL':
-                    this.beliefs.hold = false;
-                    this.beliefs.activeContracts.set('admin_deliver', {
-                        coopId: 'admin_deliver',
-                        type: 'DELIVER',
-                        parcelId: message.parcelId,
-                        x: message.x,
-                        y: message.y,
-                        status: 'ACTIVE'
-                    });
-                    break;
-
-                case 'APPLY_CUSTOM_PARCEL_RULE':
-                    if (message.rule.multiplier !== null) {
-                        this.beliefs.policyRules.multiplierRules.push(message.rule);
-                    }
-                    if (message.rule.bonus !== null) {
-                        this.beliefs.policyRules.bonusRules.push(message.rule);
-                    }
-                    break;
-
                 case 'HOLD':
                     this.beliefs.hold = true;
                     console.log(`[P2P] Activated HOLD state for agent ${this.beliefs.me.id}.`);

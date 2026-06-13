@@ -133,13 +133,21 @@ export function selectBestGoal(beliefs, engineState) {
     // As courier, carried cargo goes to the drop tile instead of a delivery zone.
     const deliverType = courierRelayContract ? 'handoff_drop' : 'deliver';
 
-    // Check if policy rule for requiredStackSize changed and update dynamic baseline
+    // Check if policy rule for requiredStackSize or maxStackSize changed and update dynamic baseline
     const currentRequiredStack = beliefs.policyRules.requiredStackSize;
-    if (currentRequiredStack !== engineState.lastRequiredStackSize) {
+    const currentMaxStack = beliefs.policyRules.maxStackSize;
+    if (currentRequiredStack !== engineState.lastRequiredStackSize || currentMaxStack !== engineState.lastMaxStackSize) {
         engineUpdates.lastRequiredStackSize = currentRequiredStack;
-        if (currentRequiredStack !== null && currentRequiredStack !== undefined) {
-            engineUpdates.dynamicCapacityLimit = currentRequiredStack;
-            console.log(`[BDI Adapt] Reset dynamicCapacityLimit to policy rule: ${currentRequiredStack}`);
+        engineUpdates.lastMaxStackSize = currentMaxStack;
+        
+        let targetLimit = currentRequiredStack;
+        if (currentMaxStack !== null && currentMaxStack !== undefined) {
+            targetLimit = currentMaxStack;
+        }
+        
+        if (targetLimit !== null && targetLimit !== undefined) {
+            engineUpdates.dynamicCapacityLimit = targetLimit;
+            console.log(`[BDI Adapt] Reset dynamicCapacityLimit to policy rule limit: ${targetLimit}`);
         }
     }
 
@@ -167,6 +175,41 @@ export function selectBestGoal(beliefs, engineState) {
         if (capacity === undefined || capacity < 0) {
             capacity = Infinity;
         }
+
+        // Dynamically compute the maximum stack size S <= capacity that has a positive policy reward
+        let dynamicCapacityLimit = capacity;
+        if (beliefs.policyRules && beliefs.policyRules.rules) {
+            let maxValidS = 0;
+            const maxSearchCap = isFinite(capacity) ? capacity : 20;
+            const deliveryZoneForCap = courierRelayContract
+                ? { x: courierRelayContract.x, y: courierRelayContract.y }
+                : findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
+            const deliveryPathForCap = deliveryZoneForCap
+                ? findAStarPath(
+                    beliefs.map,
+                    { x: beliefs.me.x, y: beliefs.me.y },
+                    { x: deliveryZoneForCap.x, y: deliveryZoneForCap.y },
+                    beliefs.policyRules,
+                    null
+                  )
+                : null;
+            for (let S = 1; S <= maxSearchCap; S++) {
+                const testReward = evaluatePolicyReward(beliefs, 100 * S, {
+                    carriedSize: S,
+                    x: deliveryZoneForCap ? deliveryZoneForCap.x : beliefs.me.x,
+                    y: deliveryZoneForCap ? deliveryZoneForCap.y : beliefs.me.y,
+                    path: deliveryPathForCap || [],
+                    parcel: { reward: 100 }
+                });
+                if (testReward > 0) {
+                    maxValidS = S;
+                }
+            }
+            if (maxValidS > 0) {
+                dynamicCapacityLimit = maxValidS;
+            }
+        }
+
         console.log(`[BDI Debug] selectBestGoal carrying: capacity=${capacity}, dynamicLimit=${dynamicCapacityLimit}, carried=${beliefs.carried.length}`);
         
         const deliveryZone = courierRelayContract
@@ -370,39 +413,45 @@ export function selectBestGoal(beliefs, engineState) {
                 engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
             };
         } else if (deliveryZone) {
-            // Below an active required-stack-size target with nothing visible to
-            // pick up: delivering now may forfeit a stack multiplier. Compare the
-            // policy-adjusted value of delivering the current stack now vs. the
-            // same stack delivered at the required size after a bounded search
-            // window (decay-discounted). If waiting wins, hunt at a spawn zone
-            // instead. Penalty stack rules (multiplier < 1) fail this comparison
-            // and deliver as usual; decay erodes the waiting side each tick, so
-            // hunting self-terminates when the carried value drops too far.
-            const requiredStack = beliefs.policyRules.requiredStackSize;
-            if (!bestPickup && requiredStack !== null && requiredStack !== undefined &&
-                beliefs.carried.length < requiredStack && beliefs.carried.length < capacity) {
+            // Generalized required stack size check
+            let shouldHuntInstead = false;
+            let targetStackForHunt = null;
+            let targetStackValue = 0;
+
+            if (!bestPickup && beliefs.carried.length < capacity) {
                 const searchBudgetMs = 40 * avgMoveTime;
-                let valueAtTargetStack = 0;
-                for (const cid of beliefs.carried) {
-                    const cp = beliefs.parcels.get(cid);
-                    if (cp) {
-                        const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
-                        const v = Math.max(0, cp.reward - decayLoss);
-                        valueAtTargetStack += evaluatePolicyReward(beliefs, v, {
-                            carriedSize: requiredStack,
-                            x: deliveryZone.x,
-                            y: deliveryZone.y,
-                            path: deliveryPath || [],
-                            parcel: cp
-                        });
+                const maxSearchCap = isFinite(capacity) ? capacity : 20;
+                for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
+                    let S_value = 0;
+                    for (const cid of beliefs.carried) {
+                        const cp = beliefs.parcels.get(cid);
+                        if (cp) {
+                            const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
+                            const v = Math.max(0, cp.reward - decayLoss);
+                            S_value += evaluatePolicyReward(beliefs, v, {
+                                carriedSize: S,
+                                x: deliveryZone.x,
+                                y: deliveryZone.y,
+                                path: deliveryPath || [],
+                                parcel: cp
+                            });
+                        }
+                    }
+                    // If waiting to reach stack S yields a positive reward that is better than delivering now:
+                    if (S_value > carriedValueAtDelivery) {
+                        shouldHuntInstead = true;
+                        targetStackForHunt = S;
+                        targetStackValue = S_value;
+                        break;
                     }
                 }
-                if (valueAtTargetStack > carriedValueAtDelivery) {
-                    const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
-                    if (huntZone) {
-                        console.log(`[BDI] Below required stack (${beliefs.carried.length}/${requiredStack}), no visible parcels. Hunting at spawn zone (${huntZone.x}, ${huntZone.y}) instead of early delivery (target-stack value ${valueAtTargetStack.toFixed(1)} > deliver-now ${carriedValueAtDelivery.toFixed(1)}).`);
-                        return { type: 'patrol_spawn', targetId: null, x: huntZone.x, y: huntZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
-                    }
+            }
+
+            if (shouldHuntInstead) {
+                const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
+                if (huntZone) {
+                    console.log(`[BDI] Current stack (${beliefs.carried.length}) has value ${carriedValueAtDelivery.toFixed(1)}, but waiting/hunting for stack size ${targetStackForHunt} yields value ${targetStackValue.toFixed(1)}. Hunting at spawn zone (${huntZone.x}, ${huntZone.y}) instead of early delivery.`);
+                    return { type: 'patrol_spawn', targetId: null, x: huntZone.x, y: huntZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
                 }
             }
             console.log(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);

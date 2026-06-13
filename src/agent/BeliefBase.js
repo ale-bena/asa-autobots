@@ -70,8 +70,8 @@ export class BeliefBase {
             minRewardThreshold: 0,
             maxRewardLimit: Infinity,
             requiredStackSize: null,
-            multiplierRules: [],
-            bonusRules: []
+            maxStackSize: null,
+            rules: []
         };
 
         /**
@@ -472,15 +472,15 @@ export class BeliefBase {
         }
     }
 
-    /**
-     * Translates LLM coordinator-structured rules into the internal BDI policy representation.
-     * @param {Array<Object>|Object} rulesInput - Rules from coordinator.
-     */
     applyPolicyRules(rulesInput) {
         if (!rulesInput) return;
         
         if (Array.isArray(rulesInput)) {
-            // Overwrite/apply properties from each rule object in the array
+            let extractedMin = null;
+            let extractedMax = null;
+            let extractedMinReward = 0;
+            let extractedMaxReward = Infinity;
+
             for (const r of rulesInput) {
                 if (r.tiles && Array.isArray(r.tiles)) {
                     // If rule has negative bonus/penalty, these tiles should be avoided
@@ -493,53 +493,64 @@ export class BeliefBase {
                     }
                 }
                 
-                if (r.minReward !== null && r.minReward !== undefined) {
-                    this.policyRules.minRewardThreshold = Number(r.minReward);
-                }
-                
-                if (r.maxReward !== null && r.maxReward !== undefined) {
-                    this.policyRules.maxRewardLimit = Number(r.maxReward);
-                }
-                
-                if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds) && r.stackSizeBounds.length > 0) {
-                    const firstBound = r.stackSizeBounds[0];
-                    if (firstBound && firstBound.min !== null && firstBound.min !== undefined) {
-                        this.policyRules.requiredStackSize = Number(firstBound.min);
-                    }
-                }
-                
-                // Build and add multiplier/bonus rules if present
-                if (r.multiplier !== null || r.bonus !== null) {
-                    let conds = [];
-                    if (r.tiles && r.tiles.length > 0 && !r.all_tiles) {
-                        const tileCond = r.tiles.map(t => {
-                            const [tx, ty] = t.split(',');
-                            return `(x == ${tx} && y == ${ty})`;
-                        }).join(' || ');
-                        conds.push(`(${tileCond})`);
+                // Only extract global limits if they apply to all tiles
+                if (r.all_tiles) {
+                    if (r.minReward !== null && r.minReward !== undefined) {
+                        extractedMinReward = Math.max(extractedMinReward, Number(r.minReward));
                     }
                     
-                    if (r.stackSizeBounds && r.stackSizeBounds.length > 0) {
-                        const sizeCond = r.stackSizeBounds.map(b => {
-                            if (b.min !== null && b.max !== null) return `(carrying.size >= ${b.min} && carrying.size < ${b.max})`;
-                            if (b.min !== null) return `(carrying.size >= ${b.min})`;
-                            if (b.max !== null) return `(carrying.size < ${b.max})`;
-                            return 'true';
-                        }).join(' || ');
-                        conds.push(`(${sizeCond})`);
+                    if (r.maxReward !== null && r.maxReward !== undefined) {
+                        extractedMaxReward = Math.min(extractedMaxReward, Number(r.maxReward));
                     }
                     
-                    const condition = conds.length > 0 ? conds.join(' && ') : 'true';
-                    
-                    if (r.multiplier !== null && r.multiplier !== undefined) {
-                        this.policyRules.multiplierRules.push({ condition, multiplier: Number(r.multiplier) });
-                    }
-                    if (r.bonus !== null && r.bonus !== undefined) {
-                        this.policyRules.bonusRules.push({ condition, bonus: Number(r.bonus) });
+                    if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds)) {
+                        for (const b of r.stackSizeBounds) {
+                            const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < -500));
+                            if (isPenalty) {
+                                // Penalty/forbidden bounds:
+                                // E.g. [0, 2] is forbidden -> min required allowed is 2
+                                if (b.min === 0 || b.min === null) {
+                                    if (b.max !== null && b.max !== undefined) {
+                                        extractedMin = Math.max(extractedMin || 0, Number(b.max));
+                                    }
+                                }
+                                // E.g. [6, null] is forbidden -> max allowed is 5 (6 - 1)
+                                if (b.max === null || b.max === undefined) {
+                                    if (b.min !== null && b.min !== undefined) {
+                                        extractedMax = Math.min(extractedMax !== null ? extractedMax : Infinity, Number(b.min) - 1);
+                                    }
+                                }
+                            } else {
+                                // Rewarding/allowed bounds:
+                                // E.g. [2, 6] is allowed -> min required is 2, max allowed is 5
+                                if (b.min !== null && b.min !== undefined) {
+                                    extractedMin = Math.max(extractedMin || 0, Number(b.min));
+                                }
+                                if (b.max !== null && b.max !== undefined) {
+                                    extractedMax = Math.min(extractedMax !== null ? extractedMax : Infinity, Number(b.max) - 1);
+                                }
+                            }
+                        }
                     }
                 }
+                
+                // Add the rule directly to our rules list
+                this.policyRules.rules.push(r);
+            }
+
+            this.policyRules.minRewardThreshold = extractedMinReward;
+            this.policyRules.maxRewardLimit = extractedMaxReward;
+            
+            if (extractedMin !== null) {
+                this.policyRules.requiredStackSize = extractedMin;
+            }
+            if (extractedMax !== null && extractedMax !== Infinity) {
+                this.policyRules.maxStackSize = extractedMax;
             }
         } else if (typeof rulesInput === 'object') {
+            if (rulesInput.rules) {
+                this.policyRules.rules = rulesInput.rules;
+            }
             Object.assign(this.policyRules, rulesInput);
         }
     }

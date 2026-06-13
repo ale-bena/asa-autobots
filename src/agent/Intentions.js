@@ -116,6 +116,7 @@ export class IntentionEngine {
          * Track last required stack size to detect coordinator policy changes.
          */
         this.lastRequiredStackSize = null;
+        this.lastMaxStackSize = null;
 
         /**
          * Throttled timestamp to send status updates directly to peers.
@@ -156,6 +157,7 @@ export class IntentionEngine {
             // Value copies that sub-modules may update
             dynamicCapacityLimit: this.dynamicCapacityLimit,
             lastRequiredStackSize: this.lastRequiredStackSize,
+            lastMaxStackSize: this.lastMaxStackSize,
             collisionCounter: this.collisionCounter,
             mustDeliver: this.mustDeliver,
             sequenceStartTime: this.sequenceStartTime,
@@ -174,6 +176,7 @@ export class IntentionEngine {
     _applyEngineState(state) {
         this.dynamicCapacityLimit = state.dynamicCapacityLimit;
         this.lastRequiredStackSize = state.lastRequiredStackSize;
+        this.lastMaxStackSize = state.lastMaxStackSize;
         this.collisionCounter = state.collisionCounter;
         this.mustDeliver = state.mustDeliver;
         this.sequenceStartTime = state.sequenceStartTime;
@@ -396,37 +399,6 @@ export class IntentionEngine {
                     yield* NavigateTo(beliefs, escapeTile.x, escapeTile.y);
                 })(this.beliefs, goal.x, goal.y);
 
-            case 'admin_pickup':
-                return (function* (beliefs, parcelId, engine) {
-                    const parcel = beliefs.parcels.get(parcelId);
-                    if (!parcel) {
-                        console.log(`[BDI] admin_pickup: parcel ${parcelId} not found in beliefs.`);
-                        beliefs.activeContracts.delete('admin_pickup');
-                        return;
-                    }
-                    console.log(`[BDI] admin_pickup: Starting pickup of parcel ${parcelId} at (${parcel.x}, ${parcel.y})`);
-                    const success = yield* NavigateTo(beliefs, parcel.x, parcel.y);
-                    if (success) {
-                        yield { action: 'pickup', target: parcelId };
-                        console.log(`[BDI] admin_pickup: Successfully picked up parcel ${parcelId}.`);
-                    } else {
-                        console.log(`[BDI] admin_pickup: Failed to navigate to parcel ${parcelId}.`);
-                    }
-                    beliefs.activeContracts.delete('admin_pickup');
-                })(this.beliefs, goal.targetId, this);
-
-            case 'admin_deliver':
-                return (function* (beliefs, parcelId, engine) {
-                    console.log(`[BDI] admin_deliver: Navigating to (${goal.x}, ${goal.y}) to drop parcel ${parcelId || 'all'}`);
-                    const success = yield* NavigateTo(beliefs, goal.x, goal.y);
-                    if (success) {
-                        yield { action: 'putdown', target: parcelId };
-                        console.log(`[BDI] admin_deliver: Successfully dropped parcel ${parcelId || 'all'} at (${goal.x}, ${goal.y}).`);
-                    } else {
-                        console.log(`[BDI] admin_deliver: Failed to navigate to drop coordinate (${goal.x}, ${goal.y}).`);
-                    }
-                    beliefs.activeContracts.delete('admin_deliver');
-                })(this.beliefs, goal.targetId, this);
 
             case 'deliver':
                 return this._deliverRecipe(goal.x, goal.y);

@@ -10,7 +10,7 @@ import { OPENAI_CONFIG, AGENT_IDS } from '../config/config.js';
 import { SYSTEM_PROMPT } from './prompts.js';
 import { TOOLS_REGISTRY } from './toolsRegistry.js';
 import { logger } from '../utils/logger.js';
-import { evaluateExpression } from '../policy/PolicyEngine.js';
+
 
 /**
  * Imperative one-shot task tools that require a confirmed positive reward
@@ -23,8 +23,6 @@ import { evaluateExpression } from '../policy/PolicyEngine.js';
  */
 const REWARD_GATED_TOOLS = new Set([
     'move_agent_to_coordinate',
-    'pickup_parcel_by_id',
-    'deliver_parcel_by_id',
     'set_agent_variable',
     'cooperate_with_agent'
 ]);
@@ -117,7 +115,7 @@ export class LLMCoordinator {
                 const response = await this.openai.chat.completions.create({
                     model: OPENAI_CONFIG.model,
                     messages: messagesToSend,
-                    temperature:0
+                    temperature: 0
                 });
 
                 content = response.choices[0]?.message?.content || '';

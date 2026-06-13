@@ -221,56 +221,62 @@ export function evaluateExpression(expr, state, localVars = {}) {
 export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
     let reward = baseReward;
 
-    // Context object for evaluateExpression
-    const context = {
-        beliefs: beliefs,
-        variables: beliefs.variables,
-        me: {
-            x: projectedState.x !== undefined ? projectedState.x : beliefs.me.x,
-            y: projectedState.y !== undefined ? projectedState.y : beliefs.me.y,
-            score: beliefs.me.score,
-            status: beliefs.me.status
-        },
-        carried: {
-            length: projectedState.carriedSize !== undefined ? projectedState.carriedSize : beliefs.carried.length
-        },
-        path: projectedState.path || [],
-        parcel: projectedState.parcel || null
-    };
+    const x = projectedState.x !== undefined ? projectedState.x : (beliefs.me ? beliefs.me.x : 0);
+    const y = projectedState.y !== undefined ? projectedState.y : (beliefs.me ? beliefs.me.y : 0);
+    const stackSize = projectedState.carriedSize !== undefined ? projectedState.carriedSize : (beliefs.carried ? beliefs.carried.length : 0);
+    const parcel = projectedState.parcel || null;
 
-    // localVars take precedence over beliefs state in resolveIdentifier, so the
-    // projected coordinates actually override the agent's current position in
-    // tile-conditioned rules (x == tx && y == ty).
-    const localVars = {
-        'x': context.me.x,
-        'y': context.me.y,
-        'carrying.size': context.carried.length,
-        'carrying.length': context.carried.length,
-        'stack_size': context.carried.length
-    };
+    if (beliefs.policyRules && beliefs.policyRules.rules) {
+        for (const rule of beliefs.policyRules.rules) {
+            let applies = true;
 
-    // 1. Apply multiplier rules
-    if (beliefs.policyRules && beliefs.policyRules.multiplierRules) {
-        for (const rule of beliefs.policyRules.multiplierRules) {
-            try {
-                if (evaluateExpression(rule.condition, context, localVars)) {
+            // 1. Check coordinates (tiles)
+            if (rule.all_tiles === false) {
+                if (!rule.tiles || rule.tiles.length === 0) {
+                    applies = false;
+                } else {
+                    const coordStr = `${x},${y}`;
+                    if (!rule.tiles.includes(coordStr)) {
+                        applies = false;
+                    }
+                }
+            }
+
+            // 2. Check stack size bounds
+            if (applies && rule.stackSizeBounds && rule.stackSizeBounds.length > 0) {
+                const matchesAnyBound = rule.stackSizeBounds.some(b => {
+                    const minOk = (b.min === null || b.min === undefined || stackSize >= b.min);
+                    const maxOk = (b.max === null || b.max === undefined || stackSize < b.max);
+                    return minOk && maxOk;
+                });
+                if (!matchesAnyBound) {
+                    applies = false;
+                }
+            }
+
+            // 3. Check minReward
+            if (applies && rule.minReward !== null && rule.minReward !== undefined) {
+                const parcelReward = (parcel && parcel.reward !== undefined) ? parcel.reward : null;
+                if (parcelReward === null || parcelReward < rule.minReward) {
+                    applies = false;
+                }
+            }
+
+            // 4. Check maxReward
+            if (applies && rule.maxReward !== null && rule.maxReward !== undefined) {
+                const parcelReward = (parcel && parcel.reward !== undefined) ? parcel.reward : null;
+                if (parcelReward === null || parcelReward > rule.maxReward) {
+                    applies = false;
+                }
+            }
+
+            if (applies) {
+                if (rule.multiplier !== null && rule.multiplier !== undefined) {
                     reward *= rule.multiplier;
                 }
-            } catch (e) {
-                console.error('[BDI Policy] Error evaluating multiplier rule condition:', rule.condition, e.message);
-            }
-        }
-    }
-
-    // 2. Apply bonus rules
-    if (beliefs.policyRules && beliefs.policyRules.bonusRules) {
-        for (const rule of beliefs.policyRules.bonusRules) {
-            try {
-                if (evaluateExpression(rule.condition, context, localVars)) {
+                if (rule.bonus !== null && rule.bonus !== undefined) {
                     reward += rule.bonus;
                 }
-            } catch (e) {
-                console.error('[BDI Policy] Error evaluating bonus rule condition:', rule.condition, e.message);
             }
         }
     }

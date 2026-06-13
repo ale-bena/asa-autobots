@@ -114,7 +114,7 @@ async function waitUntilPickedUp(agentId, parcelId, coordinator) {
  */
 async function waitUntilDelivered(agentId, parcelId, coordinator) {
     const beliefs = coordinator.beliefs;
-    const timeoutMs = 45000; // 45 seconds
+    const timeoutMs = 12000; // 12 seconds
     const startTime = Date.now();
 
     console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to deliver parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
@@ -277,7 +277,7 @@ export const TOOLS_REGISTRY = {
     },
 
     cooperate_with_agent: {
-        description: "Proposes a Peer-to-Peer rendezvous, handoff, gate clearing, or persistent courier relay contract, or cancels/closes active cooperation. RELAY: the courier agent repeatedly farms parcels and drops them at the drop tile; the other agent picks them up and delivers them, earning cross-agent delivery bonuses. Propose RELAY together with apply_custom_parcel_rule whenever a rule rewards parcels picked up by one agent and delivered by the other. For RELAY, x/y may be null to auto-pick a drop tile beside the best delivery zone.",
+        description: "Proposes a Peer-to-Peer rendezvous, handoff, gate clearing, or persistent courier relay contract, or cancels/closes active cooperation. RELAY: the courier agent repeatedly farms parcels and drops them at the drop tile; the other agent picks them up and delivers them, earning cross-agent delivery bonuses useful when picking up parcels from other agents. Propose RELAY together with apply_agent_rules whenever a rule rewards parcels picked up by one agent and delivered by the other. For RELAY, x/y may be null to auto-pick a drop tile beside the best delivery zone.",
         getArgsSchema: () => `{
             "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
             "contract": {
@@ -530,108 +530,6 @@ export const TOOLS_REGISTRY = {
             return { success: true, message: `Agent(s) [${resumeId}] resumed and cooperative contracts cleared.` };
         }
     },
-
-    apply_custom_parcel_rule: {
-        description: "Applies a custom reward multiplier or bonus modifier for parcels that meet a specific condition (e.g. previously carried by another agent). Example condition: 'parcel.previouslyCarriedByOther == true'.",
-        getArgsSchema: () => `{
-            "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}" or "all",
-            "condition": "string",
-            "multiplier": number | null,
-            "bonus": number | null
-        }`,
-        isAction: true,
-        handler: async (args, coordinator) => {
-            const rule = {
-                condition: args.condition,
-                multiplier: args.multiplier !== undefined && args.multiplier !== null ? Number(args.multiplier) : null,
-                bonus: args.bonus !== undefined && args.bonus !== null ? Number(args.bonus) : null
-            };
-
-            const targetId = args.id || 'all';
-
-            if (targetId === 'all' || targetId === coordinator.beliefs.me.id) {
-                if (rule.multiplier !== null) coordinator.beliefs.policyRules.multiplierRules.push(rule);
-                if (rule.bonus !== null) coordinator.beliefs.policyRules.bonusRules.push(rule);
-            }
-
-            if (targetId === 'all' || targetId === coordinator.getPeerAgentId()) {
-                await coordinator.P2P(
-                    coordinator.getPeerAgentId(),
-                    {
-                        type: 'APPLY_CUSTOM_PARCEL_RULE',
-                        rule: rule
-                    });
-            }
-
-            return { success: true, message: `Applied custom parcel rule to ${targetId}.` };
-        }
-    },
-
-    pickup_parcel_by_id: {
-        description: "Directs a specific agent to navigate to a parcel and pick it up by its ID. Blocks until picked up or timeout.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "parcelId": "string" }`,
-        isAction: true,
-        handler: async (args, coordinator) => {
-            const targetId = args.id;
-            const parcelId = args.parcelId;
-
-            if (targetId === coordinator.beliefs.me.id) {
-                coordinator.beliefs.hold = false;
-                coordinator.beliefs.activeContracts.set('admin_pickup', {
-                    coopId: 'admin_pickup',
-                    type: 'PICKUP',
-                    parcelId: parcelId,
-                    status: 'ACTIVE'
-                });
-            }
-
-            await coordinator.P2P(
-                targetId,
-                {
-                    type: 'PICKUP_PARCEL',
-                    parcelId: parcelId
-                });
-
-            const result = await waitUntilPickedUp(targetId, parcelId, coordinator);
-            return result;
-        }
-    },
-
-    deliver_parcel_by_id: {
-        description: "Directs a specific agent to navigate to a coordinate (or nearest delivery zone if x/y are null) and deliver/drop a specific parcel by its ID. Blocks until delivered or timeout.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "parcelId": "string", "x": number | null, "y": number | null }`,
-        isAction: true,
-        handler: async (args, coordinator) => {
-            const targetId = args.id;
-            const parcelId = args.parcelId;
-            const tx = args.x !== undefined ? args.x : null;
-            const ty = args.y !== undefined ? args.y : null;
-
-            if (targetId === coordinator.beliefs.me.id) {
-                coordinator.beliefs.hold = false;
-                coordinator.beliefs.activeContracts.set('admin_deliver', {
-                    coopId: 'admin_deliver',
-                    type: 'DELIVER',
-                    parcelId: parcelId,
-                    x: tx,
-                    y: ty,
-                    status: 'ACTIVE'
-                });
-            }
-
-            await coordinator.P2P(
-                targetId,
-                {
-                    type: 'DELIVER_PARCEL',
-                    parcelId: parcelId,
-                    x: tx,
-                    y: ty
-                });
-
-            const result = await waitUntilDelivered(targetId, parcelId, coordinator);
-            return result;
-        }
-    }
 };
 
 /**
