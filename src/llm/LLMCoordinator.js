@@ -51,10 +51,23 @@ export class LLMCoordinator {
         });
 
         /**
-         * Chat history database.
+         * Conversation buffer for the active reasoning cycle.
+         * Contains all user prompts, assistant reasoning, tool outputs, etc.
+         * @type {Array<Object>}
+         */
+        this.conversationBuffer = [];
+
+        /**
+         * Current chat history (keeps only the user questions and assistant answers).
          * @type {Array<Object>}
          */
         this.chatHistory = [];
+
+        /**
+         * Chat history database queried by get_history tool.
+         * @type {Array<{prompt: string, answer: string}>}
+         */
+        this.history = [];
 
         /**
          * Log history database for multi-turn admin prompts.
@@ -82,8 +95,8 @@ export class LLMCoordinator {
     }
 
     async model_call(prompt_text) {
-        // Append user prompt/tool output to chat history
-        this.chatHistory.push({ role: 'user', content: prompt_text });
+        // Append user prompt/tool output to conversation buffer
+        this.conversationBuffer.push({ role: 'user', content: prompt_text });
 
         let parsed = null;
         let retryMessages = [];
@@ -97,6 +110,7 @@ export class LLMCoordinator {
                 const messagesToSend = [
                     { role: 'system', content: this.systemPrompt },
                     ...this.chatHistory,
+                    ...this.conversationBuffer,
                     ...retryMessages
                 ];
 
@@ -129,8 +143,8 @@ export class LLMCoordinator {
                     continue;
                 }
 
-                // If valid, we keep the raw content in the permanent chat history
-                this.chatHistory.push({ role: 'assistant', content: content });
+                // If valid, we keep the raw content in the conversation buffer
+                this.conversationBuffer.push({ role: 'assistant', content: content });
                 break;
             } catch (err) {
                 console.warn(`[LLM] Parse/API error on attempt ${attempt}:`, err.message);
@@ -161,7 +175,7 @@ export class LLMCoordinator {
      * @returns {Promise<string>} The LLM text output or action status.
      */
     async handleAdminPrompt(promptText, accumulatedAnswers = []) {
-        const historyStartIndex = this.chatHistory.length;
+        this.conversationBuffer = [];
         this.rewardConfirmed = false;
 
         try {
@@ -195,17 +209,22 @@ export class LLMCoordinator {
                 }
             }
 
-            // Remove intermediate chat history of this run so unrelated future
-            // prompts don't inherit reward values, tool results, or task context
-            this.chatHistory.splice(historyStartIndex);
-
-            if (accumulatedAnswers.length === 0) {
-                return null;
+            const finalAnswer = accumulatedAnswers.length > 0 ? accumulatedAnswers.join('\n') : null;
+            if (finalAnswer) {
+                this.chatHistory.push({ role: 'user', content: promptText });
+                this.chatHistory.push({ role: 'assistant', content: finalAnswer });
+                this.history.push({ prompt: promptText, answer: finalAnswer });
+            } else {
+                this.chatHistory.push({ role: 'user', content: promptText });
+                this.chatHistory.push({ role: 'assistant', content: '[No response text generated]' });
+                this.history.push({ prompt: promptText, answer: '[No response text generated]' });
             }
 
-            return accumulatedAnswers.join('\n');
+            this.conversationBuffer = [];
+
+            return finalAnswer;
         } catch (error) {
-            this.chatHistory.splice(historyStartIndex);
+            this.conversationBuffer = [];
             throw error;
         }
     }

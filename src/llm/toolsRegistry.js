@@ -150,6 +150,15 @@ async function waitUntilDelivered(agentId, parcelId, coordinator) {
  * Each tool object contains description, getArgsSchema function, isAction flag, and its handler function.
  */
 export const TOOLS_REGISTRY = {
+    get_history: {
+        description: "Gets the history of the past conversations. The history is returned in the form of a JSON array of objects, where each object has a 'prompt' and 'answer' field.",
+        getArgsSchema: () => `{}`,
+        isAction: false,
+        handler: async (args, coordinator) => {
+            return { success: true, history: coordinator.history || [] };
+        }
+    },
+
     evaluate_math_expression: {
         description: "Resolves arithmetic formulas into numeric values.",
         getArgsSchema: () => `{ "expression": "expression_string" }`,
