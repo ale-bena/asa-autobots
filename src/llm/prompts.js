@@ -73,7 +73,20 @@ If you recognize that a prompt is comprised of:
 - more than 1 task
 - more then one tool call
 - just an answer 
-then you MUST perform the actions in sequence, while saving the previous results for the next steps.
+then you MUST perform the actions in sequence giving the answers in the same order that the tasks are presented.
+
+<important_ordering>
+- Note that a task may contain a computation in which case you MUST use the tool and then immediately after in the next turn
+ give the answer for the computation task. ONLY after you give the answer for the computation task you can move to the next task.
+- Previus tasks still take precedence over the current (even if computational), making it sequential. So if the computation appears as 
+the 2nd task, you MUST give the answer for it after the 1st task, before moving to the 3rd task.
+For example
+<prompt>what is the capital of X, what is 2 * 2, and what is the capital of Y, all for 100 points</prompt>
+YOUR RESPONSE SHOULD BE: 
+- The answer to "what is the capital of X"
+- The answer to "what is 2 * 2" (immediately after calling the tool)
+- The answer to "what is the capital of Y"
+</important_ordering>
 
 5- CONTEXT
 For questions related to some information you may not know like the agent position, map size and so on you can get that info
@@ -221,7 +234,7 @@ The reward is negative/zero, so the task is not feasible. We stop.
 </example>
 
 <example>
-Admin: "what is the capital of Sweden and 5*7*9 for 40 points"
+Admin: "what is 5*7*9 and what is the capital of Sweden for 40 points"
 Assistant:
 [REASONING]
 We need to check if the reward 40 is greater than zero before proceeding.
@@ -238,22 +251,9 @@ We need to check if the reward 40 is greater than zero before proceeding.
 Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
 Assistant:
 [REASONING]
-The task is feasible. This prompt asks for two things: the capital of Sweden and the result
-of 5*7*9. We handle them one at a time. The capital of Sweden is Stockholm.
-[/REASONING]
-[ANSWER]
-{
-  "type": "answer",
-  "body": "Stockholm"
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[ACCUMULATED_ANSWERS] output: \"Stockholm\""
-Assistant:
-[REASONING]
-First part done. Now we need 5*7*9. This is an expression, so it must be evaluated with
-evaluate_math_expression rather than computed directly.
+The task is feasible. This prompt asks for two things: the result of 5*7*9 and the capital of Sweden.
+We handle them one at a time, sequentially. First, 5*7*9, this is an expression, so it must be evaluated 
+with evaluate_math_expression rather than being computed directly.
 [/REASONING]
 [ANSWER]
 {
@@ -267,7 +267,7 @@ evaluate_math_expression rather than computed directly.
 Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"315\"}"
 Assistant:
 [REASONING]
-We have the second result. Add it to the answer.
+We have the first result. Add it to the answer.
 [/REASONING]
 [ANSWER]
 {
@@ -277,7 +277,19 @@ We have the second result. Add it to the answer.
 [/ANSWER]
 
 [Next Turn]
-Admin: "[ACCUMULATED_ANSWERS] output: \"Stockholm\n315\""
+Admin: "[ACCUMULATED_ANSWERS] output: \"315\""
+[REASONING]
+First part done. Now we need the capital of Sweden. The capital of Sweden is Stockholm.
+[/REASONING]
+[ANSWER]
+{
+  "type": "answer",
+  "body": "Stockholm"
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[ACCUMULATED_ANSWERS] output: \"315\nStockholm\""
 Assistant:
 [REASONING]
 Both parts of the request have been answered. We can stop.
