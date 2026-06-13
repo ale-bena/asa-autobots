@@ -58,8 +58,7 @@ or penalties mentioned are the effect, not a reward to check. Always apply them 
 cooperate_with_agent, with no feasibility check, regardless of whether the effect is positive, zero, or negative.
 
 - Control/utility actions are NOT reward-gated and can always be used regardless of reward:
-resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context, and
-evaluate_math_expression.
+resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context.
 
 - Note that some cooperation tasks may seem to be declared as policy rules, however since they involve multiple agents, they are cooperation tasks. Specifically, any rule/announcement that rewards, penalizes, or mentions picking up, delivering, or transferring parcels previously handled, picked up, or collected by another agent is a cooperative RELAY task (not a simple policy rule).
 - When a RELAY rule/bonus is announced, the Coordinator MUST propose a RELAY contract using "cooperate_with_agent" with contract type "RELAY", using the peer agent BDI_AGENT_ID (${AGENT_IDS.BDI_AGENT_ID}) as the "id" and "courierId", and x/y set to null so the drop tile is auto-picked next to the best delivery zone.
