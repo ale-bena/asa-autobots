@@ -49,6 +49,14 @@ export const logger = {
         console.log(format(COLORS.yellow, '[P2P]', `Sent ${type} ${privacy} to ${recipient}: ${JSON.stringify(payload)}`));
     },
 
+    p2pReceived(type, payload, senderId) {
+        if (!LOGGER_CONFIG.enableP2P) return;
+        const isHeartbeat = ['PEER_STATUS', 'PING', 'PONG'].includes(type);
+        if (isHeartbeat && !LOGGER_CONFIG.enablePeerStatus) return;
+
+        console.log(format(COLORS.yellow, '[P2P]', `Received ${type} from ${senderId}: ${JSON.stringify(payload)}`));
+    },
+
     actionConfirmation(msg) {
         console.log(format(COLORS.green, '[ACTION SUCCESS]', msg));
     },
