@@ -174,6 +174,7 @@ export class LLMCoordinator {
      */
     async handleAdminPrompt(promptText, accumulatedAnswers = []) {
         this.conversationBuffer = [];
+        this.chatHistory = [];
         this.rewardConfirmed = false;
 
         try {

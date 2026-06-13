@@ -61,9 +61,8 @@ cooperate_with_agent, with no feasibility check, regardless of whether the effec
 resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context, and
 evaluate_math_expression.
 
-- Note that some cooperation tasks may seem to be declared as parcel rules, however since they involve multiple agents,
-whether it's you and another or multiple other agents they are still cooperation tasks. For example tasks which involve taking 
-a parcel dropped by another agent are still cooperation (RELAY) tasks and are not policy rules.
+- Note that some cooperation tasks may seem to be declared as policy rules, however since they involve multiple agents, they are cooperation tasks. Specifically, any rule/announcement that rewards, penalizes, or mentions picking up, delivering, or transferring parcels previously handled, picked up, or collected by another agent is a cooperative RELAY task (not a simple policy rule).
+- When a RELAY rule/bonus is announced, the Coordinator MUST propose a RELAY contract using "cooperate_with_agent" with contract type "RELAY", using the peer agent BDI_AGENT_ID (${AGENT_IDS.BDI_AGENT_ID}) as the "id" and "courierId", and x/y set to null so the drop tile is auto-picked next to the best delivery zone.
 
 3- STRUCTURE
 Always follow the tool structure for calling it and the arguments schema to provide the arguments.
@@ -84,7 +83,22 @@ by using the get context tool. The same applies if the question is about the pre
 6- STATE
 You can query, save variables, by using the get variables and set variable tools.
 
-7- ATTENTION
+7- ODD AND EVEN ROWS/COLUMNS
+When you need to handle odd or even rows/columns (for example, checking if the agent is at an odd/even row/column, or applying rules/penalties to specific odd/even rows/columns):
+- Row corresponds to the 'y' coordinate, and Column corresponds to the 'x' coordinate.
+- To check if a row or column index/value is odd, you MUST check the value and do: value % 2 == 1
+- To check if a row or column index/value is even, you MUST check the value and do: value % 2 == 0
+- You MUST pass these check expressions (e.g. "y % 2 == 1" for odd row, or "x % 2 == 0" for even column) to the evaluate_math_expression tool to check if they are true.
+
+8- COORDINATE GENERATION & AGENT COORDINATION
+When directing agents to navigate to coordinates or tiles (e.g. using "move_agent_to_coordinate"):
+- If a movement task or constraint applies (e.g. "move to an odd column" or "go to an even row"), BOTH agents (BDI and LLM) MUST perform the movement. Call "move_agent_to_coordinate" for EACH agent.
+- NEVER send both agents to the exact same coordinate/tile, as they will occupy the same physical spot and collide or block each other. Always direct them to different, distinct coordinates (e.g. two different odd columns).
+- Ensure that the target coordinates chosen for each agent satisfy the criteria of the request (for example, staying within a specified radius, or landing on a specific row/column like odd/even).
+- Before directing an agent, check that the destination tile is a valid, walkable tile (not a wall or an empty/void tile), and that it is reachable. You can get map details and walkable tiles using the "get_local_context" tool.
+- If the request is to "drop", "place", or "put down" a parcel or package at a specific coordinate or tile, you MUST call "move_agent_to_coordinate" with "dropOnArrival" set to true. The agent will automatically search for and pick up a parcel first if it doesn't carry one and then drop it on arrival.
+
+9- ATTENTION
 All answers which don't follow the following JSON format will be rejected and you will be prompted for another response
 </rules>
 
@@ -362,8 +376,7 @@ Feasible. Modify policies/rules for the BDI agent to avoid tiles ["2,2", "2,3"].
         "all_tiles": false,
         "tiles": ["2,2", "2,3"],
         "stackSizeBounds": [],
-        "minReward": null,
-        "maxReward": null,
+        "rewardBounds": [],
         "multiplier": null,
         "bonus": -9999
       }
@@ -561,8 +574,7 @@ Feasible. Apply avoidance rule to all agents.
         "all_tiles": false,
         "tiles": ["1,1", "1,2"],
         "stackSizeBounds": [],
-        "minReward": null,
-        "maxReward": null,
+        "rewardBounds": [],
         "multiplier": null,
         "bonus": -9999
       }
@@ -645,8 +657,7 @@ I will call apply_agent_rules to apply a multiplier of 0 to these forbidden rang
           { "min": 8, "max": 9 },
           { "min": 10, "max": 12 }
         ],
-        "minReward": null,
-        "maxReward": null,
+        "rewardBounds": [],
         "multiplier": 0,
         "bonus": null
       }
@@ -721,6 +732,95 @@ means no chat output either - we stop immediately.
   "type": "stop"
 }
 [/ANSWER]
+</example>
+
+<example>
+Admin: "If a parcel is initially picked up by one agent and later delivered by the other agent, you will receive a 200 points bonus"
+Assistant:
+[REASONING]
+This is a cooperative rule involving two agents transferring a parcel. Therefore, it is a cooperative RELAY task, not a simple policy rule.
+We must propose a RELAY contract. The peer agent BDI_AGENT_ID is ${AGENT_IDS.BDI_AGENT_ID}, who will be the courier.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "cooperate_with_agent",
+  "args": {
+    "id": "${AGENT_IDS.BDI_AGENT_ID}",
+    "contract": {
+      "type": "RELAY",
+      "x": null,
+      "y": null,
+      "courierId": "${AGENT_IDS.BDI_AGENT_ID}"
+    }
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] cooperate_with_agent output: {\"success\":true,\"message\":\"Broadcast proposed RELAY contract (drop tile (4, 5), courier ${AGENT_IDS.BDI_AGENT_ID}).\"}"
+Assistant:
+[REASONING]
+The RELAY contract has been proposed/broadcasted successfully. The task is complete. We can stop.
+[/REASONING]
+[ANSWER]
+{
+  "type": "stop"
+}
+[/ANSWER]
+</example>
+
+<example>
+Admin: "Drop a package in the leftmost tile to get 5pt"
+Assistant:
+[REASONING]
+We need to check feasibility of 5 points first.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "evaluate_math_expression",
+  "args": { "expression": "5 > 0" }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
+Assistant:
+[REASONING]
+The task is feasible. The request is to drop a package on the leftmost tile. Let's find the leftmost tile from local context.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "get_local_context",
+  "args": {}
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] get_local_context output: {\"success\":true,\"context\":{\"me\":{\"x\":12,\"y\":12},\"map\":{\"width\":20,\"height\":20,\"extremes\":{\"leftmost\":{\"x\":0,\"y\":18},\"leftmost_alt\":{\"x\":0,\"y\":16}}}}}"
+Assistant:
+[REASONING]
+The leftmost tile is at (0, 18) with an alternative at (0, 16). Per rule 8, both agents must perform the task but at different coordinates. I'll direct the BDI agent to (0, 18) and the LLM agent to (0, 16) with dropOnArrival set to true.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "move_agent_to_coordinate",
+  "args": {
+    "id": "${AGENT_IDS.BDI_AGENT_ID}",
+    "x": 0,
+    "y": 18,
+    "dropOnArrival": true
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] move_agent_to_coordinate output: {\"success\":true,\"message\":\"Agent reached (0, 18)\"}"
+Assistant:
+[REASONING]
 </example>
 
 </some_examples>

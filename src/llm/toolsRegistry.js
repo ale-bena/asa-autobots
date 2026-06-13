@@ -37,19 +37,34 @@ function getAgentPosition(agentId, beliefs) {
 /**
  * Blocking wait until the agent has reached the target coordinates or timed out.
  */
-async function waitUntilReached(agentId, targetX, targetY, coordinator) {
+async function waitUntilReached(agentId, targetX, targetY, coordinator, sendTime = null) {
     const beliefs = coordinator.beliefs;
     const initialPos = getAgentPosition(agentId, beliefs);
     let distance = 10;
     if (initialPos) {
         distance = Math.abs(initialPos.x - targetX) + Math.abs(initialPos.y - targetY);
     }
-    const timeoutMs = Math.max(30000, distance * 2000); // 2 seconds per tile, min 30s
+    const timeoutMs = Math.max(5000, distance * 1000); // 1 second per tile, min 5s
     const startTime = Date.now();
+    const referenceTime = sendTime || startTime;
 
     console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to reach (${targetX}, ${targetY}). Distance: ${distance}. Timeout: ${timeoutMs / 1000}s`);
 
     while (Date.now() - startTime < timeoutMs) {
+        // Check for MOVE_TO_ACK message from the peer agent
+        if (agentId !== beliefs.me.id) {
+            const ack = beliefs.variables.moveToAck;
+            if (ack && ack.x === targetX && ack.y === targetY && ack.timestamp >= referenceTime) {
+                console.log(`[LLM Tool Wait] Received MOVE_TO_ACK from agent ${agentId} for coordinate (${targetX}, ${targetY}). Success: ${ack.success}`);
+                delete beliefs.variables.moveToAck; // Clear the ACK to prevent reuse
+                if (ack.success) {
+                    return { success: true, message: `Agent reached (${targetX}, ${targetY})` };
+                } else {
+                    return { success: false, error: `Agent failed to reach (${targetX}, ${targetY})` };
+                }
+            }
+        }
+
         const pos = getAgentPosition(agentId, beliefs);
         if (pos) {
             const rx = Math.round(pos.x);
@@ -80,7 +95,7 @@ async function waitUntilReached(agentId, targetX, targetY, coordinator) {
  */
 async function waitUntilPickedUp(agentId, parcelId, coordinator) {
     const beliefs = coordinator.beliefs;
-    const timeoutMs = 45000; // 45 seconds
+    const timeoutMs = 8000; // 8 seconds
     const startTime = Date.now();
 
     console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to pick up parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
@@ -114,7 +129,7 @@ async function waitUntilPickedUp(agentId, parcelId, coordinator) {
  */
 async function waitUntilDelivered(agentId, parcelId, coordinator) {
     const beliefs = coordinator.beliefs;
-    const timeoutMs = 12000; // 12 seconds
+    const timeoutMs = 5000; // 5 seconds
     const startTime = Date.now();
 
     console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to deliver parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
@@ -170,8 +185,8 @@ export const TOOLS_REGISTRY = {
     },
 
     move_agent_to_coordinate: {
-        description: "Directs an agent to navigate to a specific grid coordinate. Set holdOnArrival to true if the agent should pause/stay still immediately upon reaching the destination. You can optionally specify a holdDuration in seconds. When agents must wait at the destination until a later message (e.g. red light/green light games), set holdOnArrival true with holdDuration -1 for EVERY agent moved, and release later with resume_agent. Issuing a new move to a held agent automatically releases its hold.",
-        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number, "holdOnArrival": boolean, "holdDuration": number | null }`,
+        description: "Directs an agent to navigate to a specific grid coordinate. Set holdOnArrival to true if the agent should pause/stay still immediately upon reaching the destination. You can optionally specify a holdDuration in seconds. Set dropOnArrival to true if the agent should drop its carried parcels (and first search for/pickup a parcel if not carrying any) at the destination. Issuing a new move to a held agent automatically releases its hold.",
+        getArgsSchema: () => `{ "id": "${AGENT_IDS.BDI_AGENT_ID} or ${AGENT_IDS.LLM_AGENT_ID}", "x": number, "y": number, "holdOnArrival": boolean, "holdDuration": number | null, "dropOnArrival": boolean | null }`,
         isAction: true,
         handler: async (args, coordinator) => {
             // Guardrail: check if any stored variable related to reward is <= 0
@@ -191,6 +206,7 @@ export const TOOLS_REGISTRY = {
             let targetY = Math.round(Number(args.y));
             const holdOnArrival = args.holdOnArrival === true;
             const holdDuration = args.holdDuration ? Number(args.holdDuration) : null;
+            const dropOnArrival = args.dropOnArrival === true;
 
             if (coordinator.beliefs.map) {
                 targetX = Math.max(0, Math.min(targetX, coordinator.beliefs.map.width - 1));
@@ -207,8 +223,16 @@ export const TOOLS_REGISTRY = {
                     y: targetY,
                     holdOnArrival: holdOnArrival,
                     holdDuration: holdDuration,
+                    dropOnArrival: dropOnArrival,
                     status: 'ACTIVE'
                 });
+            }
+
+            // Clear any stale moveToAck and record sending timestamp before proposing the move
+            let sendTime = null;
+            if (args.id !== coordinator.beliefs.me.id) {
+                delete coordinator.beliefs.variables.moveToAck;
+                sendTime = Date.now();
             }
 
             await coordinator.P2P(
@@ -218,11 +242,12 @@ export const TOOLS_REGISTRY = {
                     x: targetX,
                     y: targetY,
                     holdOnArrival: holdOnArrival,
-                    holdDuration: holdDuration
+                    holdDuration: holdDuration,
+                    dropOnArrival: dropOnArrival
                 });
 
             // Blocking wait until coordinate is reached
-            const result = await waitUntilReached(args.id, targetX, targetY, coordinator);
+            const result = await waitUntilReached(args.id, targetX, targetY, coordinator, sendTime);
             return result;
         }
     },
@@ -234,8 +259,7 @@ export const TOOLS_REGISTRY = {
         - all_tiles: if true, the rule applies to all tiles
         - tiles: an array of coordinates, the rule applies to those tiles, if empty, the rule applies to no tiles
         - stackSizeBounds: an array of bounds, the rule applies if the agent's stack size is within these bounds, if empty, the rule applies to all stack sizes
-        - minReward: the minimum reward of a parcel for it to count
-        - maxReward: the maximum reward of a parcel for it to count
+        - rewardBounds: an array of bounds, the rule applies if the parcel reward is within these bounds, if empty, the rule applies to all rewards. Same semantics as stackSizeBounds (min inclusive, max exclusive).
         - multiplier: SCALES the delivery reward (reward = reward * multiplier). Use for proportional
           effects: "you get 0 pts" -> multiplier 0, "double the reward" -> multiplier 2,
           "0.3 of the standard reward" -> multiplier 0.3. A bonus of 0 is a no-op; zeroing a reward
@@ -248,9 +272,8 @@ export const TOOLS_REGISTRY = {
         "rules": [{
             "all_tiles": boolean,
             "tiles": ["x,y", ...],
-            "stackSizeBounds": [{"min": number | null, "max": number | null}], // the max is not inclusive, for an unbounded use null
-            "minReward": number | null, 
-            "maxReward": number | null,
+            "stackSizeBounds": [{"min": number | null, "max": number | null}], // min is inclusive, max is not inclusive, for an unbounded use null
+            "rewardBounds": [{"min": number | null, "max": number | null}], // min is inclusive, max is not inclusive, for an unbounded use null
             "multiplier": number  | null,
             "bonus": number | null
         }]
@@ -277,7 +300,7 @@ export const TOOLS_REGISTRY = {
     },
 
     cooperate_with_agent: {
-        description: "Proposes a Peer-to-Peer rendezvous, handoff, gate clearing, or persistent courier relay contract, or cancels/closes active cooperation. RELAY: the courier agent repeatedly farms parcels and drops them at the drop tile; the other agent picks them up and delivers them, earning cross-agent delivery bonuses useful when picking up parcels from other agents. Propose RELAY together with apply_agent_rules whenever a rule rewards parcels picked up by one agent and delivered by the other. For RELAY, x/y may be null to auto-pick a drop tile beside the best delivery zone.",
+        description: "Proposes a Peer-to-Peer rendezvous, handoff, gate clearing, or persistent courier relay contract, or cancels/closes active cooperation. RELAY: the courier agent repeatedly farms parcels and drops them at the drop tile; the other agent picks them up and delivers them, earning cross-agent delivery bonuses useful when picking up parcels from other agents. For RELAY, x/y may be null to auto-pick a drop tile beside the best delivery zone.",
         getArgsSchema: () => `{
             "id": "${AGENT_IDS.BDI_AGENT_ID}" or "${AGENT_IDS.LLM_AGENT_ID}",
             "contract": {
@@ -471,20 +494,18 @@ export const TOOLS_REGISTRY = {
                             });
                     }
 
-                    // Auto-clear active RENDEZVOUS contracts on timer expiration
+                    // Auto-clear active cooperative contracts on timer expiration
                     for (const [coopId, contract] of coordinator.beliefs.activeContracts.entries()) {
                         if (coopId === 'admin_move') continue;
-                        if (contract.type === 'RENDEZVOUS') {
-                            if (holdId === 'all' || holdId === coordinator.getPeerAgentId()) {
-                                await coordinator.P2P(
-                                    coordinator.getPeerAgentId(),
-                                    {
-                                        type: 'CLOSE_CONTRACT',
-                                        coopId: coopId
-                                    });
-                            }
-                            coordinator.beliefs.activeContracts.delete(coopId);
+                        if (holdId === 'all' || holdId === coordinator.getPeerAgentId()) {
+                            await coordinator.P2P(
+                                coordinator.getPeerAgentId(),
+                                {
+                                    type: 'CLOSE_CONTRACT',
+                                    coopId: coopId
+                                });
                         }
+                        coordinator.beliefs.activeContracts.delete(coopId);
                     }
                 }, duration * 1000);
             }
@@ -511,20 +532,18 @@ export const TOOLS_REGISTRY = {
                     });
             }
 
-            // CRITICAL: Automatically close all active RENDEZVOUS contracts to release agents from wait loops
+            // CRITICAL: Automatically close all active cooperative contracts to release agents from wait loops
             for (const [coopId, contract] of coordinator.beliefs.activeContracts.entries()) {
                 if (coopId === 'admin_move') continue;
-                if (contract.type === 'RENDEZVOUS') {
-                    if (resumeId === 'all' || resumeId === coordinator.getPeerAgentId()) {
-                        await coordinator.P2P(
-                            coordinator.getPeerAgentId(),
-                            {
-                                type: 'CLOSE_CONTRACT',
-                                coopId: coopId
-                            });
-                    }
-                    coordinator.beliefs.activeContracts.delete(coopId);
+                if (resumeId === 'all' || resumeId === coordinator.getPeerAgentId()) {
+                    await coordinator.P2P(
+                        coordinator.getPeerAgentId(),
+                        {
+                            type: 'CLOSE_CONTRACT',
+                            coopId: coopId
+                        });
                 }
+                coordinator.beliefs.activeContracts.delete(coopId);
             }
 
             return { success: true, message: `Agent(s) [${resumeId}] resumed and cooperative contracts cleared.` };

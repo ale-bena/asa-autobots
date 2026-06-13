@@ -282,7 +282,8 @@ export function selectBestGoal(beliefs, engineState) {
             if (beliefs.lockedTargets.has(parcel.id)) continue;
             if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
             if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
-            if (parcel.reward > beliefs.policyRules.maxRewardLimit) continue;
+            if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
+            if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
             if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
 
             const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
@@ -480,7 +481,8 @@ export function selectBestGoal(beliefs, engineState) {
         if (beliefs.lockedTargets.has(parcel.id)) continue;
         if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
         if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
-        if (parcel.reward > beliefs.policyRules.maxRewardLimit) continue;
+        if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
+        if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
         if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
 
         const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);

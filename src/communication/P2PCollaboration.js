@@ -153,8 +153,19 @@ export class P2PManager {
                         y: message.y,
                         holdOnArrival: message.holdOnArrival === true,
                         holdDuration: message.holdDuration !== undefined ? message.holdDuration : null,
+                        dropOnArrival: message.dropOnArrival === true,
                         status: 'ACTIVE'
                     });
+                    break;
+
+                case 'MOVE_TO_ACK':
+                    this.beliefs.variables.moveToAck = {
+                        success: message.success === true,
+                        x: Number(message.x),
+                        y: Number(message.y),
+                        timestamp: Date.now()
+                    };
+                    console.log(`[P2P] Received MOVE_TO_ACK: success=${message.success}, coord=(${message.x}, ${message.y})`);
                     break;
 
                 case 'HOLD':

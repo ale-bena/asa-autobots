@@ -196,6 +196,32 @@ export class IntentionEngine {
             case 'admin_move':
                 return (function* (beliefs, tx, ty, engine) {
                     console.log(`[BDI] admin_move: Starting movement to target tile (${tx}, ${ty}). Current position: (${beliefs.me.x}, ${beliefs.me.y})`);
+                    const contract = beliefs.activeContracts.get('admin_move');
+                    const holdOnArrival = contract ? contract.holdOnArrival : false;
+                    const holdDuration = contract ? contract.holdDuration : null;
+                    const dropOnArrival = contract ? contract.dropOnArrival : false;
+
+                    if (dropOnArrival && beliefs.carried.length === 0) {
+                        console.log(`[BDI] admin_move: dropOnArrival is true but carrying 0 parcels. Searching for a parcel first...`);
+                        while (beliefs.carried.length === 0) {
+                            const parcel = findNearestAvailableParcel(beliefs);
+                            if (parcel) {
+                                console.log(`[BDI] admin_move: Found parcel ${parcel.id} at (${parcel.x}, ${parcel.y}). Navigating to collect it...`);
+                                const reachedParcel = yield* NavigateTo(beliefs, parcel.x, parcel.y);
+                                if (reachedParcel) {
+                                    console.log(`[BDI] admin_move: Reached parcel ${parcel.id}. Picking it up.`);
+                                    yield { action: 'pickup', target: parcel.id };
+                                } else {
+                                    console.log(`[BDI] admin_move: Failed to reach parcel ${parcel.id}.`);
+                                    yield { action: 'wait' };
+                                }
+                            } else {
+                                console.log(`[BDI] admin_move: No available parcels found on map to pick up. Waiting...`);
+                                yield { action: 'wait' };
+                            }
+                        }
+                    }
+
                     // Primary: try A* with crate awareness
                     let path = findAStarPath(
                         beliefs.map,
@@ -225,14 +251,11 @@ export class IntentionEngine {
                             beliefs.activeContracts.delete('admin_move');
                             engine.adminMoveRetries = 0;
                         }
+                        yield { action: 'say', payload: { type: 'MOVE_TO_ACK', success: false, x: tx, y: ty } };
                         return;
                     }
 
                     console.log(`[BDI] admin_move: Path found with length ${path.length}. Executing NavigateTo...`);
-                    const contract = beliefs.activeContracts.get('admin_move');
-                    const holdOnArrival = contract ? contract.holdOnArrival : false;
-                    const holdDuration = contract ? contract.holdDuration : null;
-
                     const success = yield* NavigateTo(beliefs, tx, ty);
                     // Always clear the contract when done — success or not
                     beliefs.activeContracts.delete('admin_move');
@@ -240,8 +263,18 @@ export class IntentionEngine {
 
                     const reachedX = Math.round(beliefs.me.x);
                     const reachedY = Math.round(beliefs.me.y);
-                    if (success && reachedX === tx && reachedY === ty) {
+                    const reached = success && reachedX === tx && reachedY === ty;
+
+                    yield { action: 'say', payload: { type: 'MOVE_TO_ACK', success: reached, x: tx, y: ty } };
+
+                    if (reached) {
                         console.log(`[BDI] admin_move to (${tx}, ${ty}) completed successfully. Reached target tile (${reachedX}, ${reachedY}).`);
+                        if (dropOnArrival && beliefs.carried.length > 0) {
+                            console.log(`[BDI] admin_move: dropOnArrival is true. Dropping all carried parcels at destination.`);
+                            while (beliefs.carried.length > 0) {
+                                yield { action: 'putdown' };
+                            }
+                        }
                         if (holdOnArrival) {
                             console.log(`[BDI] holdOnArrival is true. Activating HOLD state for agent.`);
                             beliefs.hold = true;
@@ -655,4 +688,36 @@ export class IntentionEngine {
             // Ignore socket disconnects
         }
     }
+}
+
+/**
+ * Helper to find the nearest parcel that is not carried by anyone else and is reachable via A*.
+ */
+function findNearestAvailableParcel(beliefs) {
+    const candidates = [];
+    for (const parcel of beliefs.parcels.values()) {
+        if (parcel.carriedBy) continue;
+        if (beliefs.carried.includes(parcel.id)) continue;
+        if (beliefs.policyRules) {
+            if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
+            if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
+            if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
+        }
+        const dist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
+        candidates.push({ parcel, dist });
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+    for (const c of candidates) {
+        const path = findAStarPath(
+            beliefs.map,
+            { x: beliefs.me.x, y: beliefs.me.y },
+            { x: c.parcel.x, y: c.parcel.y },
+            beliefs.policyRules,
+            null
+        );
+        if (path && path.length >= 1) {
+            return c.parcel;
+        }
+    }
+    return null;
 }

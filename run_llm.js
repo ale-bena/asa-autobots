@@ -102,11 +102,16 @@ socket.onMsg((senderId, name, msg) => {
                 processedMessages.delete(m);
             }
         }
-    }
 
-    messageQueue = messageQueue
-        .then(() => processIncomingMessage(senderId, name, msg))
-        .catch(e => console.error('[LLM] Error processing queued message:', e.message));
+        // Queue admin messages sequentially to ensure ordered reasoning cycles
+        messageQueue = messageQueue
+            .then(() => processIncomingMessage(senderId, name, msg))
+            .catch(e => console.error('[LLM] Error processing queued message:', e.message));
+    } else {
+        // Process peer P2P coordination messages immediately without queuing to avoid deadlocks
+        p2pManager.handleIncomingChat(senderId, msg)
+            .catch(e => console.error('[LLM] Error processing peer coordination message:', e.message));
+    }
 });
 
 async function processIncomingMessage(senderId, name, msg) {

@@ -254,19 +254,20 @@ export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
                 }
             }
 
-            // 3. Check minReward
-            if (applies && rule.minReward !== null && rule.minReward !== undefined) {
+            // 3. Check reward bounds (same semantics as stackSizeBounds: min inclusive, max exclusive)
+            if (applies && rule.rewardBounds && rule.rewardBounds.length > 0) {
                 const parcelReward = (parcel && parcel.reward !== undefined) ? parcel.reward : null;
-                if (parcelReward === null || parcelReward < rule.minReward) {
+                if (parcelReward === null) {
                     applies = false;
-                }
-            }
-
-            // 4. Check maxReward
-            if (applies && rule.maxReward !== null && rule.maxReward !== undefined) {
-                const parcelReward = (parcel && parcel.reward !== undefined) ? parcel.reward : null;
-                if (parcelReward === null || parcelReward > rule.maxReward) {
-                    applies = false;
+                } else {
+                    const matchesAnyBound = rule.rewardBounds.some(b => {
+                        const minOk = (b.min === null || b.min === undefined || parcelReward >= b.min);
+                        const maxOk = (b.max === null || b.max === undefined || parcelReward < b.max);
+                        return minOk && maxOk;
+                    });
+                    if (!matchesAnyBound) {
+                        applies = false;
+                    }
                 }
             }
 

@@ -495,12 +495,34 @@ export class BeliefBase {
                 
                 // Only extract global limits if they apply to all tiles
                 if (r.all_tiles) {
-                    if (r.minReward !== null && r.minReward !== undefined) {
-                        extractedMinReward = Math.max(extractedMinReward, Number(r.minReward));
-                    }
-                    
-                    if (r.maxReward !== null && r.maxReward !== undefined) {
-                        extractedMaxReward = Math.min(extractedMaxReward, Number(r.maxReward));
+                    // Extract reward bounds (same semantics as stackSizeBounds: min inclusive, max exclusive)
+                    if (r.rewardBounds && Array.isArray(r.rewardBounds)) {
+                        const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < -500));
+                        for (const b of r.rewardBounds) {
+                            if (isPenalty) {
+                                // Penalty/forbidden reward bounds:
+                                // E.g. [0, 3] is forbidden -> min allowed reward is 3
+                                if (b.min === 0 || b.min === null) {
+                                    if (b.max !== null && b.max !== undefined) {
+                                        extractedMinReward = Math.max(extractedMinReward, Number(b.max));
+                                    }
+                                }
+                                // E.g. [10, null] is forbidden -> max allowed reward is 9 (10 - 1)
+                                if (b.max === null || b.max === undefined) {
+                                    if (b.min !== null && b.min !== undefined) {
+                                        extractedMaxReward = Math.min(extractedMaxReward, Number(b.min));
+                                    }
+                                }
+                            } else {
+                                // Rewarding/allowed reward bounds:
+                                if (b.min !== null && b.min !== undefined) {
+                                    extractedMinReward = Math.max(extractedMinReward, Number(b.min));
+                                }
+                                if (b.max !== null && b.max !== undefined) {
+                                    extractedMaxReward = Math.min(extractedMaxReward, Number(b.max));
+                                }
+                            }
+                        }
                     }
                     
                     if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds)) {
