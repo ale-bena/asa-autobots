@@ -98,9 +98,7 @@ You can query, save variables, by using the get variables and set variable tools
 7- ODD AND EVEN ROWS/COLUMNS
 When you need to handle odd or even rows/columns (for example, checking if the agent is at an odd/even row/column, or applying rules/penalties to specific odd/even rows/columns):
 - Row corresponds to the 'y' coordinate, and Column corresponds to the 'x' coordinate.
-- To check if a row or column index/value is odd, you MUST check the value and do: value % 2 == 1
-- To check if a row or column index/value is even, you MUST check the value and do: value % 2 == 0
-- You MUST pass these check expressions (e.g. "y % 2 == 1" for odd row, or "x % 2 == 0" for even column) to the evaluate_math_expression tool to check if they are true.
+- You do NOT need to use a math tool to verify odd/even numbers. Use your internal reasoning to select valid coordinates that fit the criteria (e.g., if asked for an odd row, directly pick y=3, y=5, etc., after checking the map context).
 
 8- COORDINATE GENERATION & AGENT COORDINATION
 When directing agents to navigate to coordinates or tiles (e.g. using "move_agent_to_coordinate"):
@@ -111,7 +109,10 @@ When directing agents to navigate to coordinates or tiles (e.g. using "move_agen
 - If the request is to "drop", "place", or "put down" a parcel or package at a specific coordinate or tile, you MUST call "move_agent_to_coordinate" with "dropOnArrival" set to true. The agent will automatically search for and pick up a parcel first if it doesn't carry one and then drop it on arrival.
 
 9- ATTENTION
-All answers which don't follow the following JSON format will be rejected and you will be prompted for another response
+All answers which don't follow the following JSON format will be rejected and you will be prompted for another response.
+
+10- STRICT TURN-TAKING (ANTI-HALLUCINATION)
+You must NEVER generate the Admin's response or simulate a "[Next Turn]" block yourself. After you output an [ANSWER] block containing a tool call or a stop command, you must immediately STOP generating and wait for the real Admin to provide the [TOOL_RESULT].
 </rules>
 
 <response_format>
@@ -360,21 +361,7 @@ Both agents directed. We stop.
 Admin: "Avoid cells 2,2 and 2,3 for BDI to get 5 pts"
 Assistant:
 [REASONING]
-Check feasibility of 5 points.
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "evaluate_math_expression",
-  "args": { "expression": "5 > 0" }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
-Assistant:
-[REASONING]
-Feasible. Modify policies/rules for the BDI agent to avoid tiles ["2,2", "2,3"].
+This is a standing rule ("Avoid cells... to get 5 pts"). According to Rule 2, standing rules are applied directly without feasibility checks, regardless of the reward mentioned as the effect.
 [/REASONING]
 [ANSWER]
 {
@@ -558,7 +545,7 @@ Midpoint rendezvous contract proposed. Both agents will navigate to (7,7) within
 Admin: "Avoid cells 1,1 and 1,2 for all agents, then go to coordinate 5,5 reward 30 points"
 Assistant:
 [REASONING]
-Check feasibility of 30 points.
+The movement task rewards 30 points, so we check feasibility. The avoidance rule is a standing rule and does not need evaluation, but we sequence them together. First, check feasibility.
 [/REASONING]
 [ANSWER]
 {
@@ -572,7 +559,7 @@ Check feasibility of 30 points.
 Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
 Assistant:
 [REASONING]
-Feasible. Apply avoidance rule to all agents.
+Feasible. Apply avoidance rule to all agents first.
 [/REASONING]
 [ANSWER]
 {
@@ -629,28 +616,7 @@ Agent arrived at destination. We can stop.
 Admin: "you can only deliver when you have one of the following stack sizes: 3, 5 to 7, 9, or more than 11. Delivery reward is 50 points."
 Assistant:
 [REASONING]
-Check feasibility of 50 points.
-[/REASONING]
-[ANSWER]
-{
-  "type": "tool",
-  "name": "evaluate_math_expression",
-  "args": { "expression": "50 > 0" }
-}
-[/ANSWER]
-
-[Next Turn]
-Admin: "[TOOL_RESULT] evaluate_math_expression output: {\"success\":true,\"result\":\"true\"}"
-Assistant:
-[REASONING]
-Feasible. The allowed stack sizes are 3, 5 to 7 (5, 6, 7), 9, or more than 11 (12+).
-All other stack sizes must be penalized (multiplier 0) to avoid delivery at invalid stack sizes.
-The forbidden stack size ranges are:
-- 0 to 2 (stack size < 3): {"min": 0, "max": 3}
-- 4 (between 3 and 5): {"min": 4, "max": 5}
-- 8 (between 7 and 9): {"min": 8, "max": 9}
-- 10 to 11 (between 9 and 12): {"min": 10, "max": 12}
-I will call apply_agent_rules to apply a multiplier of 0 to these forbidden ranges.
+This is a standing rule regarding delivery conditions and multipliers. According to Rule 2, standing rules do not require feasibility checks. I will immediately calculate the forbidden stack size ranges (0-2, 4, 8, 10-11) and apply a multiplier of 0 to them.
 [/REASONING]
 [ANSWER]
 {
@@ -832,6 +798,32 @@ The leftmost tile is at (0, 18) with an alternative at (0, 16). Per rule 8, both
 Admin: "[TOOL_RESULT] move_agent_to_coordinate output: {\"success\":true,\"message\":\"Agent reached (0, 18)\"}"
 Assistant:
 [REASONING]
+The BDI agent has been dispatched to the first coordinate. Now I must direct the LLM agent to the alternate leftmost coordinate (0, 16) with dropOnArrival set to true.
+[/REASONING]
+[ANSWER]
+{
+  "type": "tool",
+  "name": "move_agent_to_coordinate",
+  "args": {
+    "id": "${AGENT_IDS.LLM_AGENT_ID}",
+    "x": 0,
+    "y": 16,
+    "dropOnArrival": true
+  }
+}
+[/ANSWER]
+
+[Next Turn]
+Admin: "[TOOL_RESULT] move_agent_to_coordinate output: {\"success\":true,\"message\":\"Agent reached (0, 16)\"}"
+Assistant:
+[REASONING]
+Both agents have been directed to drop packages at the distinct leftmost tiles. The task is complete. We can stop.
+[/REASONING]
+[ANSWER]
+{
+  "type": "stop"
+}
+[/ANSWER]
 </example>
 
 </some_examples>
