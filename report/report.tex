@@ -1,0 +1,166 @@
+\documentclass[a4paper,11pt,titlepage,oneside]{book}
+\usepackage{epsfig}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{wrapfig}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage{setspace}
+\usepackage[paperheight=29.7cm,paperwidth=21cm,outer=1.5cm,inner=2.5cm,top=2cm,bottom=2cm]{geometry} % layout setting
+\usepackage{titlesec} % custom setup title of chapter
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{multicol}
+\usepackage[normalem]{ulem}
+\usepackage{siunitx}
+\usepackage{tocloft}
+% Compact table of contents (match the tighter spacing of main.tex) so it fits on one page
+\setlength{\cftbeforechapskip}{0.1em}
+\setlength{\cftbeforesecskip}{0pt}
+\setlength{\cftbeforesubsecskip}{0pt}
+\setlength{\cftbeforeparaskip}{0pt}
+\renewcommand{\cftchapfont}{\bfseries}
+\renewcommand{\cftchappagefont}{\normalfont}
+%\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+\usepackage[colorlinks=false, pdfborder={0 0 0}]{hyperref}
+\usepackage{cleveref}
+\crefname{figure}{Figure}{Figures}
+\Crefname{figure}{Figure}{Figures}
+%\usepackage[T1]{fontenc}
+%\usepackage{adjustbox}
+%\usepackage{etoolbox}
+% \usepackage{newtxtext,newtxmath} % times new roman
+\definecolor{dgreen}{RGB}{0,153,0}
+\definecolor{lgreen}{RGB}{102,255,102}
+\definecolor{yellow}{RGB}{255,255,102}
+\definecolor{orange}{RGB}{255,178,102}
+\definecolor{dorange}{RGB}{255,102,0}
+\definecolor{red}{RGB}{255,0,0}
+
+\newcommand{\colorvalpos}[1]{%
+  \ifdim #1pt > .95pt \cellcolor{dgreen}#1%
+  \else\ifdim #1pt > .9pt \cellcolor{lgreen}#1%
+  \else\ifdim #1pt > .8pt \cellcolor{yellow}#1%
+  \else\ifdim #1pt > .7pt \cellcolor{orange}#1%
+  \else\ifdim #1pt > .6pt \cellcolor{dorange}#1%
+  \else \cellcolor{red}#1%
+  \fi\fi\fi\fi\fi
+}
+
+\newcommand{\colorvalneg}[1]{%
+  \ifdim #1pt < .05pt \cellcolor{dgreen}#1%
+  \else\ifdim #1pt < .1pt \cellcolor{lgreen}#1%
+  \else\ifdim #1pt < .2pt \cellcolor{yellow}#1%
+  \else\ifdim #1pt < .3pt \cellcolor{orange}#1%
+  \else\ifdim #1pt < .4pt \cellcolor{dorange}#1%
+  \else \cellcolor{red}#1%
+  \fi\fi\fi\fi\fi
+}
+
+\newcommand{\posorneg}[1]{%
+  \ifdim #1pt > 10pt \cellcolor{dgreen}#1%
+  \else\ifdim #1pt > 3pt \cellcolor{lgreen}#1%
+  \else\ifdim #1pt > -3pt \cellcolor{yellow}#1%
+  \else\ifdim #1pt > -10pt \cellcolor{dorange}#1%
+  \else \cellcolor{red}#1%
+  \fi\fi\fi\fi
+}
+
+%%%%%%%%%%%%%%
+% support for accented letters / unicode arrows used in the tile legend
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+\singlespacing
+
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd{\thebibliography}
+  {\settowidth}
+  {\setlength{\itemsep}{0pt plus 0.3ex}%
+   \setlength{\parskip}{0pt}%
+   \settowidth}{}{}
+\makeatother
+
+
+\begin{document}
+
+  % no page number
+  \pagenumbering{gobble}
+  \input{front}
+
+  % page number with Arabic format
+  \mainmatter
+
+    % index
+    \begingroup\small
+    \tableofcontents
+    \endgroup
+    %\cleardoublepage
+    % group to define space between chapters
+    \begingroup
+      % override format of title chapter
+      \titleformat{\chapter}[display]
+        {\normalfont\Huge\bfseries}{}{1em}{}
+
+      % prevent \chapter from starting a new page
+      \makeatletter
+      \patchcmd{\chapter}{\if@openright\cleardoublepage\else\clearpage\fi}{\par}{}{}
+      \makeatother
+
+      \titlespacing*{\chapter}{0pt}{0.40in}{0.02in}
+      \titlespacing*{\section}{0pt}{0.15in}{0.02in}
+      \titlespacing*{\subsection}{0pt}{0.10in}{0.02in}
+
+      % summary / abstract
+      \newpage
+
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      % chapters
+      \input{chapters/1_introduction.tex}
+      %\cleardoublepage
+      \input{chapters/2_bdi_agent.tex}
+      %\cleardoublepage
+      \input{chapters/3_pddl_use.tex}
+      %\cleardoublepage
+      \input{chapters/4_llm_agent.tex}
+      %\cleardoublepage
+      \input{chapters/5_coordination.tex}
+      %\cleardoublepage
+      \input{chapters/6_tests_and_conclusion.tex}
+      %\cleardoublepage
+
+    % bibliography
+    \addcontentsline{toc}{chapter}{Bibliography}
+    \bibliographystyle{plain}
+    \bibliography{biblio}
+    %\newpage
+    %\input{acknowledgements}
+
+  \endgroup
+
+\clearpage
+%\newpage
+
+\end{document}

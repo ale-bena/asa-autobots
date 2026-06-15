@@ -1,0 +1,47 @@
+\chapter{Introduction}
+
+This game is called Deliveroo. Agents move on a tile grid, pick up parcels across the map,
+and carry them to delivery tiles to score points.
+Parcel rewards decay over time, so the goal is to maximize total delivered score by collecting
+and dropping off parcels efficiently before they lose value. There is also the possibility to gain extra points 
+by answering questions and following instructions received in the chat by the Admin during the game.
+The agents of each team cooperate to compete against the other teams.
+
+The aim is to develop two cooperating agents:
+\begin{itemize}
+\item Agent 1 — BDI physical executor: does the actual moving/picking/delivering.
+\item Agent 2 — LLM cognitive coordinator: has the same function of Agent 1 but extends them with the capability
+of interpreting Admin instructions received as messages in the chat, to derive policy rules, coordinating the pair
+over P2P and answer Q\&A questions to gather extra points with respect to the simple pick up and deliver process.
+\end{itemize}
+Other than that PDDL planning is used as an added tool to solve complex problems/situations, such as maps with crates.
+
+All the code and the instuctions to run the agents can be found in the GitHub repository:\\ \url{https://github.com/ale-bena/asa-autobots.git}
+
+\section{Initial state}
+
+Both agents connect to the socket via DjsConnect() and they receive the initial state of the game.
+This last consists in the static grid map, containing width, height and the tiles, which are parsed via an enum (\textit{pseudocode}):
+
+\noindent
+\begin{minipage}[t]{0.5\textwidth}
+\begin{itemize}
+    \item WALL
+    \item SPAWN
+    \item DELIVERY
+\end{itemize}
+\end{minipage}%
+\begin{minipage}[t]{0.5\textwidth}
+\begin{itemize}
+    \item PAVEMENT
+    \item CRATE\_SPAWN, CRATE
+    \item ARROW\_UP, ARROW\_RIGHT, ARROW\_DOWN, ARROW\_LEFT
+\end{itemize}
+\end{minipage}
+
+They also recieve their own identity and state (id, name, x, y, score) \uline{via onYou} and are stored in beliefs.me.
+The game parameters, such as observation distance, player capacity, parcel decay interval,
+movement duration are received separately via onConfig and are kept in beliefs.config and used for calibration.
+The most used ones are cached as dedicated fields.
+\uline{Both are part of the same belief base, populated at different points,
+and serve to calibrate the agent's reasoning.}
