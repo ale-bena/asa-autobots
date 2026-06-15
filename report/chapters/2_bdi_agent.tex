@@ -1,0 +1,152 @@
+\chapter{BDI Agent}
+
+Both agents are built on the same Belief--Desire--Intention reasoning core: each
+constructs a \texttt{BeliefBase} and runs an \texttt{IntentionEngine}. The physical
+executor uses it directly to move, pick up and deliver; the LLM coordinator
+(Chapter~\ref{ch:llm}) reuses the same structure and extends it with
+natural-language reasoning. \uline{This chapter therefore describes the architecture once,
+as the foundation shared by the whole team.}
+
+The agent maintains a model of the world (\emph{beliefs}), evaluates which goals
+are worth pursuing (\emph{desires}), commits to one (\emph{intention}), and
+executes it incrementally. A control loop, driven by the game loop, runs each cycle
+of the schema below at a tick every 16ms, so roughly \SI{60}{\hertz}.
+
+\begin{center}
+\begin{verbatim}
+  perceive --> revise beliefs --> deliberate --> commit to plan --> act
+                    ^                (throttled)                       |
+                    +-------------------- world ---------------------- +
+\end{verbatim}
+\end{center}
+
+\[
+\text{Beliefs} \;\rightarrow\; \text{Goal} \;\rightarrow\; \text{Plan}
+\;\rightarrow\; \text{Action} \;\rightarrow\; \text{Feedback}
+\;\rightarrow\; \text{Beliefs}
+\]
+
+\section{Sensing and Belief Revision}
+
+Sensing happens at each movement and whenever something new enters the observation
+zone. A raw perception frame from the server reports the agent's own state, the
+visible map configuration, and the nearby agents, crates and parcels, but only
+within the observation radius, so it is partial and momentary. The agent never
+reasons on this raw stream directly: every frame is merged into a persistent
+\texttt{BeliefBase} that combines fresh observations with previously acquired
+knowledge, allowing the agent to reason about entities currently out of sight.\\
+
+Revision performs three non-trivial inferences:
+\begin{itemize}
+  \item \textbf{Spatial memory.} Parcels and crates that leave the field of view
+        are retained rather than forgotten.
+  \item \textbf{Negative inference.} If a remembered object should be visible, since it falls inside
+        the current radius, but it is absent from the frame, the agent
+        concludes it was collected, decayed, or moved, and prunes it.
+  \item \textbf{Decay simulation.} Carried and remembered parcel rewards are aged
+        locally over elapsed time, so value estimates stay accurate between
+        sightings.
+\end{itemize}
+
+The belief base also holds state never delivered by perception: the agent's own
+identity (\texttt{me}), the carried inventory, peers, locked targets, active
+cooperative contracts, and the \texttt{policyRules} issued by the LLM coordinator.
+A game loop then calls the \texttt{IntentionEngine} to reason and act on the current
+beliefs, while an \texttt{onMsg} handler processes Admin prompts (for the LLM agent)
+and the P2P coordination messages exchanged between the two agents.
+
+\section{Navigation Graph (Adjacency)}
+
+There is no adjacency map sent by the server: the initial state (\texttt{onMap})
+only provides a flat list of tiles, each with $x$, $y$ and a type. Adjacency, which is the
+edges of the navigation graph describing which tile-to-tile moves are legal, is
+derived on demand from these tile codes by \texttt{MapRepresentation.js}.
+
+Two methods implement this. \texttt{isAdjacent(from, to)} checks whether a single
+step is allowed: the target tile must be exactly one step away, must be walkable,
+and the move must not violate the one-way arrow gate tiles (a tile cannot be entered
+against its arrow direction). \texttt{getNeighbors(pos)} returns all legal neighbors
+by applying \texttt{isAdjacent} to the four cardinal directions.
+
+Because of the one-way gates, adjacency is directed and not symmetric: a move from
+$A$ to $B$ may be legal while the reverse is not. For this reason no adjacency table
+is precomputed; the graph is implicit and evaluated lazily. Pathfinding
+(\texttt{src/mapping/Pathfinding.js}) expands it by repeatedly calling
+\texttt{getNeighbors()} during the search, automatically respecting walls and gates.
+
+\section{Desires and Goal Selection}
+
+Deliberation is throttled to stay stable and avoid redundant pathfinding: goal
+re-evaluation runs every \texttt{GOAL\_EVAL\_INTERVAL} (12 ticks, about 200ms), but
+fires immediately when there is no active plan or when the carried inventory
+changes. When it runs, \texttt{selectBestGoal(beliefs, ...)}
+(\texttt{GoalSelector.js}) reads the beliefs and returns a single goal descriptor
+\texttt{\{type, targetId, x, y\}}, chosen by a strict priority cascade:
+
+\begin{enumerate}
+  \item admin direct commands (\texttt{admin\_move},
+        \texttt{admin\_pickup}, \texttt{admin\_deliver});
+  \item active cooperative contracts with the partner
+        (\texttt{rendezvous}, \texttt{handoff}, \texttt{relay});
+  \item an economic, utility-based evaluation over the perceived parcels.
+\end{enumerate}
+
+The economic evaluation is the core decision and is \emph{expiration-aware}. For
+each candidate parcel it estimates the value of the entire trip using A\textsuperscript{*}
+travel-time estimates, discounting the raw reward by the decay accrued over that
+time and adjusting it by the coordinator's policy multipliers and bonuses:
+%
+\begin{equation}
+  \mathrm{value} = \bigl(\mathrm{reward} - r_{\text{decay}}\cdot t_{\text{trip}}\bigr)
+                   \cdot m_{\text{policy}}, \qquad
+  \mathrm{utility} = \frac{\mathrm{value}}{t_{\text{trip}}}.
+\end{equation}
+%
+Because travel time is real, a distant high-reward parcel may be outscored by a
+closer modest one. When already carrying cargo, the agent additionally weighs
+delivering now against detouring for one more pickup, bounded by capacity, by the
+decay risk to the cargo already held, and by any required-stack-size incentive,
+which can make it worth delaying delivery to assemble a larger batch. When no
+option scores positively, \underline{deliberation degrades gracefully: deliver what is held,
+anchor near a relay tile, patrol the parcel spawn zones, and finally wander.}
+
+\section{Intention Commitment and Plans}
+
+The agent is deliberately reluctant to abandon an intention: a newly selected goal
+replaces the running one only when \texttt{shouldPreemptActivePlan(...)}
+(\texttt{PreemptionManager.js}) judges the switch worthwhile, which prevents
+oscillation between comparable options. The exception is a path blocked by a crate,
+which suspends the active plan and injects a PDDL \texttt{clear\_corridor} plan
+instead (Chapter~\ref{ch:pddl}).
+
+On commit, \texttt{instantiatePlanRecipe(goal)} maps the goal type to a
+generator-based plan recipe (e.g. \texttt{pickup} $\to$ \texttt{CollectAndDeliver},
+\texttt{deliver} $\to$ \texttt{\_deliverRecipe}, plus the admin and cooperation
+recipes). These generators yield one primitive step at a time and can be suspended
+and resumed via a suspension stack, so a corridor-clearing plan can interrupt a
+delivery and the delivery resumes afterwards. Suspended plans that have gone stale, since
+their target disappeared or became obsolete, are discarded rather than resumed.
+
+\section{Execution}
+
+Each cycle advances the active plan by one step: (\texttt{move},
+\texttt{pickup}, \texttt{putdown}, \texttt{wait}, \texttt{say}), handed to
+\texttt{dispatchAction} (\texttt{ActionDispatcher.js}) which emits it on the socket.
+The plan is told whether the previous step succeeded, so it can react to failures
+rather than continue blindly.
+
+Two behaviours sit outside the normal deliberation cycle. The first is an
+\emph{opportunistic pickup}: if the agent finds itself standing on a free parcel and
+is still below its carrying capacity (starting at infinity), it grabs the parcel immediately, before any
+goal evaluation (deliberation). This is done to avoid leaving reachable parcels on the floor and wasting potential value.
+
+The second is \emph{collision avoidance} between the two teammates, designed so they
+never deadlock over a tile during testing. Before moving, each agent uses the partner's broadcast
+position and planned next step to detect a possible conflict where both aim for the same tile (see
+Section~\ref{sec:agent-comm}).
+When this happens one agent must yield, and this is decided deterministically by comparing agent identifiers,
+so both reach the same conclusion independently without any negotiation.
+If a collision occurs anyway, the agent first waits briefly and retries (100ms), then, if the tile keeps
+rejecting it, marks that tile as blocked and re-plans a route around it. After that the blocked tile is cleared so it's reusable in the future.
+When a plan finishes, the engine resumes any suspended plan or clears the goal and
+re-deliberates on the next tick.

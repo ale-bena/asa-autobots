@@ -1,0 +1,33 @@
+\chapter{Tests and Conclusion}
+
+\section{Tests}
+
+\subsection{Test Environment}
+
+Both the agent have been tested along the building process continously,
+to find bugs, test different configurations, and improve them.
+Most of the test have been performed with the server and pddl running locally, this has been
+done following the instructions on the relative repositories:\dots
+
+\subsection{Test Scenarios}
+
+The decision was to test multiple times on the scenarios of Challenge 1 and Challenge 2.
+In particular for the second part we checked that the instruciton messages sent by the Admin
+were satisfied by the agent and registered and try to fix eventual problems.
+
+\subsection{Results and Limitations}
+
+The most difficult part has been the prompring of the LLM agent,
+to have it doing the tasks correctly and usign the right tools.
+
+One known limitaiton is that it is not always able to parse multiple revards for multiple requests
+in one message, and therefore if the first reward is negative for example, it doesn't execute the instructions.
+Another problem that has been noted is that on multiple questions, more than
+3 in one message, if there is an evaluate\_math\_expression call the model puts its output at the end.
+It was difficult to spot the possible pattern that the model extracts from the prompt
+in order to convince itself that the correct way to output is this one. So this 2 problems are still open
+and mostly related to the prompt.
+
+\section{Conclusion}
+
+Summarize the main contributions and discuss future developments.

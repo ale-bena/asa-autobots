@@ -1,0 +1,103 @@
+\chapter{Coordination and Messages}
+\label{ch:coordination}
+
+The two agents form a team, and all of their cooperation flows through the game's
+chat channel as structured messages. This chapter describes the transport, the
+message vocabulary, and the protocols built on top of it. The same machinery serves
+two roles: the LLM coordinator uses it to push commands and policies to the executor,
+and both agents use it to continuously share state and resolve conflicts.
+
+\section{Agent Communication}
+\label{sec:agent-comm}
+
+Messages are exchanged over two primitives: \texttt{emitSay} delivers a message
+privately to a single recipient, while \texttt{emitShout} broadcasts to everyone. The
+team prefers the private channel, a directed \texttt{emitSay} to the partner, and
+falls back to a shout only if the direct send fails. This keeps the public chat
+uncluttered and avoids leaking coordination to competing teams. Incoming chat is
+pre-filtered: each agent ignores its own messages and anything that does not match
+the cooperative JSON schema, so ordinary Admin text and opponent chatter never reach
+the protocol handlers.
+
+Underlying everything is a steady stream of \texttt{PEER\_STATUS} heartbeats sent in
+both directions a few times per second. Each heartbeat carries the sender's position,
+score, carried inventory, planned next step, and known crates. This is how each agent
+keeps an up-to-date model of its partner even when it is out of sensing range, and
+how crate sightings are shared so both agents navigate around the same obstacles. A
+lightweight \texttt{PING}/\texttt{PONG} pair serves the same purpose on demand.
+
+The same heartbeat also carries each agent's current target parcel and planned next
+step. By broadcasting this information continuously, both agents can see in advance
+when they are converging on the same parcel or tile and react, one yielding or
+re-deliberating toward a different target, without any explicit negotiation or
+locking protocol.
+
+\section{Message Structure}
+
+Every cooperative message is a JSON object with a \texttt{type} field that selects a
+handler; the remaining fields are the payload. The vocabulary groups into four
+families:
+
+\begin{itemize}
+  \item \textbf{Status:} \texttt{PING}, \texttt{PONG}, \texttt{PEER\_STATUS}, for
+        position, cargo and obstacle sharing.
+  \item \textbf{Direct commands} (coordinator to executor): \texttt{MOVE\_TO},
+        \texttt{HOLD}, \texttt{RESUME}, \texttt{APPLY\_RULES}, \texttt{SET\_VARIABLE},
+        and \texttt{INSTRUCT\_SAY}. Of these, only \texttt{MOVE\_TO} expects a reply:
+        the executor returns a \texttt{MOVE\_TO\_ACK} once it has reached the target
+        or failed to, so the coordinator knows the move is complete.
+        \texttt{INSTRUCT\_SAY} is the coordinator asking the executor to relay the
+        LLM's chat answer to the Admin, a redundant delivery path that makes the
+        reply more likely to reach the Admin.
+  \item \textbf{Contracts:} \texttt{PROPOSE\_CONTRACT}, \texttt{ACCEPT\_CONTRACT},
+        \texttt{CLOSE\_CONTRACT} for the propose/accept/close lifecycle, plus
+        \texttt{SIGNAL\_READY} and \texttt{RELEASE\_CARGO} as the status transitions
+        inside the hand-off and relay choreography: \texttt{SIGNAL\_READY} announces
+        that an agent has dropped its cargo and stepped aside so the partner may
+        collect it, and \texttt{RELEASE\_CARGO} marks the cargo as released for the
+        partner to take.
+\end{itemize}
+
+On receipt, a handler applies the message directly to the agent's own belief base.
+This is the mechanism by which a coordinator command takes effect remotely: a
+\texttt{MOVE\_TO} becomes a high-priority \texttt{admin\_move} contract (and
+implicitly releases any standing hold), an \texttt{APPLY\_RULES} updates the policy
+set, \texttt{HOLD}/\texttt{RESUME} toggle the paused state, and a \texttt{SET\_VARIABLE}
+writes shared memory. The executor thus needs no special command interpreter, since
+coordination and perception update the same beliefs through the same revision path.
+
+\section{Coordination Workflow}
+
+\paragraph{Contract handshake.} Multi-agent manoeuvres are negotiated as
+\emph{contracts} rather than hard-coded. One agent proposes, the other validates that
+the target is reachable and accepts, both mark it active, and either may cancel it
+later. We chose a propose/accept handshake over simply commanding the partner so that
+a contract is never acted upon unless both agents agree it is feasible, which avoids
+one agent waiting forever for a partner that cannot reach the meeting point. Three
+cooperation patterns are built on this handshake.
+
+\begin{itemize}
+  \item \textbf{Meet-and-wait} (\texttt{RENDEZVOUS}, and \texttt{CLEARING} as a
+        special case): both agents converge within a radius of a tile and pause. We
+        decided to model ``clear this gate'' as a rendezvous rather than a separate
+        mechanism, because mechanically it is the same act, bring an agent to a point
+        and hold, and collapsing the two keeps the executor simple.
+  \item \textbf{Hand-off} (\texttt{HANDOFF}): one agent carries its cargo to a shared
+        tile, drops it, and steps aside so the other can collect it. This exists for
+        the case where the carrier cannot reach the delivery zone but its partner can.
+  \item \textbf{Relay} (\texttt{RELAY}): a persistent contract in which a designated
+        courier repeatedly farms parcels and drops them, while the partner delivers
+        them. The decision driving this pattern is strategic: the game awards a bonus
+        when a parcel is picked up by one agent and delivered by another, and the
+        relay is how the team deliberately manufactures that situation. A consequence
+        we had to handle explicitly is the choice of drop tile. It is placed
+        \emph{adjacent to} the best delivery zone but never \emph{on} it, because a
+        courier putting a parcel down on a delivery tile would score the delivery
+        itself and so cancel the very bonus the relay is meant to earn.
+\end{itemize}
+
+Blocking commands wait for confirmation before the coordinator proceeds: a directed
+move resolves only once a \texttt{MOVE\_TO\_ACK} or a position match is observed, a
+deliberate choice so the LLM's reasoning never advances on an unconfirmed physical
+effect. Control actions such as \texttt{RESUME} clear outstanding contracts so no
+agent is left waiting in a coordination loop.
