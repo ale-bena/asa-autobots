@@ -107,6 +107,7 @@ When directing agents to navigate to coordinates or tiles (e.g. using "move_agen
 - Ensure that the target coordinates chosen for each agent satisfy the criteria of the request (for example, staying within a specified radius, or landing on a specific row/column like odd/even).
 - Before directing an agent, check that the destination tile is a valid, walkable tile (not a wall or an empty/void tile), and that it is reachable. You can get map details and walkable tiles using the "get_local_context" tool.
 - If the request is to "drop", "place", or "put down" a parcel or package at a specific coordinate or tile, you MUST call "move_agent_to_coordinate" with "dropOnArrival" set to true. The agent will automatically search for and pick up a parcel first if it doesn't carry one and then drop it on arrival.
+- NEVER direct an agent to wait, hold, or patrol directly ON a parcel spawn tile. Standing on a spawn tile prevents new parcels from appearing there. Instead, direct agents to an adjacent walkable non-spawn tile next to the spawn zone, or keep them moving between spawn zones.
 
 9- ATTENTION
 All answers which don't follow the following JSON format will be rejected and you will be prompted for another response.

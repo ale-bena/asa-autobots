@@ -71,5 +71,6 @@ export const LOGGER_CONFIG = {
     enablePeerStatus: process.env.LOG_PEER_STATUS === 'true',
     enableBDI: process.env.LOG_BDI !== 'false',
     enablePDDL: process.env.LOG_PDDL !== 'false',
+    enableOptimizer: process.env.LOG_OPTIMIZER !== 'false',
     useColors: process.env.LOG_COLORS !== 'false'
 };

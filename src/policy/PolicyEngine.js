@@ -1,7 +1,7 @@
 /**
  * @module policy/PolicyEngine
  * @description Safe Abstract Syntax Tree (AST) expression parser and interpreter
- * for dynamic Level 2/3 rules and Turing-complete special mission behaviors.
+ * for dynamic Level 2/3 rules and special mission behaviors.
  */
 
 /**
@@ -52,7 +52,7 @@ function resolveIdentifier(name, state, localVars = {}) {
     if (name.startsWith('parcel.')) {
         const parcel = localVars.parcel || state.parcel;
         if (!parcel) return 0;
-        
+
         if (name === 'parcel.previouslyCarriedByOther') {
             if (beliefs.parcelHistory) {
                 const history = beliefs.parcelHistory.get(parcel.id);
@@ -183,7 +183,7 @@ export function evaluateExpression(expr, state, localVars = {}) {
                 }
             }
             while (operators.length > 0 &&
-                   precedence[operators[operators.length - 1]] >= precedence[actualOp]) {
+                precedence[operators[operators.length - 1]] >= precedence[actualOp]) {
                 applyOperator();
             }
             operators.push(actualOp);
@@ -221,12 +221,13 @@ export function evaluateExpression(expr, state, localVars = {}) {
 export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
     let reward = baseReward;
 
-    const x = projectedState.x !== undefined ? projectedState.x : (beliefs.me ? beliefs.me.x : 0);
-    const y = projectedState.y !== undefined ? projectedState.y : (beliefs.me ? beliefs.me.y : 0);
-    const stackSize = projectedState.carriedSize !== undefined ? projectedState.carriedSize : (beliefs.carried ? beliefs.carried.length : 0);
-    const parcel = projectedState.parcel || null;
+    const state = projectedState || {};
+    const x = state.x !== undefined ? state.x : (beliefs && beliefs.me ? beliefs.me.x : 0);
+    const y = state.y !== undefined ? state.y : (beliefs && beliefs.me ? beliefs.me.y : 0);
+    const stackSize = state.carriedSize !== undefined ? state.carriedSize : (beliefs && beliefs.carried ? beliefs.carried.length : 0);
+    const parcel = state.parcel || null;
 
-    if (beliefs.policyRules && beliefs.policyRules.rules) {
+    if (beliefs && beliefs.policyRules && beliefs.policyRules.rules) {
         for (const rule of beliefs.policyRules.rules) {
             let applies = true;
 
@@ -255,18 +256,37 @@ export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
             }
 
             // 3. Check reward bounds (same semantics as stackSizeBounds: min inclusive, max exclusive)
-            if (applies && rule.rewardBounds && rule.rewardBounds.length > 0) {
+            if (applies) {
                 const parcelReward = (parcel && parcel.reward !== undefined) ? parcel.reward : null;
+
+                // Check direct minReward and maxReward properties
                 if (parcelReward === null) {
-                    applies = false;
-                } else {
-                    const matchesAnyBound = rule.rewardBounds.some(b => {
-                        const minOk = (b.min === null || b.min === undefined || parcelReward >= b.min);
-                        const maxOk = (b.max === null || b.max === undefined || parcelReward < b.max);
-                        return minOk && maxOk;
-                    });
-                    if (!matchesAnyBound) {
+                    if ((rule.minReward !== null && rule.minReward !== undefined) ||
+                        (rule.maxReward !== null && rule.maxReward !== undefined)) {
                         applies = false;
+                    }
+                } else {
+                    if (rule.minReward !== null && rule.minReward !== undefined && parcelReward < rule.minReward) {
+                        applies = false;
+                    }
+                    if (rule.maxReward !== null && rule.maxReward !== undefined && parcelReward >= rule.maxReward) {
+                        applies = false;
+                    }
+                }
+
+                // Check rewardBounds array (backward compatibility)
+                if (applies && rule.rewardBounds && rule.rewardBounds.length > 0) {
+                    if (parcelReward === null) {
+                        applies = false;
+                    } else {
+                        const matchesAnyBound = rule.rewardBounds.some(b => {
+                            const minOk = (b.min === null || b.min === undefined || parcelReward >= b.min);
+                            const maxOk = (b.max === null || b.max === undefined || parcelReward < b.max);
+                            return minOk && maxOk;
+                        });
+                        if (!matchesAnyBound) {
+                            applies = false;
+                        }
                     }
                 }
             }
@@ -286,44 +306,46 @@ export function evaluatePolicyReward(beliefs, baseReward, projectedState) {
 }
 
 /**
- * Generator-based Special Mission Interpreter.
- * Recursively runs behavioral blocks (assignments, conditionals, loops, and actions)
- * yielding control back to the runner tick between steps.
- * 
- * @param {Array<Object>} behavior - The array of AST behavior blocks.
- * @param {Object} agentState - The mutable agent state.
- * @yields {Object} Yields TICK_YIELD or ACTION tokens for step execution.
+ * Calculates the wait time (in milliseconds) needed for a parcel's reward to decay
+ * to a value that yields a positive policy reward.
+ * @param {Object} beliefs - Current agent beliefs.
+ * @param {number} currentReward - Current raw reward of the parcel.
+ * @param {number} carriedSize - Projected stack size at delivery.
+ * @param {number} x - Target delivery X coordinate.
+ * @param {number} y - Target delivery Y coordinate.
+ * @param {Object} parcel - The parcel object.
+ * @returns {number} The wait time in milliseconds, or 0 if no wait is needed or waiting doesn't help.
  */
-export function* executeMissionBehavior(behavior, agentState) {
-    if (!behavior || !Array.isArray(behavior)) return;
+export function getWaitDecayTimeForValue(beliefs, currentReward, carriedSize, x, y, parcel) {
+    if (!beliefs) return 0;
+    const decayMs = beliefs.parcelDecayIntervalMs;
+    if (!isFinite(decayMs) || decayMs <= 0) return 0;
 
-    for (const step of behavior) {
-        switch (step.type) {
-            case 'assignment':
-                if (agentState.variables === undefined) {
-                    agentState.variables = {};
-                }
-                agentState.variables[step.target] = evaluateExpression(step.expression, agentState);
-                break;
+    const currentPolicyReward = evaluatePolicyReward(beliefs, currentReward, {
+        carriedSize,
+        x,
+        y,
+        parcel: { ...parcel, reward: currentReward }
+    });
 
-            case 'conditional':
-                if (evaluateExpression(step.condition, agentState)) {
-                    yield* executeMissionBehavior(step.then, agentState);
-                } else if (step.else) {
-                    yield* executeMissionBehavior(step.else, agentState);
-                }
-                break;
+    if (currentPolicyReward > 0) {
+        return 0; // Already positive, no wait needed
+    }
 
-            case 'loop':
-                while (evaluateExpression(step.condition, agentState)) {
-                    yield* executeMissionBehavior(step.body, agentState);
-                    yield { type: 'TICK_YIELD' }; // yields control to handle sensory frame revisions
-                }
-                break;
-
-            case 'action':
-                yield { type: 'ACTION', name: step.name, args: step.arguments };
-                break;
+    // Scan downwards to find if any decayed reward is allowed
+    for (let r = Math.floor(currentReward) - 1; r > 0; r--) {
+        const testPolicyReward = evaluatePolicyReward(beliefs, r, {
+            carriedSize,
+            x,
+            y,
+            parcel: { ...parcel, reward: r }
+        });
+        if (testPolicyReward > 0) {
+            const pointsToDecay = currentReward - r;
+            return pointsToDecay * decayMs;
         }
     }
+
+    return 0;
 }
+

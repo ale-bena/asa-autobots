@@ -201,8 +201,10 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
             } else {
                 console.warn(`[BDI] Pickup failed for parcel ${parcelId}.`);
                 logActionFailure(beliefs, action, 'Pickup failed (decayed or already collected)');
-                beliefs.parcels.delete(parcelId);
-                beliefs.lockedTargets.delete(parcelId);
+                if (!beliefs.carried.includes(parcelId)) {
+                    beliefs.parcels.delete(parcelId);
+                    beliefs.lockedTargets.delete(parcelId);
+                }
                 success = false;
             }
             break;

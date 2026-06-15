@@ -16,7 +16,10 @@ import { shouldPreemptActivePlan } from './PreemptionManager.js';
 import { dispatchAction, getDirection } from './ActionDispatcher.js';
 import { resolveCrateBlockedPath, executePddlPlanRecipe } from './PddlIntegration.js';
 import { findAStarPath } from '../mapping/Pathfinding.js';
+import { getWaitDecayTimeForValue } from '../policy/PolicyEngine.js';
+import { optimizeDeliveryStack } from '../policy/DeliveryOptimizer.js';
 import { AGENT_IDS } from '../config/config.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 /** Maximum retry attempts for admin_move before clearing the contract. */
 const ADMIN_MOVE_MAX_RETRIES = 3;
@@ -140,6 +143,15 @@ export class IntentionEngine {
          * @type {number}
          */
         this.adminMoveRetries = 0;
+
+        /**
+         * Track synchronization handshake.
+         */
+        this.lastSyncReqTime = 0;
+        this.lastSyncLogTime = 0;
+        if (this.beliefs.variables.synced === undefined) {
+            this.beliefs.variables.synced = false;
+        }
     }
 
     /**
@@ -427,7 +439,22 @@ export class IntentionEngine {
                     }
                     beliefs.variables.handoffCompleted = true;
 
-                    const escapeTile = findAdjacentClearTile(beliefs, hx, ty);
+                    // For escape, courier should prefer neighbor closest to the spawn zone
+                    const neighbors = beliefs.map.getNeighbors({ x: hx, y: ty });
+                    const spawn = findPatrolSpawnZone(beliefs, hx, ty);
+                    if (spawn) {
+                        neighbors.sort((a, b) => {
+                            const distA = Math.abs(a.x - spawn.x) + Math.abs(a.y - spawn.y);
+                            const distB = Math.abs(b.x - spawn.x) + Math.abs(b.y - spawn.y);
+                            return distA - distB;
+                        });
+                    }
+                    const escapeTile = neighbors.find(n => {
+                        const hasCrate = Array.from(beliefs.crates.values()).some(c => c.x === n.x && c.y === n.y);
+                        const hasPeer = Array.from(beliefs.peers.values()).some(p => p.x === n.x && p.y === n.y);
+                        return !hasCrate && !hasPeer;
+                    }) || neighbors[0];
+
                     console.log(`[BDI Relay] Cargo dropped. Stepping aside to (${escapeTile.x}, ${escapeTile.y}).`);
                     yield* NavigateTo(beliefs, escapeTile.x, escapeTile.y);
                 })(this.beliefs, goal.x, goal.y);
@@ -457,6 +484,23 @@ export class IntentionEngine {
      * Executes a single reasoning and action cycle tick of the BDI agent.
      */
     async tick() {
+        // Enforce synchronization handshake before BDI executor starts
+        if (!this.beliefs.variables.synced) {
+            const now = Date.now();
+            if (now - this.lastSyncLogTime >= 2000) {
+                this.lastSyncLogTime = now;
+                console.log(`[BDI Sync] Agent is not synchronized yet. Waiting for peer...`);
+            }
+            if (now - this.lastSyncReqTime >= 500) {
+                this.lastSyncReqTime = now;
+                const recipient = this.getPeerAgentId();
+                if (recipient) {
+                    this.socket.emitSay(recipient, JSON.stringify({ type: 'SYNC_REQ' })).catch(() => {});
+                }
+            }
+            return;
+        }
+
         // Enforce coordinator holds (e.g. red light / stop constraints)
         if (this.beliefs.hold) {
             console.log('[BDI] Agent is currently in a HOLD state (movement paused).');
@@ -470,7 +514,7 @@ export class IntentionEngine {
             const currentX = Math.round(this.beliefs.me.x);
             const currentY = Math.round(this.beliefs.me.y);
             const parcelHere = Array.from(this.beliefs.parcels.values()).find(
-                p => !p.carriedBy && Math.round(p.x) === currentX && Math.round(p.y) === currentY
+                p => !p.carriedBy && !this.beliefs.carried.includes(p.id) && Math.round(p.x) === currentX && Math.round(p.y) === currentY
             );
             if (parcelHere) {
                 console.log(`[BDI Opportunistic] Found parcel ${parcelHere.id} on our current tile (${currentX}, ${currentY}). Picking it up.`);
@@ -515,6 +559,8 @@ export class IntentionEngine {
         this.tickCounter++;
         if (this.tickCounter >= this.GOAL_EVAL_INTERVAL || !this.activeGenerator) {
             this.tickCounter = 0;
+
+            await this._checkAndProposeRelayContract();
 
             const engineState = this._getEngineState();
             const bestGoal = selectBestGoal(this.beliefs, engineState);
@@ -635,11 +681,97 @@ export class IntentionEngine {
      * @yields {Object} Yields delivery steps.
      * @private
      */
+    /**
+     * Generator function representing delivery of carried parcels.
+     * @yields {Object} Yields delivery steps.
+     * @private
+     */
     * _deliverRecipe(targetX, targetY) {
         if (targetX !== null && targetY !== null) {
             yield* NavigateTo(this.beliefs, targetX, targetY);
-            if (this.beliefs.map && this.beliefs.map.getTileCode(this.beliefs.me.x, this.beliefs.me.y) === 2) {
-                yield { action: 'putdown' };
+
+            while (true) {
+                if (!(this.beliefs && this.beliefs.me && this.beliefs.map && this.beliefs.map.getTileCode(this.beliefs.me.x, this.beliefs.me.y) === MapRepresentation.TILE_CODES.DELIVERY)) {
+                    break;
+                }
+                const carriedList = this.beliefs.carried || [];
+                if (carriedList.length === 0) {
+                    break;
+                }
+                const parcelsMap = this.beliefs.parcels || new Map();
+                const currentParcels = carriedList.map(cid => parcelsMap.get(cid) || { id: cid, reward: 20 });
+
+                const opt = optimizeDeliveryStack(this.beliefs, currentParcels, this.beliefs.me.x, this.beliefs.me.y);
+
+                if (opt.bestReward <= 0) {
+                    // Discard non-optimal useless parcels if any, then break
+                    if (opt.discardSubset && opt.discardSubset.length > 0) {
+                        yield* this._discardParcelsAction(opt.discardSubset);
+                    }
+                    break;
+                }
+
+                // Discard non-optimal useless parcels
+                if (opt.discardSubset && opt.discardSubset.length > 0) {
+                    yield* this._discardParcelsAction(opt.discardSubset);
+                }
+
+                // Now wait for the optimal decay wait time if needed
+                if (opt.bestWaitMs > 0) {
+                    console.log(`[BDI Deliver] Waiting at delivery zone for ${opt.bestWaitMs}ms.`);
+                    const waitSteps = Math.ceil(opt.bestWaitMs / 100);
+                    for (let i = 0; i < waitSteps; i++) {
+                        yield { action: 'wait' };
+                    }
+                }
+
+                // Deliver remaining optimal cargo
+                if (opt.bestSubset && opt.bestSubset.length > 0) {
+                    for (const cid of opt.bestSubset) {
+                        yield { action: 'putdown', target: cid };
+                    }
+                } else {
+                    break; // No subset selected, stop to avoid infinite loop
+                }
+
+                // Yield a wait tick to allow the server to process the putdowns and update beliefs
+                yield { action: 'wait' };
+            }
+        }
+    }
+
+    /**
+     * Helper to discard a subset of parcels on an adjacent walkable non-delivery tile.
+     * @param {Array<string>} discardSubset - Parcel IDs to discard.
+     * @private
+     */
+    * _discardParcelsAction(discardSubset) {
+        console.log(`[BDI Deliver] Discarding non-optimal subset: [${discardSubset.join(', ')}] on an adjacent tile.`);
+        const neighbors = [
+            { x: this.beliefs.me.x + 1, y: this.beliefs.me.y },
+            { x: this.beliefs.me.x - 1, y: this.beliefs.me.y },
+            { x: this.beliefs.me.x, y: this.beliefs.me.y + 1 },
+            { x: this.beliefs.me.x, y: this.beliefs.me.y - 1 }
+        ];
+        let discardTile = null;
+        for (const n of neighbors) {
+            if (this.beliefs.map && this.beliefs.map.isWalkableTile(n.x, n.y) && this.beliefs.map.getTileCode(n.x, n.y) !== MapRepresentation.TILE_CODES.DELIVERY) {
+                discardTile = n;
+                break;
+            }
+        }
+        if (discardTile) {
+            const originalX = this.beliefs.me.x;
+            const originalY = this.beliefs.me.y;
+            yield* NavigateTo(this.beliefs, discardTile.x, discardTile.y);
+            for (const cid of discardSubset) {
+                yield { action: 'putdown', target: cid };
+            }
+            yield* NavigateTo(this.beliefs, originalX, originalY);
+        } else {
+            // If no adjacent tile is available, discard them here
+            for (const cid of discardSubset) {
+                yield { action: 'putdown', target: cid };
             }
         }
     }
@@ -688,26 +820,188 @@ export class IntentionEngine {
             // Ignore socket disconnects
         }
     }
+
+    /**
+     * Checks if the two agents are isolated on two separate islands (spawn vs. delivery components)
+     * and proposes a RELAY contract if needed.
+     */
+    async _checkAndProposeRelayContract() {
+        if (!this.beliefs || !this.beliefs.map || !this.beliefs.me) return;
+
+        // Check if there is already an active/accepted RELAY contract in memory
+        let hasRelayContract = false;
+        if (this.beliefs.activeContracts) {
+            for (const contract of this.beliefs.activeContracts.values()) {
+                if (contract.type === 'RELAY' && 
+                    (contract.status === 'ACTIVE' || contract.status === 'ACCEPTED' || contract.status === 'READY')) {
+                    hasRelayContract = true;
+                    break;
+                }
+            }
+        }
+        if (hasRelayContract) return;
+
+        // Get peer agent
+        const peerId = this.getPeerAgentId();
+        if (!peerId) return;
+        const peer = this.beliefs.peers.get(peerId);
+        if (!peer) return;
+
+        // Find all spawn and delivery zones on the map
+        const spawnTiles = [];
+        const deliveryTiles = [];
+        for (let x = 0; x < this.beliefs.map.width; x++) {
+            for (let y = 0; y < this.beliefs.map.height; y++) {
+                const code = this.beliefs.map.getTileCode(x, y);
+                if (code === MapRepresentation.TILE_CODES.SPAWN) {
+                    spawnTiles.push({ x, y });
+                } else if (code === MapRepresentation.TILE_CODES.DELIVERY) {
+                    deliveryTiles.push({ x, y });
+                }
+            }
+        }
+
+        if (spawnTiles.length === 0 || deliveryTiles.length === 0) return;
+
+        // BFS Helper to find all reachable tiles, treating the other agent as an obstacle
+        const getReachableTiles = (startX, startY, blockedTileKey = null) => {
+            const reachable = new Set();
+            const queue = [{ x: Math.round(startX), y: Math.round(startY) }];
+            reachable.add(`${queue[0].x},${queue[0].y}`);
+
+            while (queue.length > 0) {
+                const curr = queue.shift();
+                const neighbors = this.beliefs.map.getNeighbors(curr);
+                for (const n of neighbors) {
+                    const key = `${n.x},${n.y}`;
+                    if (key === blockedTileKey) continue;
+                    if (!reachable.has(key)) {
+                        reachable.add(key);
+                        queue.push(n);
+                    }
+                }
+            }
+            return reachable;
+        };
+
+        const peerKey = `${Math.round(peer.x)},${Math.round(peer.y)}`;
+        const myKey = `${Math.round(this.beliefs.me.x)},${Math.round(this.beliefs.me.y)}`;
+
+        const myReachable = getReachableTiles(this.beliefs.me.x, this.beliefs.me.y, peerKey);
+        const peerReachable = getReachableTiles(peer.x, peer.y, myKey);
+
+        const canIReachSpawn = spawnTiles.some(t => myReachable.has(`${t.x},${t.y}`));
+        const canIReachDelivery = deliveryTiles.some(t => myReachable.has(`${t.x},${t.y}`));
+        const canPeerReachSpawn = spawnTiles.some(t => peerReachable.has(`${t.x},${t.y}`));
+        const canPeerReachDelivery = deliveryTiles.some(t => peerReachable.has(`${t.x},${t.y}`));
+
+        const isScenarioA = canIReachSpawn && !canIReachDelivery && canPeerReachDelivery && !canPeerReachSpawn;
+        const isScenarioB = canIReachDelivery && !canIReachSpawn && canPeerReachSpawn && !canPeerReachDelivery;
+
+        if (!isScenarioA && !isScenarioB) return;
+
+        // Check if map is physically connected (ignoring peer agent's position as an obstacle)
+        const myFullReachable = getReachableTiles(this.beliefs.me.x, this.beliefs.me.y, null);
+        const isPhysicallyConnected = spawnTiles.some(t => myFullReachable.has(`${t.x},${t.y}`)) && 
+                                      deliveryTiles.some(t => myFullReachable.has(`${t.x},${t.y}`));
+        const blockType = isPhysicallyConnected ? "peer blockage in narrow corridor" : "physical map partition";
+        console.log(`[BDI Island Connection] Agent ${this.beliefs.me.id} detected connectivity block (${blockType}) separating spawn and delivery.`);
+
+        // We also require a non-empty intersection of reachable tiles to meeting/transfer
+        const sharedTiles = [];
+        for (const key of myReachable) {
+            if (peerReachable.has(key)) {
+                const [sx, sy] = key.split(',').map(Number);
+                sharedTiles.push({ x: sx, y: sy });
+            }
+        }
+
+        if (sharedTiles.length === 0) return;
+
+        // Find the best drop tile in the intersection (closest to delivery zones)
+        let bestDropTile = null;
+        let minDistance = Infinity;
+        for (const s of sharedTiles) {
+            for (const d of deliveryTiles) {
+                const dist = Math.abs(s.x - d.x) + Math.abs(s.y - d.y);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    bestDropTile = s;
+                }
+            }
+        }
+
+        if (!bestDropTile) {
+            bestDropTile = sharedTiles[0];
+        }
+
+        // Propose RELAY contract
+        const courierId = isScenarioA ? this.beliefs.me.id : peerId;
+        const coopId = `relay_island_${Date.now()}`;
+        const proposal = {
+            type: 'PROPOSE_CONTRACT',
+            coopId: coopId,
+            contractType: 'RELAY',
+            x: bestDropTile.x,
+            y: bestDropTile.y,
+            courierId: courierId
+        };
+
+        console.log(`[BDI Island Connection] Proposing RELAY contract ${coopId} at (${bestDropTile.x}, ${bestDropTile.y}). Courier: ${courierId}`);
+        
+        // Add to our own contracts as ACTIVE
+        if (!this.beliefs.activeContracts) {
+            this.beliefs.activeContracts = new Map();
+        }
+        this.beliefs.activeContracts.set(coopId, {
+            coopId: coopId,
+            senderId: this.beliefs.me.id,
+            type: 'RELAY',
+            x: bestDropTile.x,
+            y: bestDropTile.y,
+            radius: null,
+            holdDuration: null,
+            courierId: courierId,
+            status: 'ACTIVE'
+        });
+
+        try {
+            await this.socket.emitSay(peerId, JSON.stringify(proposal));
+        } catch (e) {
+            // Ignore socket errors
+        }
+    }
 }
 
 /**
  * Helper to find the nearest parcel that is not carried by anyone else and is reachable via A*.
+ * @param {import('./BeliefBase.js').BeliefBase} beliefs - Current agent beliefs.
+ * @returns {Object|null} The nearest available parcel, or null if none found.
  */
 function findNearestAvailableParcel(beliefs) {
+    if (!beliefs || !beliefs.me || !beliefs.parcels) return null;
+    const carriedList = beliefs.carried || [];
     const candidates = [];
     for (const parcel of beliefs.parcels.values()) {
+        if (!parcel) continue;
         if (parcel.carriedBy) continue;
-        if (beliefs.carried.includes(parcel.id)) continue;
+        if (carriedList.includes(parcel.id)) continue;
         if (beliefs.policyRules) {
-            if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
-            if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
-            if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
+            if (parcel.reward < (beliefs.policyRules.minRewardThreshold || 0)) continue;
+            
+            const currentRewardVal = evaluatePolicyReward(beliefs, parcel.reward, { parcel });
+            const delZone = findNearestDeliveryZone(beliefs, parcel.x, parcel.y, null);
+            const dx = delZone ? delZone.x : beliefs.me.x;
+            const dy = delZone ? delZone.y : beliefs.me.y;
+            const canDecayToAllowed = getWaitDecayTimeForValue(beliefs, parcel.reward, carriedList.length + 1, dx, dy, parcel) > 0;
+            if (currentRewardVal <= 0 && !canDecayToAllowed) continue;
         }
         const dist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
         candidates.push({ parcel, dist });
     }
     candidates.sort((a, b) => a.dist - b.dist);
     for (const c of candidates) {
+        if (!c || !c.parcel) continue;
         const path = findAStarPath(
             beliefs.map,
             { x: beliefs.me.x, y: beliefs.me.y },
