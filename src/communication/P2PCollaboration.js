@@ -108,6 +108,18 @@ export class P2PManager {
                     }
                     break;
 
+                case 'SYNC_REQ':
+                    console.log(`[P2P Sync] Received SYNC_REQ from ${senderId}. Sending SYNC_ACK.`);
+                    this.broadcast({ type: 'SYNC_ACK' }, senderId);
+                    break;
+
+                case 'SYNC_ACK':
+                    if (!this.beliefs.variables.synced) {
+                        this.beliefs.variables.synced = true;
+                        console.log(`[P2P Sync] Received SYNC_ACK from ${senderId}. Agent is now SYNCHRONIZED and started.`);
+                    }
+                    break;
+
                 case 'LOCK_TARGET':
                     this._handleLockConflict(senderId, message.targetId);
                     break;
@@ -268,6 +280,7 @@ export class P2PManager {
         // Pre-validate that coordinate is reachable.
         if (this.beliefs.map && this.beliefs.map.isWalkableTile(message.x, message.y)) {
             console.log(`[P2P] Accepting contract proposal ${message.coopId} at (${message.x}, ${message.y})`);
+            this.beliefs.hold = false; // Release hold to ensure agent is active for the contract
             this.beliefs.activeContracts.set(message.coopId, {
                 coopId: message.coopId,
                 senderId: senderId,
@@ -294,6 +307,7 @@ export class P2PManager {
         const contract = this.beliefs.activeContracts.get(coopId);
         if (contract) {
             contract.status = 'ACTIVE';
+            this.beliefs.hold = false; // Release hold to ensure agent is active for the contract
             console.log(`[P2P] Contract ${coopId} is now active.`);
         }
     }

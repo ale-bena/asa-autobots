@@ -5,13 +5,38 @@
  * with expiration-aware utility calculation and policy rule adjustments.
  */
 
-import { findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, findAdjacentClearTile, pathDistance } from './PlanLibrary.js';
-import { evaluatePolicyReward } from '../policy/PolicyEngine.js';
+import { findNearestDeliveryZone, findNearestSpawnZone, findPatrolSpawnZone, findAdjacentClearTile, findAdjacentClearNonSpawnTile, pathDistance } from './PlanLibrary.js';
+import { evaluatePolicyReward, getWaitDecayTimeForValue } from '../policy/PolicyEngine.js';
 import { findAStarPath } from '../mapping/Pathfinding.js';
+import { optimizeDeliveryStack } from '../policy/DeliveryOptimizer.js';
+import { AGENT_IDS } from '../config/config.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
+import { logger } from '../utils/logger.js';
 
 // evaluatePolicyReward moved to PolicyEngine.js (also needed by PlanLibrary for
 // delivery-tile scoring). Re-exported here for existing importers (Intentions.js).
 export { evaluatePolicyReward };
+
+/**
+ * Checks if a parcel is targeted/locked by our teammate.
+ */
+function isTeammateTarget(beliefs, parcel) {
+    if (beliefs.lockedTargets.has(parcel.id)) {
+        return true;
+    }
+    const teammateIds = [AGENT_IDS.BDI_AGENT_ID, AGENT_IDS.LLM_AGENT_ID];
+    for (const peer of beliefs.peers.values()) {
+        if (teammateIds.includes(peer.id)) {
+            if (peer.path && peer.path.length > 0) {
+                const dest = peer.path[peer.path.length - 1];
+                if (Math.round(dest.x) === Math.round(parcel.x) && Math.round(dest.y) === Math.round(parcel.y)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 
 /**
  * Selects the highest utility goal based on current beliefs, policy rules,
@@ -22,6 +47,14 @@ export { evaluatePolicyReward };
  */
 export function selectBestGoal(beliefs, engineState) {
     const engineUpdates = {};
+
+    if (!beliefs || !beliefs.me) {
+        return { type: 'patrol', targetId: null, x: null, y: null, engineUpdates: null };
+    }
+    if (!beliefs.carried) beliefs.carried = [];
+    if (!beliefs.variables) beliefs.variables = {};
+    if (!beliefs.activeContracts) beliefs.activeContracts = new Map();
+    if (!beliefs.parcels) beliefs.parcels = new Map();
 
     if (beliefs.carried.length === 0) {
         beliefs.variables.handoffCompleted = false;
@@ -156,16 +189,17 @@ export function selectBestGoal(beliefs, engineState) {
     const decayMs = beliefs.parcelDecayIntervalMs;
     const decayEnabled = isFinite(decayMs) && decayMs > 0;
 
-    const dynamicCapacityLimit = engineUpdates.dynamicCapacityLimit || engineState.dynamicCapacityLimit;
+    const dynamicCapacityLimit = engineUpdates.dynamicCapacityLimit || (engineState ? engineState.dynamicCapacityLimit : 20);
 
-    const avgMoveTime = engineState.actionStats.move.count > 0 
-        ? engineState.actionStats.move.avgTime 
+    const stats = engineState && engineState.actionStats ? engineState.actionStats : {};
+    const avgMoveTime = stats.move && stats.move.count > 0 
+        ? stats.move.avgTime 
         : (beliefs.movementDurationMs || 100);
-    const avgPickupTime = engineState.actionStats.pickup.count > 0 
-        ? engineState.actionStats.pickup.avgTime 
+    const avgPickupTime = stats.pickup && stats.pickup.count > 0 
+        ? stats.pickup.avgTime 
         : 20;
-    const avgPutdownTime = engineState.actionStats.putdown.count > 0 
-        ? engineState.actionStats.putdown.avgTime 
+    const avgPutdownTime = stats.putdown && stats.putdown.count > 0 
+        ? stats.putdown.avgTime 
         : 20;
     const decayPerMs = decayEnabled ? (1 / decayMs) : 0;
 
@@ -241,7 +275,8 @@ export function selectBestGoal(beliefs, engineState) {
             console.log(`[BDI] At capacity but ALL delivery zones blocked. Falling through to patrol.`);
             const spawnZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
             if (spawnZone) {
-                return { type: 'patrol_spawn', targetId: null, x: spawnZone.x, y: spawnZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                const safeTile = findAdjacentClearNonSpawnTile(beliefs, spawnZone.x, spawnZone.y);
+                return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
             }
             return { type: 'patrol', targetId: null, x: null, y: null, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
         }
@@ -254,23 +289,19 @@ export function selectBestGoal(beliefs, engineState) {
         const safetyMarginMs = 1 * avgMoveTime;
         const atDynamicLimit = (beliefs.carried.length >= dynamicCapacityLimit);
 
-        // Compute utility of delivering now, adjusted by policy rules
-        let carriedValueAtDelivery = 0;
-        for (const cid of beliefs.carried) {
-            const cp = beliefs.parcels.get(cid);
-            if (cp) {
-                const cpDecay = decayEnabled ? (T_direct * decayPerMs) : 0;
-                const cpVal = Math.max(0, cp.reward - cpDecay);
-                carriedValueAtDelivery += evaluatePolicyReward(beliefs, cpVal, {
-                    carriedSize: beliefs.carried.length,
-                    x: deliveryZone ? deliveryZone.x : beliefs.me.x,
-                    y: deliveryZone ? deliveryZone.y : beliefs.me.y,
-                    path: deliveryPath || [],
-                    parcel: cp
-                });
-            }
-        }
-        const utilityDeliver = carriedValueAtDelivery / (T_direct + 1);
+        // Compute utility of delivering now, adjusted by policy rules and including potential wait time
+        const dx = deliveryZone ? deliveryZone.x : beliefs.me.x;
+        const dy = deliveryZone ? deliveryZone.y : beliefs.me.y;
+        const targetParcelsDirect = beliefs.carried.map(cid => {
+            const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
+            const cpDecay = decayEnabled ? (T_direct * decayPerMs) : 0;
+            const cpVal = Math.max(0, cp.reward - cpDecay);
+            return { ...cp, reward: cpVal };
+        });
+        const optDirect = optimizeDeliveryStack(beliefs, targetParcelsDirect, dx, dy);
+        const carriedValueAtDelivery = optDirect.bestReward;
+        const T_total = T_direct + optDirect.bestWaitMs;
+        const utilityDeliver = carriedValueAtDelivery / (T_total + 1);
 
         let bestPickup = null;
         let bestPickupUtility = -Infinity;
@@ -279,19 +310,38 @@ export function selectBestGoal(beliefs, engineState) {
         for (const parcel of beliefs.parcels.values()) {
             if (parcel.carriedBy) continue;
             if (beliefs.carried.includes(parcel.id)) continue;
-            if (beliefs.lockedTargets.has(parcel.id)) continue;
+            
+            const isTeammateTgt = isTeammateTarget(beliefs, parcel);
+            if (isTeammateTgt) continue;
+            
             if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
-            if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
-            if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
-            if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
+            
+            // Evaluate denial candidacy at the TARGET valid stack size, not current.
+            // Stack-size rules ("cannot deliver < 3") are delivery-time constraints,
+            // not pickup-time constraints. A parcel deliverable at the right stack
+            // size should never be flagged as a denial candidate.
+            const denialStackSize = beliefs.policyRules.requiredStackSize || beliefs.policyRules.maxStackSize || (beliefs.carried.length + 1);
+            const currentRewardVal = evaluatePolicyReward(beliefs, parcel.reward, { parcel, carriedSize: denialStackSize });
+            const delZone = findNearestDeliveryZone(beliefs, parcel.x, parcel.y, engineState.blockedDeliveryZones);
+            const dx = delZone ? delZone.x : beliefs.me.x;
+            const dy = delZone ? delZone.y : beliefs.me.y;
+            const canDecayToAllowed = getWaitDecayTimeForValue(beliefs, parcel.reward, denialStackSize, dx, dy, parcel) > 0;
+            
+            const isDenialCandidate = (currentRewardVal <= 0 && !canDecayToAllowed) || (parcel.reward < beliefs.policyRules.minRewardThreshold);
+            if (isDenialCandidate) {
+                // If it is next to a delivery zone and yields no reward to us, do not pick it up (prevents loops)
+                const nearDelivery = delZone && (Math.abs(parcel.x - delZone.x) + Math.abs(parcel.y - delZone.y) <= 2);
+                if (nearDelivery) continue;
+            }
+            
             if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
 
             const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
-            candidates.push({ parcel, mDist, roughUtil: parcel.reward / (mDist + 1) });
+            candidates.push({ parcel, mDist, roughUtil: parcel.reward / (mDist + 1), isDenialCandidate });
         }
         candidates.sort((a, b) => b.roughUtil - a.roughUtil);
 
-        for (const { parcel } of candidates.slice(0, 5)) {
+        for (const { parcel, isDenialCandidate } of candidates.slice(0, 5)) {
             const pathToParcel = findAStarPath(
                 beliefs.map,
                 { x: beliefs.me.x, y: beliefs.me.y },
@@ -319,84 +369,83 @@ export function selectBestGoal(beliefs, engineState) {
 
             const T_detour = (distToParcel + deliveryDistFromP) * avgMoveTime + avgPickupTime + avgPutdownTime;
 
-            // Project remaining reward of carried parcels after detour
-            let carriedRewardAfterDetour = 0;
-            let carriedRewardDirect = 0;
-            for (const cid of beliefs.carried) {
-                const cp = beliefs.parcels.get(cid);
-                if (cp) {
-                    const cpDecayDetour = decayEnabled ? ((T_detour + safetyMarginMs) * decayPerMs) : 0;
-                    const cpDecayDirect = decayEnabled ? (T_direct * decayPerMs) : 0;
-                    
-                    const valDetour = Math.max(0, cp.reward - cpDecayDetour);
-                    const valDirect = Math.max(0, cp.reward - cpDecayDirect);
-                    
-                    carriedRewardAfterDetour += evaluatePolicyReward(beliefs, valDetour, {
-                        carriedSize: beliefs.carried.length + 1,
-                        x: deliveryZoneFromParcel.x,
-                        y: deliveryZoneFromParcel.y,
-                        path: detourPath,
-                        parcel: cp
-                    });
-                    
-                    carriedRewardDirect += evaluatePolicyReward(beliefs, valDirect, {
-                        carriedSize: beliefs.carried.length,
-                        x: deliveryZone ? deliveryZone.x : beliefs.me.x,
-                        y: deliveryZone ? deliveryZone.y : beliefs.me.y,
-                        path: deliveryPath || [],
-                        parcel: cp
-                    });
-                }
-            }
-
-            // Project remaining reward of new parcel after detour
-            let newParcelRewardAfterDetour = 0;
-            if (decayEnabled) {
-                newParcelRewardAfterDetour = Math.max(0, parcel.reward - ((T_detour + safetyMarginMs) * decayPerMs));
-            } else {
-                newParcelRewardAfterDetour = parcel.reward;
-            }
-
-            const newParcelRewardAfterDetourVal = evaluatePolicyReward(beliefs, newParcelRewardAfterDetour, {
-                carriedSize: beliefs.carried.length + 1,
-                x: deliveryZoneFromParcel.x,
-                y: deliveryZoneFromParcel.y,
-                path: detourPath,
-                parcel: parcel
+            // Project remaining reward of carried parcels after detour, including wait time if needed
+            const detourParcels = [...beliefs.carried, parcel.id].map(cid => {
+                const cp = cid === parcel.id ? parcel : (beliefs.parcels.get(cid) || { id: cid, reward: 20 });
+                const cpDecay = decayEnabled ? ((T_detour + safetyMarginMs) * decayPerMs) : 0;
+                const cpVal = Math.max(0, cp.reward - cpDecay);
+                return { ...cp, reward: cpVal };
             });
+            const optDetour = optimizeDeliveryStack(
+                beliefs,
+                detourParcels,
+                deliveryZoneFromParcel.x,
+                deliveryZoneFromParcel.y,
+                beliefs.policyRules.requiredStackSize || null
+            );
 
-            const totalRewardAfterDetour = carriedRewardAfterDetour + newParcelRewardAfterDetourVal;
-            const totalRewardDirect = carriedRewardDirect;
+            const totalRewardAfterDetour = optDetour.bestReward;
+            const totalRewardDirect = optDirect.bestReward;
 
-            const canDeliverInTimeAfterDetour = (newParcelRewardAfterDetourVal > 0) && (totalRewardAfterDetour >= totalRewardDirect * 0.8);
-            
+            const newParcelDelivered = optDetour.bestSubset.includes(parcel.id);
+            const canDeliverInTimeAfterDetour = newParcelDelivered && (totalRewardAfterDetour >= totalRewardDirect * 0.8);
+
             const extraSteps = (distToParcel + deliveryDistFromP) - deliveryDist;
             const isMovingBackwards = (deliveryDistFromP > deliveryDist);
 
+            const buildingStack = beliefs.policyRules.requiredStackSize &&
+                beliefs.carried.length < beliefs.policyRules.requiredStackSize;
+
             let allowed = false;
-            if (atDynamicLimit) {
-                if ((canDeliverInTimeAfterDetour || (extraSteps <= 15 && carriedRewardAfterDetour > 0)) && extraSteps <= 15 && !isMovingBackwards) {
-                    allowed = true;
+            if (newParcelDelivered) {
+                if (atDynamicLimit) {
+                    if (canDeliverInTimeAfterDetour && extraSteps <= 15 && !isMovingBackwards) {
+                        allowed = true;
+                    }
+                } else {
+                    if (canDeliverInTimeAfterDetour || (extraSteps <= 30 && totalRewardAfterDetour > 0)) {
+                        if (extraSteps <= 120) {
+                            allowed = true;
+                        }
+                    }
                 }
             } else {
-                if (canDeliverInTimeAfterDetour || (extraSteps <= 30 && carriedRewardAfterDetour > 0)) {
-                    if (extraSteps <= 120) {
+                // Denial detour: the optimizer couldn't deliver this combo yet.
+                // If we're still building toward a required stack size, be much
+                // more permissive: the agent MUST collect parcels to reach the
+                // minimum, so direction/distance limits shouldn't block pickup.
+                if (beliefs.carried.length < dynamicCapacityLimit) {
+                    if (buildingStack) {
+                        // Actively building a required stack — allow long detours in any direction
+                        if (extraSteps <= 120) {
+                            allowed = true;
+                        }
+                    } else if (extraSteps <= 10 && !isMovingBackwards) {
                         allowed = true;
                     }
                 }
             }
 
             if (!allowed) {
-                console.log(`[BDI] Detour/pickup parcel ${parcel.id} NOT allowed: canDeliver=${canDeliverInTimeAfterDetour}, extraSteps=${extraSteps}, isMovingBackwards=${isMovingBackwards}`);
+                logger.bdi(`[BDI] Detour/pickup parcel ${parcel.id} NOT allowed: newParcelDelivered=${newParcelDelivered}, canDeliver=${canDeliverInTimeAfterDetour}, extraSteps=${extraSteps}, isMovingBackwards=${isMovingBackwards}`);
                 continue;
             }
 
-            const adjustedDetourReward = totalRewardAfterDetour;
-
+            // Assign small virtual reward if we are picking it up for denial, so utility is positive.
+            // Also, when building toward a required stack, if totalRewardAfterDetour is 0 (due to decay),
+            // use the sum of rewards of detourParcels as virtual value.
+            let adjustedDetourReward;
+            if (buildingStack && totalRewardAfterDetour <= 0) {
+                const sumRewards = detourParcels.reduce((sum, p) => sum + p.reward, 0);
+                adjustedDetourReward = Math.max(0.5, sumRewards);
+            } else {
+                adjustedDetourReward = Math.max(isDenialCandidate ? 0.5 : 0.0, totalRewardAfterDetour);
+            }
             if (adjustedDetourReward <= 0) continue;
 
-            const utility = adjustedDetourReward / (T_detour + 1);
-            console.log(`[BDI] Detour/pickup candidate ${parcel.id}: distToP=${distToParcel}, delivDistFromP=${deliveryDistFromP}, utility=${utility.toFixed(3)} (vs deliver: ${utilityDeliver.toFixed(3)})`);
+            const T_total_detour = T_detour + optDetour.bestWaitMs;
+            const utility = adjustedDetourReward / (T_total_detour + 1);
+            logger.bdi(`[BDI] Detour/pickup candidate ${parcel.id}: distToP=${distToParcel}, delivDistFromP=${deliveryDistFromP}, utility=${utility.toFixed(3)} (vs deliver: ${utilityDeliver.toFixed(3)})`);
 
             if (utility > bestPickupUtility) {
                 bestPickupUtility = utility;
@@ -405,7 +454,7 @@ export function selectBestGoal(beliefs, engineState) {
         }
 
         if (bestPickup && bestPickupUtility > utilityDeliver) {
-            console.log(`[BDI] Selecting pickup detour: ${bestPickup.id} (utility ${bestPickupUtility.toFixed(3)} > deliver ${utilityDeliver.toFixed(3)})`);
+            logger.bdi(`[BDI] Selecting pickup detour: ${bestPickup.id} (utility ${bestPickupUtility.toFixed(3)} > deliver ${utilityDeliver.toFixed(3)})`);
             return {
                 type: 'pickup',
                 targetId: bestPickup.id,
@@ -423,21 +472,15 @@ export function selectBestGoal(beliefs, engineState) {
                 const searchBudgetMs = 40 * avgMoveTime;
                 const maxSearchCap = isFinite(capacity) ? capacity : 20;
                 for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
-                    let S_value = 0;
-                    for (const cid of beliefs.carried) {
-                        const cp = beliefs.parcels.get(cid);
-                        if (cp) {
-                            const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
-                            const v = Math.max(0, cp.reward - decayLoss);
-                            S_value += evaluatePolicyReward(beliefs, v, {
-                                carriedSize: S,
-                                x: deliveryZone.x,
-                                y: deliveryZone.y,
-                                path: deliveryPath || [],
-                                parcel: cp
-                            });
-                        }
-                    }
+                    const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
+                    const huntParcels = beliefs.carried.map(cid => {
+                        const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
+                        const cpVal = Math.max(0, cp.reward - decayLoss);
+                        return { ...cp, reward: cpVal };
+                    });
+                    const optHunt = optimizeDeliveryStack(beliefs, huntParcels, deliveryZone.x, deliveryZone.y, S);
+                    const S_value = optHunt.bestReward;
+
                     // If waiting to reach stack S yields a positive reward that is better than delivering now:
                     if (S_value > carriedValueAtDelivery) {
                         shouldHuntInstead = true;
@@ -451,11 +494,12 @@ export function selectBestGoal(beliefs, engineState) {
             if (shouldHuntInstead) {
                 const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
                 if (huntZone) {
-                    console.log(`[BDI] Current stack (${beliefs.carried.length}) has value ${carriedValueAtDelivery.toFixed(1)}, but waiting/hunting for stack size ${targetStackForHunt} yields value ${targetStackValue.toFixed(1)}. Hunting at spawn zone (${huntZone.x}, ${huntZone.y}) instead of early delivery.`);
-                    return { type: 'patrol_spawn', targetId: null, x: huntZone.x, y: huntZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                    const safeTile = findAdjacentClearNonSpawnTile(beliefs, huntZone.x, huntZone.y);
+                    console.log(`[BDI] Current stack (${beliefs.carried.length}) has value ${carriedValueAtDelivery.toFixed(1)}, but waiting/hunting for stack size ${targetStackForHunt} yields value ${targetStackValue.toFixed(1)}. Hunting near spawn zone (${huntZone.x}, ${huntZone.y}), standing at (${safeTile.x}, ${safeTile.y}) instead of early delivery.`);
+                    return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
                 }
             }
-            console.log(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
+            logger.bdi(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
             return {
                 type: deliverType,
                 targetId: null,
@@ -478,20 +522,38 @@ export function selectBestGoal(beliefs, engineState) {
     for (const parcel of beliefs.parcels.values()) {
         if (parcel.carriedBy) continue;
         if (beliefs.carried.includes(parcel.id)) continue;
-        if (beliefs.lockedTargets.has(parcel.id)) continue;
+        
+        const isTeammateTgt = isTeammateTarget(beliefs, parcel);
+        if (isTeammateTgt) continue;
+        
         if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
-        if (parcel.reward < beliefs.policyRules.minRewardThreshold) continue;
-        if (parcel.reward >= beliefs.policyRules.maxRewardLimit) continue;
-        if (evaluatePolicyReward(beliefs, parcel.reward, { parcel }) <= 0) continue;
+        
+        // Evaluate denial candidacy at the TARGET valid stack size, not current.
+        // Stack-size rules ("cannot deliver < 3") are delivery-time constraints,
+        // not pickup-time constraints.
+        const denialStackSize = beliefs.policyRules.requiredStackSize || beliefs.policyRules.maxStackSize || 1;
+        const currentRewardVal = evaluatePolicyReward(beliefs, parcel.reward, { parcel, carriedSize: denialStackSize });
+        const delZone = findNearestDeliveryZone(beliefs, parcel.x, parcel.y, engineState.blockedDeliveryZones);
+        const dx = delZone ? delZone.x : beliefs.me.x;
+        const dy = delZone ? delZone.y : beliefs.me.y;
+        const canDecayToAllowed = getWaitDecayTimeForValue(beliefs, parcel.reward, denialStackSize, dx, dy, parcel) > 0;
+        
+        const isDenialCandidate = (currentRewardVal <= 0 && !canDecayToAllowed) || (parcel.reward < beliefs.policyRules.minRewardThreshold);
+        if (isDenialCandidate) {
+            // If it is next to a delivery zone and yields no reward to us, do not pick it up (prevents loops)
+            const nearDelivery = delZone && (Math.abs(parcel.x - delZone.x) + Math.abs(parcel.y - delZone.y) <= 2);
+            if (nearDelivery) continue;
+        }
+
         if (relayDropTiles.has(`${Math.round(parcel.x)},${Math.round(parcel.y)}`)) continue;
 
         const mDist = Math.abs(parcel.x - beliefs.me.x) + Math.abs(parcel.y - beliefs.me.y);
         const roughUtility = parcel.reward / (mDist + 1);
-        parcelCandidates.push({ parcel, roughUtility });
+        parcelCandidates.push({ parcel, roughUtility, isDenialCandidate });
     }
     parcelCandidates.sort((a, b) => b.roughUtility - a.roughUtility);
 
-    for (const { parcel } of parcelCandidates.slice(0, 5)) {
+    for (const { parcel, isDenialCandidate } of parcelCandidates.slice(0, 5)) {
         const pathToParcel = findAStarPath(
             beliefs.map,
             { x: beliefs.me.x, y: beliefs.me.y },
@@ -527,16 +589,29 @@ export function selectBestGoal(beliefs, engineState) {
 
         if (projectedReward <= 0) continue;
 
-        const adjustedReward = evaluatePolicyReward(beliefs, projectedReward, {
-            carriedSize: 1,
-            x: deliveryZoneForScoring ? deliveryZoneForScoring.x : beliefs.me.x,
-            y: deliveryZoneForScoring ? deliveryZoneForScoring.y : beliefs.me.y,
-            path: tripPath,
-            parcel: parcel
-        });
+        const dx = deliveryZoneForScoring ? deliveryZoneForScoring.x : beliefs.me.x;
+        const dy = deliveryZoneForScoring ? deliveryZoneForScoring.y : beliefs.me.y;
+
+        const optSingle = optimizeDeliveryStack(
+            beliefs, [{ ...parcel, reward: projectedReward }], dx, dy,
+            beliefs.policyRules.requiredStackSize || null  // evaluate at target stack size
+        );
+        // When building toward a required stack, even if the single-parcel optimizer
+        // returns 0 (because the stack isn't full yet), use the parcel's own reward
+        // as virtual value so the agent picks it up.
+        const buildingStack = beliefs.policyRules.requiredStackSize && beliefs.carried.length < beliefs.policyRules.requiredStackSize;
+        let adjustedReward;
+        if (buildingStack && optSingle.bestReward <= 0) {
+            adjustedReward = projectedReward;  // trust the raw reward for stack-building
+        } else {
+            adjustedReward = Math.max(isDenialCandidate ? 0.5 : 0.0, optSingle.bestReward);
+        }
+        const waitMs = optSingle.bestWaitMs;
+
         if (adjustedReward <= 0) continue;
 
-        const utility = adjustedReward / (totalTripMs + 1);
+        const totalTripWithWaitMs = totalTripMs + waitMs;
+        const utility = adjustedReward / (totalTripWithWaitMs + 1);
         if (utility > bestUtility) {
             bestUtility = utility;
             bestParcel = parcel;
@@ -567,8 +642,25 @@ export function selectBestGoal(beliefs, engineState) {
     // incoming batches are shuttled to delivery quickly. Anchoring on an
     // adjacent tile (not the drop tile itself) keeps it clear for the courier.
     // Pickups preempt this anchor as soon as a batch lands.
+    // We sort neighbors by distance to the delivery zone so the receiver anchors
+    // towards the delivery side, keeping the spawn-facing side clear for the courier.
     if (receiverRelayContract && beliefs.map) {
-        const anchor = findAdjacentClearTile(beliefs, receiverRelayContract.x, receiverRelayContract.y);
+        const neighbors = beliefs.map.getNeighbors({ x: receiverRelayContract.x, y: receiverRelayContract.y });
+        const delZone = findNearestDeliveryZone(beliefs, receiverRelayContract.x, receiverRelayContract.y);
+        if (delZone) {
+            neighbors.sort((a, b) => {
+                const distA = Math.abs(a.x - delZone.x) + Math.abs(a.y - delZone.y);
+                const distB = Math.abs(b.x - delZone.x) + Math.abs(b.y - delZone.y);
+                return distA - distB;
+            });
+        }
+        const anchor = neighbors.find(n => {
+            const code = beliefs.map.getTileCode(n.x, n.y);
+            const hasCrate = Array.from(beliefs.crates.values()).some(c => c.x === n.x && c.y === n.y);
+            const hasPeer = Array.from(beliefs.peers.values()).some(p => p.x === n.x && p.y === n.y);
+            return code !== MapRepresentation.TILE_CODES.SPAWN && !hasCrate && !hasPeer;
+        }) || neighbors[0];
+
         if (anchor) {
             return { type: 'patrol_spawn', targetId: null, x: anchor.x, y: anchor.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
         }
@@ -577,7 +669,8 @@ export function selectBestGoal(beliefs, engineState) {
     // 5. Fallback to navigating to a spawn zone to collect parcels (smart patrolling).
     const spawnZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
     if (spawnZone) {
-        return { type: 'patrol_spawn', targetId: null, x: spawnZone.x, y: spawnZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+        const safeTile = findAdjacentClearNonSpawnTile(beliefs, spawnZone.x, spawnZone.y);
+        return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
     }
 
     // 6. Absolute fallback to random patrolling.

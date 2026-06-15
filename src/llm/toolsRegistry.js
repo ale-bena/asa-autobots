@@ -6,6 +6,7 @@
 import { evaluateExpression } from '../policy/PolicyEngine.js';
 import { findNearestDeliveryZone } from '../agent/PlanLibrary.js';
 import { AGENT_IDS } from '../config/config.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 /**
  * Picks a relay drop tile: walkable, adjacent to the best delivery zone, but
@@ -17,7 +18,7 @@ function pickRelayDropTile(beliefs) {
     const zone = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y);
     if (!zone) return null;
     const neighbors = beliefs.map.getNeighbors({ x: zone.x, y: zone.y });
-    return neighbors.find(n => beliefs.map.getTileCode(n.x, n.y) !== 2) || neighbors[0] || null;
+    return neighbors.find(n => beliefs.map.getTileCode(n.x, n.y) !== MapRepresentation.TILE_CODES.DELIVERY) || neighbors[0] || null;
 }
 
 /**
@@ -356,10 +357,10 @@ export const TOOLS_REGISTRY = {
                     }
                     cx = drop.x;
                     cy = drop.y;
-                } else if (b.map && b.map.getTileCode(cx, cy) === 2) {
+                } else if (b.map && b.map.getTileCode(cx, cy) === MapRepresentation.TILE_CODES.DELIVERY) {
                     // Drop tile must not be a delivery tile, or the courier's
                     // putdown counts as its own delivery and voids the bonus.
-                    const shifted = b.map.getNeighbors({ x: cx, y: cy }).find(n => b.map.getTileCode(n.x, n.y) !== 2);
+                    const shifted = b.map.getNeighbors({ x: cx, y: cy }).find(n => b.map.getTileCode(n.x, n.y) !== MapRepresentation.TILE_CODES.DELIVERY);
                     if (shifted) {
                         cx = shifted.x;
                         cy = shifted.y;
@@ -368,6 +369,7 @@ export const TOOLS_REGISTRY = {
             }
 
             // CRITICAL: Store proposed contract locally in coordinator's beliefs so coordinator also acts on it
+            coordinator.beliefs.hold = false; // Release hold so agent can execute its part of the contract
             coordinator.beliefs.activeContracts.set(coopId, {
                 coopId: coopId,
                 type: contract.type,

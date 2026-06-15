@@ -9,6 +9,7 @@
 import { findAStarPath } from '../mapping/Pathfinding.js';
 import { NavigateTo } from './PlanLibrary.js';
 import { PddlServiceBridge } from '../planning/PddlServiceBridge.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 /**
  * Finds a nearby clear tile capable of holding a crate.
@@ -35,8 +36,7 @@ export function findClearCrateCapableTile(beliefs, cratePos) {
         if (dist > 4) continue;
 
         const code = beliefs.map.getTileCode(current.x, current.y);
-        // 4: crate_spawn, 5: crate_move
-        const isCrateCapable = (code === 4 || code === 5);
+        const isCrateCapable = (code === MapRepresentation.TILE_CODES.CRATE_SPAWN || code === MapRepresentation.TILE_CODES.CRATE);
         const hasOtherCrate = Array.from(beliefs.crates.values()).some(
             c => c.x === current.x && c.y === current.y && !(c.x === cratePos.x && c.y === cratePos.y)
         );

@@ -6,6 +6,7 @@
 
 import { onlineSolver } from '@unitn-asa/pddl-client';
 import fs from 'fs';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 
 /**
@@ -196,9 +197,8 @@ export class PddlServiceBridge {
                 const tileName = `t_${x}_${y}`;
                 tilesList.push(tileName);
 
-                // Mark crate move capable tiles (CRATE_SPAWN=4, CRATE=5)
                 const code = map.getTileCode(x, y);
-                if (code === 4 || code === 5) {
+                if (code === MapRepresentation.TILE_CODES.CRATE_SPAWN || code === MapRepresentation.TILE_CODES.CRATE) {
                     initFacts.push(`(crate-move-capable ${tileName})`);
                 }
 

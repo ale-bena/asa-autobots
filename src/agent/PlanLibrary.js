@@ -7,6 +7,7 @@
 import { findAStarPath } from '../mapping/Pathfinding.js';
 import { evaluatePolicyReward } from '../policy/PolicyEngine.js';
 import { AGENT_IDS } from '../config/config.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 /**
  * Computes the A*-based path distance between two coordinates.
@@ -44,9 +45,6 @@ export function pathDistance(beliefs, fromX, fromY, toX, toY, ignoreCrates = fal
  */
 export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = null) {
     if (!beliefs.map) return null;
-    let bestZone = null;
-    let bestScore = -Infinity;
-    let bestDistance = Infinity;
     const now = Date.now();
 
     // Value basis for the policy rules: the carried stack's raw reward, or a
@@ -58,10 +56,18 @@ export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = nu
     }
     if (carriedValue <= 0) carriedValue = 1;
 
+    // Collect all candidates
+    const candidates = [];
+    const occupiedTiles = new Set();
+    if (beliefs.peers) {
+        for (const peer of beliefs.peers.values()) {
+            occupiedTiles.add(`${Math.round(peer.x)},${Math.round(peer.y)}`);
+        }
+    }
+
     for (let x = 0; x < beliefs.map.width; x++) {
         for (let y = 0; y < beliefs.map.height; y++) {
-            // TILE_CODES.DELIVERY is 2
-            if (beliefs.map.getTileCode(x, y) === 2) {
+            if (beliefs.map.getTileCode(x, y) === MapRepresentation.TILE_CODES.DELIVERY) {
                 // Skip blocked zones that haven't expired (10s)
                 if (blockedZones) {
                     const zoneKey = `${x},${y}`;
@@ -72,22 +78,38 @@ export function findNearestDeliveryZone(beliefs, fromX, fromY, blockedZones = nu
                         blockedZones.delete(zoneKey); // expired, clean up
                     }
                 }
-                const dist = Math.abs(x - fromX) + Math.abs(y - fromY);
-                // General rules (e.g. stack multipliers) shift all tiles
-                // equally and cancel out of the ranking; tile-conditioned
-                // rules are what differentiates candidates.
-                const modValue = evaluatePolicyReward(beliefs, carriedValue, {
-                    x: x,
-                    y: y,
-                    carriedSize: beliefs.carried.length
-                });
-                const score = modValue / (dist + 1);
-                if (score > bestScore || (score === bestScore && dist < bestDistance)) {
-                    bestScore = score;
-                    bestDistance = dist;
-                    bestZone = { x, y };
-                }
+                const isOccupied = occupiedTiles.has(`${x},${y}`);
+                candidates.push({ x, y, isOccupied });
             }
+        }
+    }
+
+    if (candidates.length === 0) return null;
+
+    // If there is at least one free candidate, filter out the occupied ones
+    const freeCandidates = candidates.filter(c => !c.isOccupied);
+    const activeCandidates = freeCandidates.length > 0 ? freeCandidates : candidates;
+
+    let bestZone = null;
+    let bestScore = -Infinity;
+    let bestDistance = Infinity;
+
+    for (const cand of activeCandidates) {
+        const { x, y } = cand;
+        const dist = Math.abs(x - fromX) + Math.abs(y - fromY);
+        // General rules (e.g. stack multipliers) shift all tiles
+        // equally and cancel out of the ranking; tile-conditioned
+        // rules are what differentiates candidates.
+        const modValue = evaluatePolicyReward(beliefs, carriedValue, {
+            x: x,
+            y: y,
+            carriedSize: beliefs.carried.length
+        });
+        const score = modValue / (dist + 1);
+        if (score > bestScore || (score === bestScore && dist < bestDistance)) {
+            bestScore = score;
+            bestDistance = dist;
+            bestZone = { x, y };
         }
     }
     return bestZone;
@@ -107,8 +129,7 @@ export function findNearestSpawnZone(beliefs, fromX, fromY) {
 
     for (let x = 0; x < beliefs.map.width; x++) {
         for (let y = 0; y < beliefs.map.height; y++) {
-            // TILE_CODES.SPAWN is 1
-            if (beliefs.map.getTileCode(x, y) === 1) {
+            if (beliefs.map.getTileCode(x, y) === MapRepresentation.TILE_CODES.SPAWN) {
                 if (beliefs.blockedTargets && beliefs.blockedTargets.has(`${x},${y}`)) {
                     continue;
                 }
@@ -137,7 +158,7 @@ export function findPatrolSpawnZone(beliefs, fromX, fromY) {
     if (!beliefs.map) return null;
 
     const currentTileCode = beliefs.map.getTileCode(fromX, fromY);
-    const isOnSpawn = (currentTileCode === 1); // TILE_CODES.SPAWN is 1
+    const isOnSpawn = (currentTileCode === MapRepresentation.TILE_CODES.SPAWN);
 
     if (!isOnSpawn) {
         // If not on spawn, head to the nearest one
@@ -148,7 +169,7 @@ export function findPatrolSpawnZone(beliefs, fromX, fromY) {
     const allZones = [];
     for (let x = 0; x < beliefs.map.width; x++) {
         for (let y = 0; y < beliefs.map.height; y++) {
-            if (beliefs.map.getTileCode(x, y) === 1) {
+            if (beliefs.map.getTileCode(x, y) === MapRepresentation.TILE_CODES.SPAWN) {
                 if (beliefs.blockedTargets && beliefs.blockedTargets.has(`${x},${y}`)) {
                     continue;
                 }
@@ -201,6 +222,33 @@ export function findAdjacentClearTile(beliefs, x, y) {
         }
     }
     return neighbors[0] || { x, y };
+}
+
+/**
+ * Helper to locate an adjacent clear tile that is NOT a spawn tile.
+ * Used to prevent agents from idling on spawn tiles, which blocks
+ * new parcels from spawning. Falls back to findAdjacentClearTile
+ * if no non-spawn neighbor is available.
+ * @param {import('./BeliefBase.js').BeliefBase} beliefs - Current agent beliefs.
+ * @param {number} x - Cartesian X coordinate.
+ * @param {number} y - Cartesian Y coordinate.
+ * @returns {{x: number, y: number}} Adjacent clear non-spawn tile coordinates.
+ */
+export function findAdjacentClearNonSpawnTile(beliefs, x, y) {
+    if (!beliefs.map) return { x, y };
+    const neighbors = beliefs.map.getNeighbors({ x, y });
+
+    for (const n of neighbors) {
+        const tileCode = beliefs.map.getTileCode(n.x, n.y);
+        if (tileCode === MapRepresentation.TILE_CODES.SPAWN) continue;
+        const hasCrate = Array.from(beliefs.crates.values()).some(c => c.x === n.x && c.y === n.y);
+        const hasPeer = Array.from(beliefs.peers.values()).some(p => p.x === n.x && p.y === n.y);
+        if (!hasCrate && !hasPeer) {
+            return n;
+        }
+    }
+    // Fallback: all neighbors are spawn tiles or blocked; use the general helper
+    return findAdjacentClearTile(beliefs, x, y);
 }
 
 /**
@@ -325,8 +373,8 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
 
     if (!path || path.length < 2) {
         const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
-        // Do not block delivery (2) or spawn (1) zones
-        if (tileCode !== 1 && tileCode !== 2) {
+        // Do not block delivery or spawn zones
+        if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
             beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
         }
         beliefs.me.nextStep = null;
@@ -349,7 +397,7 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
             );
             if (!path || path.length < 2) {
                 const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
-                if (tileCode !== 1 && tileCode !== 2) {
+                if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
                     beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
                 }
                 beliefs.me.nextStep = null;
@@ -377,7 +425,7 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
             );
             if (!path || path.length < 2) {
                 const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
-                if (tileCode !== 1 && tileCode !== 2) {
+                if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
                     beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
                 }
                 beliefs.me.nextStep = null;
@@ -414,18 +462,6 @@ export function* CollectAndDeliver(beliefs, parcelId) {
 
     // 2. Pick it up
     yield { action: 'pickup', target: parcelId };
-
-    // 3. Navigate to nearest delivery zone and deliver
-    const zone = findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y);
-    if (zone) {
-        const reachedZone = yield* NavigateTo(beliefs, zone.x, zone.y);
-        if (reachedZone) {
-            // Only drop if we actually reached a delivery zone tile (tile code 2)
-            if (beliefs.map && beliefs.map.getTileCode(beliefs.me.x, beliefs.me.y) === 2) {
-                yield { action: 'putdown' };
-            }
-        }
-    }
 }
 
 /**

@@ -165,10 +165,10 @@ Messages are serialized JSON strings sent over the standard game chat.
 <td><code>{"type": "RELEASE_TARGET", "targetId"}</code></td>
 <td>Releases a locked target.</td>
 </tr>
-<tr class="commentable" data-comment-id="msg-apply-custom-rule">
-<td><code>APPLY_CUSTOM_PARCEL_RULE</code></td>
-<td><code>{"type": "APPLY_CUSTOM_PARCEL_RULE", "rule"}</code></td>
-<td>Sets dynamically evaluated parcel value policies.</td>
+<tr class="commentable" data-comment-id="msg-apply-rules">
+<td><code>APPLY_RULES</code></td>
+<td><code>{"type": "APPLY_RULES", "rules"}</code></td>
+<td>Sets dynamically evaluated agent rules containing stack size and parcel value bounds.</td>
 </tr>
 </tbody>
 </table>
@@ -203,7 +203,25 @@ Messages are serialized JSON strings sent over the standard game chat.
     { "condition": "x == 2 && y == 3", "bonus": 100 }
   ]
 }</code></pre>
+
+ <h3>4.2. Rule Enforcements & Wait-to-Decay Mechanics</h3>
+ <p class="commentable" data-comment-id="ast-enforce-desc">
+ Active policy rules received by the agent are processed cumulatively. The agent recalculates the parameters (e.g. <code>minRewardThreshold</code>, <code>maxRewardLimit</code>, <code>requiredStackSize</code>, <code>maxStackSize</code>, and <code>avoidTiles</code>) over all active policy rules, avoiding previous constraints from being overwritten.
+ </p>
+  <ul>
+  <li><strong>Tile Avoidance Parsing</strong>: Any rule specifying coordinates with a negative bonus (<code>bonus < 0</code>) or a penalty multiplier (<code>multiplier < 1</code>) is automatically classified as an avoidance rule. The target tile is injected into the BDI pathfinder's avoidance set.</li>
+  <li><strong>Optimal Stack Delivery Optimizer (DeliveryOptimizer.js)</strong>: Instead of greedily evaluating parcels, the BDI agent runs a subset-optimization algorithm (<code>optimizeDeliveryStack</code>) at arrival. This algorithm evaluates all subsets of carried cargo at candidate wait times $t$ to maximize the total policy-adjusted reward, supporting stack size bounds (e.g. exactly 3 parcels) and wait-to-decay ranges. The evaluator passes a cloned parcel object with the decayed reward property to <code>evaluatePolicyReward</code>, ensuring constraints are evaluated correctly on the projected decayed value.</li>
+  <li><strong>Sanity & Bounded Complexity Checks</strong>:
+    <ul>
+      <li><em>Adaptive Subsetting</em>: If carrying $N \le 6$ parcels, does a full power set evaluation ($2^N \le 64$ subsets). If $N > 6$, it prunes the search to relevant stack boundaries (e.g. bounds from rules, required stack size), individually positive cargo, and the full cargo set, ensuring $O(N \log N)$ complexity.</li>
+      <li><em>Conditional Decay Scanning</em>: If policy rules contain no reward-based constraints, wait time is immediately set to 0. If constraints exist, decay scanning automatically extracts boundaries $b$ (from <code>rewardBounds</code>, <code>maxRewardLimit</code>, and <code>minRewardThreshold</code>) and evaluates decay wait times $t$ that bring the parcel value to exactly $b$, $b - 1$, and $b - 0.1$, guaranteeing that decay steps are targeted and never missed.</li>
+    </ul>
+  </li>
+  <li><strong>Togglable Logs</strong>: All optimization, worthiness checking, and subset generation logging is prefix-intercepted and togglable via the <code>LOG_OPTIMIZER</code> environment variable (mapped to <code>LOGGER_CONFIG.enableOptimizer</code>), allowing fine-grained logging control.</li>
+  <li><strong>Delivery Step-aside and Discard Execution</strong>: If the optimal subset has a positive reward and there are discarded cargo elements (e.g., storing/discarding excess cargo to satisfy stack rules or avoiding penalties), the agent steps to an adjacent non-delivery tile to drop the discarded subset first, returns to the delivery zone, yields the optimal wait time, and drops all remaining cargo in a single action. If no subset achieves a positive reward, the agent discards all carried cargo on an adjacent tile to avoid penalties.</li>
+  </ul>
 </section>
+
 
 <!-- 5. PDDL Modeling (Corridor Clearing) -->
 <section id="pddl-modeling">

@@ -5,6 +5,9 @@
  * Implements a spatial memory grid with line-of-sight clearing for dynamic obstacles.
  */
 
+import { logger } from '../utils/logger.js';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
+
 /**
  * BeliefBase maintaining the mental state of a Deliveroo agent.
  */
@@ -228,7 +231,7 @@ export class BeliefBase {
         if (this.crates.size === 0) {
             for (let x = 0; x < this.map.width; x++) {
                 for (let y = 0; y < this.map.height; y++) {
-                    if (this.map.getTileCode(x, y) === 4) { // CRATE_SPAWN
+                    if (this.map.getTileCode(x, y) === MapRepresentation.TILE_CODES.CRATE_SPAWN) {
                         const cid = `crate_init_${x}_${y}`;
                         this.crates.set(cid, { id: cid, x, y });
                     }
@@ -241,7 +244,7 @@ export class BeliefBase {
         let spawnCount = 0;
         for (let x = 0; x < this.map.width; x++) {
             for (let y = 0; y < this.map.height; y++) {
-                if (this.map.getTileCode(x, y) === 4) {
+                if (this.map.getTileCode(x, y) === MapRepresentation.TILE_CODES.CRATE_SPAWN) {
                     spawnCount++;
                 }
             }
@@ -332,18 +335,14 @@ export class BeliefBase {
             }
         }
 
-        // 4. Enforce that crates can only sit on crate-capable tiles (codes 4 or 5)
-        // (Disabled: crates can sit on pavement (code 3) and block corridors,
-        // purging them causes the agent to forget the obstacle and collide.)
-        /*
+        // 4. Enforce that crates can only sit on crate-capable tiles (CRATE_SPAWN or CRATE)
         for (const [id, crate] of this.crates.entries()) {
             const code = this.map.getTileCode(crate.x, crate.y);
-            if (code !== 4 && code !== 5) {
+            if (code !== MapRepresentation.TILE_CODES.CRATE_SPAWN && code !== MapRepresentation.TILE_CODES.CRATE) {
                 console.log(`[BDI Crate Clean] Removing crate ${id} at (${crate.x}, ${crate.y}) since tile code ${code} is not crate-capable.`);
                 this.crates.delete(id);
             }
         }
-        */
 
         // 5. Enforce maximum crate limit based on spawnCount
         if (spawnCount > 0 && this.crates.size > spawnCount) {
@@ -375,7 +374,36 @@ export class BeliefBase {
         const sensedParcelMap = new Map();
         sensedParcels.forEach(p => {
             sensedParcelMap.set(p.id, p);
-            this.parcels.set(p.id, p);
+
+            const existing = this.parcels.get(p.id);
+            if (existing) {
+                // If the reward decreased, we can observe the time since the last decay
+                if (existing.reward !== p.reward) {
+                    const now = Date.now();
+                    if (existing.lastRewardChangeTime) {
+                        const delta = now - existing.lastRewardChangeTime;
+                        const rewardDiff = existing.reward - p.reward;
+                        if (rewardDiff > 0 && delta > 0) {
+                            const estimatedInterval = delta / rewardDiff;
+                            if (estimatedInterval > 100 && estimatedInterval < 10000) {
+                                if (this.parcelDecayIntervalMs === Infinity || !this.parcelDecayIntervalMs || this.parcelDecayIntervalMs === 1000) {
+                                    this.parcelDecayIntervalMs = estimatedInterval;
+                                    logger.bdi(`[Decay Tracker] Dynamically detected parcel decay interval: ${this.parcelDecayIntervalMs.toFixed(0)}ms (diff: ${rewardDiff}, elapsed: ${delta}ms)`);
+                                } else {
+                                    this.parcelDecayIntervalMs = 0.8 * this.parcelDecayIntervalMs + 0.2 * estimatedInterval;
+                                    logger.bdi(`[Decay Tracker] Dynamically updated parcel decay interval: ${this.parcelDecayIntervalMs.toFixed(0)}ms`);
+                                }
+                            }
+                        }
+                    }
+                    existing.lastRewardChangeTime = now;
+                }
+                // Merge properties to keep lastRewardChangeTime
+                Object.assign(existing, p);
+            } else {
+                p.lastRewardChangeTime = Date.now();
+                this.parcels.set(p.id, p);
+            }
 
             // Track carriage history
             if (p.carriedBy) {
@@ -475,30 +503,127 @@ export class BeliefBase {
     applyPolicyRules(rulesInput) {
         if (!rulesInput) return;
         
+        let newRules = [];
         if (Array.isArray(rulesInput)) {
-            let extractedMin = null;
-            let extractedMax = null;
-            let extractedMinReward = 0;
-            let extractedMaxReward = Infinity;
+            newRules = rulesInput;
+        } else if (typeof rulesInput === 'object') {
+            if (rulesInput.rules && Array.isArray(rulesInput.rules)) {
+                newRules = rulesInput.rules;
+            } else {
+                newRules = [rulesInput];
+            }
+        }
 
-            for (const r of rulesInput) {
-                if (r.tiles && Array.isArray(r.tiles)) {
-                    // If rule has negative bonus/penalty, these tiles should be avoided
-                    if (r.bonus !== null && r.bonus < -500) {
-                        for (const t of r.tiles) {
-                            if (!this.policyRules.avoidTiles.includes(t)) {
-                                this.policyRules.avoidTiles.push(t);
-                            }
+        // Add rules to memory, avoiding duplicates
+        for (const r of newRules) {
+            const isDuplicate = this.policyRules.rules.some(existing => {
+                return JSON.stringify(existing) === JSON.stringify(r);
+            });
+            if (!isDuplicate) {
+                this.policyRules.rules.push(r);
+            }
+        }
+
+        // Recalculate parameters from the entire collection of active rules
+        let extractedMin = null;
+        let extractedMax = null;
+        let extractedMinReward = 0;
+        let extractedMaxReward = Infinity;
+        const cumulativeAvoidTiles = [];
+
+        for (const r of this.policyRules.rules) {
+            if (!r) continue;
+
+            // 1. Process explicit avoidTiles array
+            if (r.avoidTiles && Array.isArray(r.avoidTiles)) {
+                for (const t of r.avoidTiles) {
+                    if (t && !cumulativeAvoidTiles.includes(t)) {
+                        cumulativeAvoidTiles.push(t);
+                    }
+                }
+            }
+
+            // 2. Process tiles array if it has a penalty
+            if (r.tiles && Array.isArray(r.tiles)) {
+                const isPenalty = (r.multiplier !== undefined && r.multiplier !== null && r.multiplier < 1) || 
+                                  (r.bonus !== undefined && r.bonus !== null && r.bonus < 0);
+                if (isPenalty) {
+                    for (const t of r.tiles) {
+                        if (t && !cumulativeAvoidTiles.includes(t)) {
+                            cumulativeAvoidTiles.push(t);
                         }
                     }
                 }
-                
-                // Only extract global limits if they apply to all tiles
-                if (r.all_tiles) {
-                    // Extract reward bounds (same semantics as stackSizeBounds: min inclusive, max exclusive)
-                    if (r.rewardBounds && Array.isArray(r.rewardBounds)) {
-                        const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < -500));
-                        for (const b of r.rewardBounds) {
+            }
+
+            // 3. Extract coordinates from condition if it has a penalty
+            if (r.condition) {
+                const isPenalty = (r.multiplier !== undefined && r.multiplier !== null && r.multiplier < 1) || 
+                                  (r.bonus !== undefined && r.bonus !== null && r.bonus < 0);
+                if (isPenalty) {
+                    const coord = extractCoordinatesFromCondition(r.condition);
+                    if (coord && !cumulativeAvoidTiles.includes(coord)) {
+                        cumulativeAvoidTiles.push(coord);
+                    }
+                }
+            }
+
+            // 4. Extract coordinates from bonusRules
+            if (r.bonusRules && Array.isArray(r.bonusRules)) {
+                for (const br of r.bonusRules) {
+                    if (br && br.bonus !== undefined && br.bonus !== null && br.bonus < 0 && br.condition) {
+                        const coord = extractCoordinatesFromCondition(br.condition);
+                        if (coord && !cumulativeAvoidTiles.includes(coord)) {
+                            cumulativeAvoidTiles.push(coord);
+                        }
+                    }
+                }
+            }
+
+            // 5. Extract coordinates from multiplierRules
+            if (r.multiplierRules && Array.isArray(r.multiplierRules)) {
+                for (const mr of r.multiplierRules) {
+                    if (mr && mr.multiplier !== undefined && mr.multiplier !== null && mr.multiplier < 1 && mr.condition) {
+                        const coord = extractCoordinatesFromCondition(mr.condition);
+                        if (coord && !cumulativeAvoidTiles.includes(coord)) {
+                            cumulativeAvoidTiles.push(coord);
+                        }
+                    }
+                }
+            }
+            
+            // Only extract global limits if they apply to all tiles
+            if (r.all_tiles) {
+                const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < 0));
+
+                // Extract direct properties: minReward / maxReward
+                if (r.minReward !== null && r.minReward !== undefined) {
+                    const minVal = Number(r.minReward);
+                    if (isPenalty) {
+                        // E.g. [11, null] is forbidden -> max allowed reward is 11
+                        if (r.maxReward === null || r.maxReward === undefined) {
+                            extractedMaxReward = Math.min(extractedMaxReward, minVal);
+                        }
+                    } else {
+                        extractedMinReward = Math.max(extractedMinReward, minVal);
+                    }
+                }
+                if (r.maxReward !== null && r.maxReward !== undefined) {
+                    const maxVal = Number(r.maxReward);
+                    if (isPenalty) {
+                        // E.g. [0, 3] is forbidden -> min allowed reward is 3
+                        if (r.minReward === null || r.minReward === undefined || r.minReward === 0) {
+                            extractedMinReward = Math.max(extractedMinReward, maxVal);
+                        }
+                    } else {
+                        extractedMaxReward = Math.min(extractedMaxReward, maxVal);
+                    }
+                }
+
+                // Extract reward bounds (same semantics as stackSizeBounds: min inclusive, max exclusive)
+                if (r.rewardBounds && Array.isArray(r.rewardBounds)) {
+                    for (const b of r.rewardBounds) {
+                        if (b) {
                             if (isPenalty) {
                                 // Penalty/forbidden reward bounds:
                                 // E.g. [0, 3] is forbidden -> min allowed reward is 3
@@ -524,27 +649,25 @@ export class BeliefBase {
                             }
                         }
                     }
-                    
-                    if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds)) {
-                        for (const b of r.stackSizeBounds) {
-                            const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < -500));
+                }
+                
+                if (r.stackSizeBounds && Array.isArray(r.stackSizeBounds)) {
+                    for (const b of r.stackSizeBounds) {
+                        if (b) {
+                            const isPenalty = (r.multiplier === 0 || (r.bonus !== null && r.bonus < 0));
                             if (isPenalty) {
                                 // Penalty/forbidden bounds:
-                                // E.g. [0, 2] is forbidden -> min required allowed is 2
                                 if (b.min === 0 || b.min === null) {
                                     if (b.max !== null && b.max !== undefined) {
                                         extractedMin = Math.max(extractedMin || 0, Number(b.max));
                                     }
                                 }
-                                // E.g. [6, null] is forbidden -> max allowed is 5 (6 - 1)
                                 if (b.max === null || b.max === undefined) {
                                     if (b.min !== null && b.min !== undefined) {
                                         extractedMax = Math.min(extractedMax !== null ? extractedMax : Infinity, Number(b.min) - 1);
                                     }
                                 }
                             } else {
-                                // Rewarding/allowed bounds:
-                                // E.g. [2, 6] is allowed -> min required is 2, max allowed is 5
                                 if (b.min !== null && b.min !== undefined) {
                                     extractedMin = Math.max(extractedMin || 0, Number(b.min));
                                 }
@@ -555,25 +678,42 @@ export class BeliefBase {
                         }
                     }
                 }
-                
-                // Add the rule directly to our rules list
-                this.policyRules.rules.push(r);
             }
+        }
 
-            this.policyRules.minRewardThreshold = extractedMinReward;
-            this.policyRules.maxRewardLimit = extractedMaxReward;
-            
-            if (extractedMin !== null) {
-                this.policyRules.requiredStackSize = extractedMin;
-            }
-            if (extractedMax !== null && extractedMax !== Infinity) {
-                this.policyRules.maxStackSize = extractedMax;
-            }
-        } else if (typeof rulesInput === 'object') {
-            if (rulesInput.rules) {
-                this.policyRules.rules = rulesInput.rules;
-            }
-            Object.assign(this.policyRules, rulesInput);
+        this.policyRules.avoidTiles = cumulativeAvoidTiles;
+        this.policyRules.minRewardThreshold = extractedMinReward;
+        this.policyRules.maxRewardLimit = extractedMaxReward;
+        
+        if (extractedMin !== null) {
+            this.policyRules.requiredStackSize = extractedMin;
+        }
+        if (extractedMax !== null && extractedMax !== Infinity) {
+            this.policyRules.maxStackSize = extractedMax;
         }
     }
+}
+
+/**
+ * Extracts "x,y" coordinates from an AST condition string like "x == 2 && y == 3".
+ * @param {string} condition - The condition string.
+ * @returns {string|null} The coordinates string, or null if not parsed.
+ */
+function extractCoordinatesFromCondition(condition) {
+    if (typeof condition !== 'string') return null;
+    const clean = condition.replace(/[\(\)]/g, '').trim();
+    
+    // Pattern 1: x == <num> && y == <num>
+    const match1 = clean.match(/x\s*==?\s*(\d+)\s*&&\s*y\s*==?\s*(\d+)/i);
+    if (match1) {
+        return `${match1[1]},${match1[2]}`;
+    }
+    
+    // Pattern 2: y == <num> && x == <num>
+    const match2 = clean.match(/y\s*==?\s*(\d+)\s*&&\s*x\s*==?\s*(\d+)/i);
+    if (match2) {
+        return `${match2[2]},${match2[1]}`;
+    }
+    
+    return null;
 }
