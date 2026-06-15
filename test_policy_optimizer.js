@@ -751,6 +751,59 @@ async function runTests() {
         console.log('✅ Passed: Receiver anchored successfully towards delivery zone');
     }
 
+    // Case 17: Force hunt/patrol when direct delivery yields <= 0 reward
+    {
+        console.log('--- Testing Case 17: Force hunt/patrol when delivery yields <= 0 reward ---');
+        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('./src/agent/GoalSelector.js');
+
+        // Simple map: PAVEMENT(0,0) SPAWN(1,0) DELIVERY(2,0)
+        const tiles = [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 0, type: '1' },
+            { x: 2, y: 0, type: '2' },
+        ];
+        const map = new MapRepresentation(2, 0, tiles);
+
+        const beliefs = new BeliefBase();
+        beliefs.map = map;
+        beliefs.me = { id: 'agent_1', name: 'Agent BDI', x: 0, y: 0, score: 0 };
+        beliefs.peers = new Map();
+        beliefs.activeContracts = new Map();
+        beliefs.variables.synced = true;
+
+        // Apply "cannot deliver less than 3 parcels at a time" rule
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 3 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // Carry 1 parcel of reward 12 (not in the map/parcels list to simulate no other pickups)
+        beliefs.carried = ['p_carried'];
+        beliefs.parcels.set('p_carried', { id: 'p_carried', x: 0, y: 0, reward: 12, carriedBy: 'agent_1' });
+
+        const engineState = {
+            dynamicCapacityLimit: 20,
+            actionStats: {},
+            blockedDeliveryZones: new Map(),
+            lastRequiredStackSize: null,
+            lastMaxStackSize: null,
+        };
+
+        const goal = selectBestGoal(beliefs, engineState);
+        console.log(`Case 17 goal: type=${goal.type}, targetId=${goal.targetId}, x=${goal.x}, y=${goal.y}`);
+
+        assert(goal.type === 'patrol_spawn', `Agent should patrol/hunt instead of delivering (got ${goal.type})`);
+        assert(goal.x !== 1 || goal.y !== 0, `Target should not be the spawn tile`);
+    }
+
     console.log('=== All Unit Tests Passed Successfully ===');
 }
 

@@ -468,25 +468,30 @@ export function selectBestGoal(beliefs, engineState) {
             let targetStackForHunt = null;
             let targetStackValue = 0;
 
-            if (!bestPickup && beliefs.carried.length < capacity) {
-                const searchBudgetMs = 40 * avgMoveTime;
-                const maxSearchCap = isFinite(capacity) ? capacity : 20;
-                for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
-                    const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
-                    const huntParcels = beliefs.carried.map(cid => {
-                        const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
-                        const cpVal = Math.max(0, cp.reward - decayLoss);
-                        return { ...cp, reward: cpVal };
-                    });
-                    const optHunt = optimizeDeliveryStack(beliefs, huntParcels, deliveryZone.x, deliveryZone.y, S);
-                    const S_value = optHunt.bestReward;
+            if (beliefs.carried.length < capacity) {
+                if (carriedValueAtDelivery <= 0) {
+                    shouldHuntInstead = true;
+                    targetStackForHunt = beliefs.policyRules.requiredStackSize || (beliefs.carried.length + 1);
+                } else {
+                    const searchBudgetMs = 40 * avgMoveTime;
+                    const maxSearchCap = isFinite(capacity) ? capacity : 20;
+                    for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
+                        const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
+                        const huntParcels = beliefs.carried.map(cid => {
+                            const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
+                            const cpVal = Math.max(0, cp.reward - decayLoss);
+                            return { ...cp, reward: cpVal };
+                        });
+                        const optHunt = optimizeDeliveryStack(beliefs, huntParcels, deliveryZone.x, deliveryZone.y, S);
+                        const S_value = optHunt.bestReward;
 
-                    // If waiting to reach stack S yields a positive reward that is better than delivering now:
-                    if (S_value > carriedValueAtDelivery) {
-                        shouldHuntInstead = true;
-                        targetStackForHunt = S;
-                        targetStackValue = S_value;
-                        break;
+                        // If waiting to reach stack S yields a positive reward that is better than delivering now:
+                        if (S_value > carriedValueAtDelivery) {
+                            shouldHuntInstead = true;
+                            targetStackForHunt = S;
+                            targetStackValue = S_value;
+                            break;
+                        }
                     }
                 }
             }
