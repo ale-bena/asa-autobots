@@ -70,7 +70,8 @@
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
     "benchmark": "node src/benchmark/run_benchmark.js",
-    "test": "node test_policy_optimizer.js"
+    "test": "node --test",
+    "test:coverage": "node --experimental-test-coverage --test"
   },
   "repository": {
     "type": "git",

@@ -6,3 +6,6 @@ node_modules/
 .vscode/
 package-lock.json
 yalc.lock
+tmp/
+*.pddl
+

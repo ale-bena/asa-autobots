@@ -1,6 +1,6 @@
-import { BeliefBase } from './src/agent/BeliefBase.js';
-import { optimizeDeliveryStack } from './src/policy/DeliveryOptimizer.js';
-import { evaluatePolicyReward } from './src/policy/PolicyEngine.js';
+import { BeliefBase } from '../src/agent/BeliefBase.js';
+import { optimizeDeliveryStack } from '../src/policy/DeliveryOptimizer.js';
+import { evaluatePolicyReward } from '../src/policy/PolicyEngine.js';
 
 function assert(condition, message) {
     if (!condition) {
@@ -300,8 +300,8 @@ async function runTests() {
         console.log('--- Testing Case 9: Island Connection & RELAY Proposal Detection ---');
         
         // Import MapRepresentation and IntentionEngine
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { IntentionEngine } = await import('./src/agent/Intentions.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { IntentionEngine } = await import('../src/agent/Intentions.js');
 
         // Create a 1D grid layout representing a corridor with one-way arrows
         // We make a 10x10 map
@@ -364,8 +364,8 @@ async function runTests() {
     {
         console.log('--- Testing Case 10: Delivery Zone Occupancy check ---');
 
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { findNearestDeliveryZone } = await import('./src/agent/PlanLibrary.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { findNearestDeliveryZone } = await import('../src/agent/PlanLibrary.js');
 
         // Create a 10x10 map with two delivery zones: (3, 3) and (7, 7)
         const tiles = [];
@@ -443,8 +443,8 @@ async function runTests() {
         assert(opt3.bestReward === 30, `Should get reward 30 for 3 parcels (got ${opt3.bestReward})`);
 
         // Scenario C: Verify CollectAndDeliver generator does not contain putdown
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { CollectAndDeliver } = await import('./src/agent/PlanLibrary.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { CollectAndDeliver } = await import('../src/agent/PlanLibrary.js');
         
         // Mock a simple 2x2 map for A* to succeed
         const tiles = [
@@ -480,8 +480,8 @@ async function runTests() {
     // Case 12: Corridor Blocked by Peer Agent RELAY Contract Proposal
     {
         console.log('--- Testing Case 12: Corridor Blocked by Peer Agent RELAY Contract ---');
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { IntentionEngine } = await import('./src/agent/Intentions.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { IntentionEngine } = await import('../src/agent/Intentions.js');
 
         // Create a 1D grid layout representing a corridor with NO arrows
         // Row 4 will be our corridor: (0,4) to (9,4)
@@ -540,9 +540,9 @@ async function runTests() {
     // Case 13: Non-Blocking Startup Handshake (SYNC_REQ / SYNC_ACK)
     {
         console.log('--- Testing Case 13: Non-Blocking Startup Handshake ---');
-        const { IntentionEngine } = await import('./src/agent/Intentions.js');
-        const { P2PManager } = await import('./src/communication/P2PCollaboration.js');
-        const { AGENT_IDS } = await import('./src/config/config.js');
+        const { IntentionEngine } = await import('../src/agent/Intentions.js');
+        const { P2PManager } = await import('../src/communication/P2PCollaboration.js');
+        const { AGENT_IDS } = await import('../src/config/config.js');
 
         const bdiBeliefs = new BeliefBase();
         bdiBeliefs.me = { id: AGENT_IDS.BDI_AGENT_ID, name: 'Agent BDI', x: 0, y: 0 };
@@ -594,8 +594,8 @@ async function runTests() {
     // Case 14: Spawn Tile Clearance — patrol_spawn must NOT target a spawn tile
     {
         console.log('--- Testing Case 14: Spawn Tile Clearance ---');
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { selectBestGoal } = await import('./src/agent/GoalSelector.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('../src/agent/GoalSelector.js');
 
         // Build a tiny 3×1 corridor:  (0,0)=PAVEMENT  (1,0)=SPAWN  (2,0)=DELIVERY
         const tiles = [
@@ -639,8 +639,8 @@ async function runTests() {
     // Case 15: Stack-size policy must NOT prevent pickup — agent should collect parcels to build a valid batch
     {
         console.log('--- Testing Case 15: Stack-size policy does not prevent pickup ---');
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { selectBestGoal } = await import('./src/agent/GoalSelector.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('../src/agent/GoalSelector.js');
 
         // Build a 5×1 corridor: PAVEMENT(0,0) SPAWN(1,0) PAVEMENT(2,0) PAVEMENT(3,0) DELIVERY(4,0)
         const tiles = [
@@ -705,11 +705,11 @@ async function runTests() {
     // Case 16: Dead code verification & directional RELAY anchoring
     {
         console.log('--- Testing Case 16: Dead code verification & directional RELAY anchoring ---');
-        const policyEngine = await import('./src/policy/PolicyEngine.js');
+        const policyEngine = await import('../src/policy/PolicyEngine.js');
         assert(policyEngine.executeMissionBehavior === undefined, 'executeMissionBehavior should be removed and undefined');
 
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { selectBestGoal } = await import('./src/agent/GoalSelector.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('../src/agent/GoalSelector.js');
 
         // Corridor map: DELIVERY(0,0) PAVEMENT(1,0) PAVEMENT(2,0)
         const tiles = [
@@ -754,8 +754,8 @@ async function runTests() {
     // Case 17: Force hunt/patrol when direct delivery yields <= 0 reward
     {
         console.log('--- Testing Case 17: Force hunt/patrol when delivery yields <= 0 reward ---');
-        const { MapRepresentation } = await import('./src/mapping/MapRepresentation.js');
-        const { selectBestGoal } = await import('./src/agent/GoalSelector.js');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('../src/agent/GoalSelector.js');
 
         // Simple map: PAVEMENT(0,0) SPAWN(1,0) DELIVERY(2,0)
         const tiles = [
@@ -802,6 +802,37 @@ async function runTests() {
 
         assert(goal.type === 'patrol_spawn', `Agent should patrol/hunt instead of delivering (got ${goal.type})`);
         assert(goal.x !== 1 || goal.y !== 0, `Target should not be the spawn tile`);
+    }
+
+    // Case 18: Pathfinding with blockPeers = true
+    {
+        console.log('--- Testing Case 18: Pathfinding with blockPeers = true ---');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { findAStarPath } = await import('../src/mapping/Pathfinding.js');
+
+        // Simple corridor: (0,0) (1,0) (2,0)
+        const tiles = [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 0, type: '3' },
+            { x: 2, y: 0, type: '3' },
+        ];
+        const map = new MapRepresentation(2, 0, tiles);
+
+        const beliefs = new BeliefBase();
+        beliefs.map = map;
+        beliefs.me = { id: 'agent_1', x: 0, y: 0 };
+        // Teammate peer stands on the middle tile (1,0)
+        beliefs.peers.set('agent_2', { id: 'agent_2', x: 1, y: 0 });
+
+        // Standard pathfinding (blockPeers = false) -> path should be found
+        const pathNormal = findAStarPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, null, beliefs, false);
+        assert(pathNormal !== null, `Should find path when blockPeers = false`);
+        assert(pathNormal.length === 3, `Path length should be 3 steps`);
+
+        // Strict pathfinding (blockPeers = true) -> path should be blocked
+        const pathBlocked = findAStarPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, null, beliefs, true);
+        assert(pathBlocked === null, `Should NOT find path when blockPeers = true`);
+        console.log('✅ Passed: blockPeers correctly blocks pathfinding around other agents');
     }
 
     console.log('=== All Unit Tests Passed Successfully ===');

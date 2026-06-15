@@ -1,4 +1,4 @@
-import { PddlServiceBridge } from './src/planning/PddlServiceBridge.js';
+import { PddlServiceBridge } from '../src/planning/PddlServiceBridge.js';
 
 class MockMap {
     constructor() {
