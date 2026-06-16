@@ -63,9 +63,14 @@ export function shouldPreemptActivePlan(currentGoal, activeGenerator, bestGoal, 
         return true;
     }
 
-    // If we are currently delivering, allow pickup to preempt (e.g. for along-the-path detours).
+    // If we are currently delivering, allow pickup to preempt (e.g. for along-the-path detours),
+    // but only if we are NOT already at the target destination!
     if (isDeliverLike(currentGoal.type) && bestGoal.type === 'pickup') {
-        return true;
+        const isAtTarget = currentGoal.x !== null && currentGoal.y !== null &&
+                           Math.round(beliefs.me.x) === currentGoal.x && Math.round(beliefs.me.y) === currentGoal.y;
+        if (!isAtTarget) {
+            return true;
+        }
     }
 
     // pickups preempt patrols.

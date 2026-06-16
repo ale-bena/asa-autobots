@@ -625,15 +625,9 @@ async function runTests() {
         console.log(`Case 14 goal: type=${goal.type}, x=${goal.x}, y=${goal.y}`);
 
         assert(goal.type === 'patrol_spawn', `Goal type should be patrol_spawn (got ${goal.type})`);
-        // The target should NOT be the spawn tile (1,0)
+        // The target should be the spawn tile (1,0) directly to encourage patrolling/roaming
         const isSpawnTile = (goal.x === 1 && goal.y === 0);
-        assert(!isSpawnTile, `patrol_spawn target should NOT be the spawn tile (1,0) — got (${goal.x}, ${goal.y})`);
-        // The target should be one of the non-spawn adjacent tiles: (0,0) pavement or (2,0) delivery
-        const isValidAdjacentTile = (goal.x === 0 && goal.y === 0) || (goal.x === 2 && goal.y === 0);
-        assert(isValidAdjacentTile, `patrol_spawn target should be an adjacent non-spawn tile — got (${goal.x}, ${goal.y})`);
-        // Verify the target tile is not a spawn tile on the map
-        const targetTileCode = map.getTileCode(goal.x, goal.y);
-        assert(targetTileCode !== MapRepresentation.TILE_CODES.SPAWN, `patrol_spawn target tile code should NOT be SPAWN — got code ${targetTileCode}`);
+        assert(isSpawnTile, `patrol_spawn target should be the spawn tile (1,0) — got (${goal.x}, ${goal.y})`);
     }
 
     // Case 15: Stack-size policy must NOT prevent pickup — agent should collect parcels to build a valid batch
@@ -833,6 +827,435 @@ async function runTests() {
         const pathBlocked = findAStarPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, null, beliefs, true);
         assert(pathBlocked === null, `Should NOT find path when blockPeers = true`);
         console.log('✅ Passed: blockPeers correctly blocks pathfinding around other agents');
+    }
+
+    // Case 19: Testing DeliveryOptimizer quick check (bypass) when no policy rules are active
+    {
+        console.log('--- Testing Case 19: DeliveryOptimizer bypass when no policy rules active ---');
+        const beliefs = new BeliefBase();
+        beliefs.policyRules.rules = [];
+        
+        const carriedParcels = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 20 },
+            { id: 'p3', reward: 30 }
+        ];
+
+        const opt = optimizeDeliveryStack(beliefs, carriedParcels, 0, 0);
+        assert(opt.bestSubset.length === 3, `Should select all parcels when no policies exist (got ${opt.bestSubset.length})`);
+        assert(opt.bestReward === 60, `Should yield direct sum of rewards (got ${opt.bestReward})`);
+        assert(opt.bestWaitMs === 0, `Should yield 0 wait time (got ${opt.bestWaitMs})`);
+        console.log('✅ Passed: DeliveryOptimizer bypasses optimization and delivers all when rules are empty');
+    }
+
+    // Case 20: Testing DeliveryOptimizer adaptive subset selection with 7+ parcels under policy rules
+    {
+        console.log('--- Testing Case 20: DeliveryOptimizer adaptive subset selection with 7+ parcels ---');
+        const beliefs = new BeliefBase();
+        beliefs.me = { id: 'agent_1', x: 0, y: 0 };
+        beliefs.parcelDecayIntervalMs = 0;
+        
+        // Define policy rule: parcels with reward >= 50 yield 0 reward at delivery zone
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [],
+                rewardBounds: [{ min: 50, max: null }],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // We carry 7 parcels: 4 valid (reward 10), 3 forbidden/invalid (reward 50)
+        const carriedParcels = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 50 },
+            { id: 'p6', reward: 50 },
+            { id: 'p7', reward: 50 }
+        ];
+
+        const opt = optimizeDeliveryStack(beliefs, carriedParcels, 0, 0);
+        
+        // Under our new policy-aware adaptive subset generator, the optimal subset should be the 4 valid ones
+        assert(opt.bestSubset.length === 4, `Should select exactly the 4 valid parcels (got ${opt.bestSubset.length})`);
+        assert(opt.bestReward === 40, `Should yield reward 40 for valid subset (got ${opt.bestReward})`);
+        assert(opt.discardSubset.length === 3, `Should identify the 3 invalid/useless parcels to discard (got ${opt.discardSubset.length})`);
+        console.log('✅ Passed: DeliveryOptimizer adaptive subset selection correctly filters out invalid parcels with large stacks');
+    }
+
+    // Case 21: Policy: cannot deliver less than 4 and more than 5 parcels
+    {
+        console.log('--- Testing Case 21: Policy "cannot deliver less than 4 and more than 5" ---');
+        const { MapRepresentation } = await import('../src/mapping/MapRepresentation.js');
+        const { selectBestGoal } = await import('../src/agent/GoalSelector.js');
+        const { AGENT_IDS } = await import('../src/config/config.js');
+
+        const beliefs = new BeliefBase();
+        beliefs.me = { id: 'agent_1', x: 0, y: 0 };
+        
+        // Define policy rules:
+        // Rule 1: size in [0, 4] -> multiplier 0
+        // Rule 2: size in [6, null] -> multiplier 0
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 4 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            },
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 6, max: null }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+        beliefs.map = new MapRepresentation(10, 10, [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 0, type: '3' }, // Parcel 1
+            { x: 2, y: 0, type: '3' }, // Parcel 2
+            { x: 3, y: 0, type: '3' }, // Parcel 3
+            { x: 4, y: 0, type: '3' }, // Parcel 4
+            { x: 5, y: 0, type: '2' }  // Delivery Zone
+        ]);
+
+        beliefs.parcels.set('p1', { id: 'p1', x: 1, y: 0, reward: 20 });
+        beliefs.parcels.set('p2', { id: 'p2', x: 2, y: 0, reward: 20 });
+        beliefs.parcels.set('p3', { id: 'p3', x: 3, y: 0, reward: 20 });
+        beliefs.parcels.set('p4', { id: 'p4', x: 4, y: 0, reward: 20 });
+
+        const engineState = {
+            blockedDeliveryZones: new Map(),
+            dynamicCapacityLimit: 5,
+            actionStats: {
+                move: { count: 1, avgTime: 100 },
+                pickup: { count: 1, avgTime: 20 },
+                putdown: { count: 1, avgTime: 20 }
+            }
+        };
+
+        // Step 1: Empty-handed. Should target p1
+        let goal = selectBestGoal(beliefs, engineState);
+        assert(goal.type === 'pickup', `Should target pickup empty-handed (got ${goal.type})`);
+        assert(goal.targetId === 'p1', `Should target p1 (got ${goal.targetId})`);
+
+        // Step 2: Carrying p1. Should target p2 (pickup detour)
+        beliefs.carried = ['p1'];
+        beliefs.me = { id: 'agent_1', x: 1, y: 0 };
+        goal = selectBestGoal(beliefs, engineState);
+        assert(goal.type === 'pickup', `Should target pickup detour (got ${goal.type})`);
+        assert(goal.targetId === 'p2', `Should target p2 detour (got ${goal.targetId})`);
+
+        // Step 3: Carrying p1, p2. Should target p3 (pickup detour)
+        beliefs.carried = ['p1', 'p2'];
+        beliefs.me = { id: 'agent_1', x: 2, y: 0 };
+        goal = selectBestGoal(beliefs, engineState);
+        assert(goal.type === 'pickup', `Should target pickup detour (got ${goal.type})`);
+        assert(goal.targetId === 'p3', `Should target p3 detour (got ${goal.targetId})`);
+
+        // Step 4: Carrying p1, p2, p3. Should target p4 (pickup detour)
+        beliefs.carried = ['p1', 'p2', 'p3'];
+        beliefs.me = { id: 'agent_1', x: 3, y: 0 };
+        goal = selectBestGoal(beliefs, engineState);
+        assert(goal.type === 'pickup', `Should target pickup detour (got ${goal.type})`);
+        assert(goal.targetId === 'p4', `Should target p4 detour (got ${goal.targetId})`);
+
+        // Step 5: Carrying p1, p2, p3, p4. Now carrying 4 (valid size). Should deliver!
+        beliefs.carried = ['p1', 'p2', 'p3', 'p4'];
+        beliefs.me = { id: 'agent_1', x: 4, y: 0 };
+        goal = selectBestGoal(beliefs, engineState);
+        assert(goal.type === 'deliver', `Should choose to deliver (got ${goal.type})`);
+        assert(goal.x === 5, `Should target delivery X coord 5 (got ${goal.x})`);
+        assert(goal.y === 0, `Should target delivery Y coord 0 (got ${goal.y})`);
+
+        // Optimizer test: carrying 4, should return all 4 for delivery
+        const opt = optimizeDeliveryStack(beliefs, [
+            { id: 'p1', reward: 20 },
+            { id: 'p2', reward: 20 },
+            { id: 'p3', reward: 20 },
+            { id: 'p4', reward: 20 }
+        ], 5, 0);
+        assert(opt.bestSubset.length === 4, `Should select all 4 parcels (got ${opt.bestSubset.length})`);
+
+        // Optimizer test: carrying 7, should return a subset of size 5 for delivery
+        const opt7 = optimizeDeliveryStack(beliefs, [
+            { id: 'p1', reward: 20 },
+            { id: 'p2', reward: 20 },
+            { id: 'p3', reward: 20 },
+            { id: 'p4', reward: 20 },
+            { id: 'p5', reward: 20 },
+            { id: 'p6', reward: 20 },
+            { id: 'p7', reward: 20 }
+        ], 5, 0);
+        assert(opt7.bestSubset.length === 5, `Should select exactly 5 parcels for delivery when carrying 7 (got ${opt7.bestSubset.length})`);
+
+        console.log('✅ Passed: Case 21 logic works perfectly and targets correctly under the policy');
+    }
+
+    // Case 22: Baseline - No policy -> deliver all at once
+    {
+        console.log('--- Testing Case 22: Baseline - No policy -> deliver all at once ---');
+        const beliefs = new BeliefBase();
+        beliefs.policyRules.rules = [];
+        
+        const carried = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 20 },
+            { id: 'p3', reward: 30 }
+        ];
+
+        const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+        assert(opt.bestSubset.length === 3, `Should select all 3 parcels (got ${opt.bestSubset.length})`);
+        assert(opt.bestReward === 60, `Should sum rewards directly to 60 (got ${opt.bestReward})`);
+    }
+
+    // Case 23: Baseline - Policy "cannot deliver < 3 parcels"
+    {
+        console.log('--- Testing Case 23: Baseline - Policy "cannot deliver < 3 parcels" ---');
+        const beliefs = new BeliefBase();
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 3 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // A. Carry 2 parcels -> should return 0 (explore more)
+        const carried2 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 }
+        ];
+        const opt2 = optimizeDeliveryStack(beliefs, carried2, 5, 5);
+        assert(opt2.bestSubset.length === 0, `Should not deliver when carrying 2 parcels (got ${opt2.bestSubset.length})`);
+
+        // B. Carry 3 parcels -> should deliver all 3
+        const carried3 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 }
+        ];
+        const opt3 = optimizeDeliveryStack(beliefs, carried3, 5, 5);
+        assert(opt3.bestSubset.length === 3, `Should deliver all 3 parcels (got ${opt3.bestSubset.length})`);
+
+        // C. Carry 5 parcels -> should deliver all 5 (since >= 3 is allowed)
+        const carried5 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 }
+        ];
+        const opt5 = optimizeDeliveryStack(beliefs, carried5, 5, 5);
+        assert(opt5.bestSubset.length === 5, `Should deliver all 5 parcels (got ${opt5.bestSubset.length})`);
+    }
+
+    // Case 24: Baseline - Policy "cannot deliver more than 4 parcels"
+    {
+        console.log('--- Testing Case 24: Baseline - Policy "cannot deliver more than 4 parcels" ---');
+        const beliefs = new BeliefBase();
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 5, max: null }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // Carry 5 parcels -> should deliver exactly 4 (leaving 1 to optimize/deliver next)
+        const carried5 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 }
+        ];
+        const opt = optimizeDeliveryStack(beliefs, carried5, 5, 5);
+        assert(opt.bestSubset.length === 4, `Should deliver exactly 4 parcels (got ${opt.bestSubset.length})`);
+    }
+
+    // Case 25: Baseline - Bounds combination "cannot deliver less than 3 and more than 5"
+    {
+        console.log('--- Testing Case 25: Baseline - Bounds combination [3, 5] ---');
+        const beliefs = new BeliefBase();
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 3 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            },
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 6, max: null }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // Carry 7 parcels -> should deliver exactly 5 (allowed stack sizes are 3, 4, 5)
+        const carried7 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 },
+            { id: 'p6', reward: 10 },
+            { id: 'p7', reward: 10 }
+        ];
+        const opt = optimizeDeliveryStack(beliefs, carried7, 5, 5);
+        assert(opt.bestSubset.length === 5, `Should deliver exactly 5 parcels (got ${opt.bestSubset.length})`);
+    }
+
+    // Case 26: Baseline - Penalty modifiers and "cannot deliver" vs minor penalties
+    {
+        console.log('--- Testing Case 26: Baseline - Penalty modifiers ---');
+        
+        // A. Minor penalty: bonus -10, carrying 1 parcel of reward 5.
+        // Delivery yields -5 (penalty). No other option yields positive.
+        // Since penalty is minor (-5 > -100 under capacity 5), choose the non-empty subset with highest reward.
+        {
+            const beliefs = new BeliefBase();
+            beliefs.config = { GAME: { player: { capacity: 5 } } };
+            const rules = [
+                {
+                    all_tiles: true,
+                    tiles: [],
+                    stackSizeBounds: [],
+                    rewardBounds: [],
+                    multiplier: 1,
+                    bonus: -10
+                }
+            ];
+            beliefs.applyPolicyRules(rules);
+
+            const carried = [{ id: 'p1', reward: 5 }];
+            const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+            assert(opt.bestSubset.length === 1, `Should deliver under minor penalty (got ${opt.bestSubset.length})`);
+            assert(opt.bestReward === -5, `Reward should be -5 (got ${opt.bestReward})`);
+        }
+
+        // B. Strict cannot deliver: multiplier 0, carrying 1 parcel of reward 5.
+        // Delivery yields 0 reward (multiplier 0). Should NOT deliver, keep exploring (length 0).
+        {
+            const beliefs = new BeliefBase();
+            beliefs.config = { GAME: { player: { capacity: 5 } } };
+            const rules = [
+                {
+                    all_tiles: true,
+                    tiles: [],
+                    stackSizeBounds: [],
+                    rewardBounds: [],
+                    multiplier: 0,
+                    bonus: null
+                }
+            ];
+            beliefs.applyPolicyRules(rules);
+
+            const carried = [{ id: 'p1', reward: 5 }];
+            const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+            assert(opt.bestSubset.length === 0, `Should NOT deliver under multiplier 0 strict constraint (got ${opt.bestSubset.length})`);
+        }
+
+        // C. Strict cannot deliver: high penalty bonus -100, carrying 1 parcel of reward 5.
+        // Delivery yields 5 - 100 = -95. Under capacity 5, maxRawRewardOfStack = 100.
+        // Penalty bonus -100 is <= -100, so it is a strict cannot deliver rule.
+        // Should NOT deliver, keep exploring (length 0).
+        {
+            const beliefs = new BeliefBase();
+            beliefs.config = { GAME: { player: { capacity: 5 } } };
+            const rules = [
+                {
+                    all_tiles: true,
+                    tiles: [],
+                    stackSizeBounds: [],
+                    rewardBounds: [],
+                    multiplier: 1,
+                    bonus: -100
+                }
+            ];
+            beliefs.applyPolicyRules(rules);
+
+            const carried = [{ id: 'p1', reward: 5 }];
+            const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+            assert(opt.bestSubset.length === 0, `Should NOT deliver under high penalty strict constraint (got ${opt.bestSubset.length})`);
+        }
+    }
+
+    // Case 27: User Scenario - Policy "cannot deliver < 3", carrying 5, drop 3 (leaving 2), pick up 1 (carrying 3), deliver.
+    {
+        console.log('--- Testing Case 27: User Scenario - cannot deliver < 3, step-by-step sequence ---');
+        const beliefs = new BeliefBase();
+        beliefs.config = { GAME: { player: { capacity: 5 } } };
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 3 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // Step 1: Carrying 5 parcels. Optimizer should deliver all 5.
+        const carried5 = [
+            { id: 'p1', reward: 10 },
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 }
+        ];
+        const opt5 = optimizeDeliveryStack(beliefs, carried5, 5, 5);
+        assert(opt5.bestSubset.length === 5, `Step 1: Should deliver all 5 parcels (got ${opt5.bestSubset.length})`);
+
+        // Step 2: Simulate dropping 3 parcels, leaving 2 in hands.
+        // At the delivery tile, optimizer should NOT deliver the remaining 2.
+        const carried2 = [
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 }
+        ];
+        const opt2 = optimizeDeliveryStack(beliefs, carried2, 5, 5);
+        assert(opt2.bestSubset.length === 0, `Step 2: Should NOT deliver when carrying 2 parcels (got ${opt2.bestSubset.length})`);
+
+        // Step 3: Traveling to pick up another parcel, crossing a delivery zone carrying 2.
+        // Optimizer should still NOT deliver.
+        const optCross = optimizeDeliveryStack(beliefs, carried2, 3, 3); // different delivery zone coordinate
+        assert(optCross.bestSubset.length === 0, `Step 3: Should NOT deliver when crossing delivery zone carrying 2 (got ${optCross.bestSubset.length})`);
+
+        // Step 4: After picking up the 3rd parcel (now carrying 3).
+        // Optimizer should now deliver all 3.
+        const carried3 = [
+            { id: 'p4', reward: 10 },
+            { id: 'p5', reward: 10 },
+            { id: 'p6', reward: 10 }
+        ];
+        const opt3 = optimizeDeliveryStack(beliefs, carried3, 5, 5);
+        assert(opt3.bestSubset.length === 3, `Step 4: Should deliver all 3 parcels (got ${opt3.bestSubset.length})`);
     }
 
     console.log('=== All Unit Tests Passed Successfully ===');

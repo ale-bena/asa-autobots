@@ -23,9 +23,10 @@ function heuristic(a, b) {
  * @param {{x: number, y: number}} goal - Destination coordinate.
  * @param {Object} [policy=null] - Dynamic behavioral policy rules.
  * @param {Object} [beliefs=null] - Agent belief base containing dynamic obstacles.
+ * @param {boolean} [blockPeers=false] - Whether to treat peer agents as hard obstacles.
  * @returns {Array<{x: number, y: number}>|null} Array of steps from start (inclusive) to goal (inclusive), or null if unreachable.
  */
-export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
+export function findAStarPath(map, start, goal, policy = null, beliefs = null, blockPeers = false) {
     // If start is same as goal, return trivial single-node path.
     if (start.x === goal.x && start.y === goal.y) {
         return [start];
@@ -119,6 +120,11 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null) {
             // Treat intermediate blocked targets as blocked.
             const isBlockedTarget = beliefs && beliefs.blockedTargets && beliefs.blockedTargets.has(neighborKey);
             if (isBlockedTarget && !isGoal) {
+                continue;
+            }
+
+            // Treat peer agents as blocked if blockPeers is true.
+            if (blockPeers && peerTiles.has(neighborKey)) {
                 continue;
             }
 

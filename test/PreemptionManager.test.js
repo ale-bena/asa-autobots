@@ -126,4 +126,21 @@ describe('PreemptionManager tests', () => {
         // Same target pickup should NOT preempt
         assert.strictEqual(shouldPreemptActivePlan(activePickup, generator, activePickup, beliefs), false);
     });
+
+    test('deliver at target destination does NOT allow pickup preemption', () => {
+        const beliefs = new BeliefBase();
+        const generator = (function* () {})();
+        
+        // Active deliver, targeting (5,5)
+        const activeDeliver = { type: 'deliver', targetId: null, x: 5, y: 5 };
+        const bestPickup = { type: 'pickup', targetId: 'p1', x: 2, y: 2 };
+        
+        // Case A: Agent is NOT at the target (beliefs.me is at 1,1) -> should preempt
+        beliefs.me = { id: 'agent_me', x: 1, y: 1 };
+        assert.strictEqual(shouldPreemptActivePlan(activeDeliver, generator, bestPickup, beliefs), true);
+
+        // Case B: Agent IS at the target (beliefs.me is at 5,5) -> should NOT preempt
+        beliefs.me = { id: 'agent_me', x: 5, y: 5 };
+        assert.strictEqual(shouldPreemptActivePlan(activeDeliver, generator, bestPickup, beliefs), false);
+    });
 });

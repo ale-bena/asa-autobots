@@ -132,10 +132,11 @@ export class PddlServiceBridge {
      * @param {import('../agent/BeliefBase.js').BeliefBase} beliefs - Agent belief base containing dynamic obstacles.
      * @param {{x: number, y: number}} targetCratePos - Coordinate of the crate we want to push.
      * @param {{x: number, y: number}} targetGoalPos - Destination coordinate for the crate.
+     * @param {boolean} [ignorePeers=false] - Whether to ignore peer agents in problem compilation.
      * @returns {Promise<Array<{action: string, args: Array<string>}>>} List of resolved action steps.
      */
-    async solveObstaclePush(map, beliefs, targetCratePos, targetGoalPos) {
-        const problem = this.compileProblemPddl(map, beliefs, targetCratePos, targetGoalPos);
+    async solveObstaclePush(map, beliefs, targetCratePos, targetGoalPos, ignorePeers = false) {
+        const problem = this.compileProblemPddl(map, beliefs, targetCratePos, targetGoalPos, ignorePeers);
 
         try {
             fs.writeFileSync('domain_debug.pddl', this.domainPddl, 'utf-8');
@@ -161,9 +162,10 @@ export class PddlServiceBridge {
      * @param {import('../agent/BeliefBase.js').BeliefBase} beliefs - Agent belief base containing dynamic obstacles.
      * @param {{x: number, y: number}} targetCrate - Target crate coordinates.
      * @param {{x: number, y: number}} goalCoord - Target destination coordinates.
+     * @param {boolean} [ignorePeers=false] - Whether to ignore peer agents.
      * @returns {string} Compiled PDDL problem description.
      */
-    compileProblemPddl(map, beliefs, targetCrate, goalCoord) {
+    compileProblemPddl(map, beliefs, targetCrate, goalCoord, ignorePeers = false) {
         const tilesList = [];
         const initFacts = [];
         const agent = beliefs.me;
@@ -175,7 +177,7 @@ export class PddlServiceBridge {
         for (const c of crates.values()) {
             occupiedTiles.add(`${c.x},${c.y}`);
         }
-        if (beliefs.peers) {
+        if (!ignorePeers && beliefs.peers) {
             for (const peer of beliefs.peers.values()) {
                 const px = Math.round(peer.x);
                 const py = Math.round(peer.y);

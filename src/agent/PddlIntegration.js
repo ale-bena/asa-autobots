@@ -286,9 +286,11 @@ export function* executePddlPlanRecipe(beliefs, moves) {
         }
     }
 
+    let i = 0;
     for (const step of moves) {
         // Skip steps where we're already at the target (e.g., after a crate push)
         if (Math.round(beliefs.me.x) === step.x && Math.round(beliefs.me.y) === step.y) {
+            i++;
             continue;
         }
 
@@ -298,10 +300,16 @@ export function* executePddlPlanRecipe(beliefs, moves) {
             break;
         }
 
+        beliefs.me.nextStep = step;
+        beliefs.me.path = moves.slice(i);
+
         const success = yield { action: 'move', target: step };
         if (!success) {
             console.log(`[BDI PDDL] Move to (${step.x}, ${step.y}) failed, aborting PDDL recipe.`);
             break;
         }
+        i++;
     }
+    beliefs.me.nextStep = null;
+    beliefs.me.path = [];
 }

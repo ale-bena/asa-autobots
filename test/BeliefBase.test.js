@@ -197,4 +197,144 @@ describe('BeliefBase tests', () => {
         assert.strictEqual(bb.policyRules.maxStackSize, 5);
         assert.deepStrictEqual(bb.policyRules.rules, rules);
     });
+
+    test('lazy initialize crates on CRATE_SPAWN tiles', () => {
+        const bb = new BeliefBase();
+        bb.me = { id: 'me', x: 10, y: 10 }; // Set agent far away to avoid deleting crates during LOS revise
+        bb.map = new MapRepresentation(3, 3, [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 1, type: '5!' }, // CRATE_SPAWN
+            { x: 2, y: 2, type: '5!' }  // CRATE_SPAWN
+        ]);
+        assert.strictEqual(bb.crates.size, 0);
+        bb.revise({ crates: [] });
+        assert.strictEqual(bb.crates.size, 2);
+        assert.ok(bb.crates.has('crate_init_1_1'));
+        assert.ok(bb.crates.has('crate_init_2_2'));
+    });
+
+    test('prune crates from memory when exceeding spawn count', () => {
+        const bb = new BeliefBase();
+        bb.me = { id: 'me', x: 0, y: 0 };
+        bb.observationDistance = 3;
+        bb.map = new MapRepresentation(3, 3, [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 1, type: '5!' } // CRATE_SPAWN (only 1 spawn tile)
+        ]);
+
+        bb.crates.set('crate1', { id: 'crate1', x: 1, y: 1 });
+        bb.crates.set('crate2', { id: 'crate2', x: 3, y: 3 }); // far, out-of-view
+
+        bb.revise({
+            crates: [
+                { id: 'crate1', x: 1, y: 1 }
+            ]
+        });
+
+        // Since spawnCount is 1, and crates.size was 2 (with crate2 out-of-view),
+        // crate2 should be pruned!
+        assert.strictEqual(bb.crates.size, 1);
+        assert.ok(bb.crates.has('crate1'));
+        assert.ok(!bb.crates.has('crate2'));
+    });
+
+    test('sensed crate ID update and out-of-view matching', () => {
+        const bb = new BeliefBase();
+        bb.me = { id: 'me', x: 0, y: 0 };
+        bb.observationDistance = 2;
+        bb.map = new MapRepresentation(5, 5, [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 1, type: '5' },
+            { x: 3, y: 4, type: '5' }, // Crate-capable tile for sensed_far_crate coordinate
+            { x: 4, y: 4, type: '5' }
+        ]);
+
+        // Existing crate in beliefs
+        bb.crates.set('old_id_1', { id: 'old_id_1', x: 1, y: 1 });
+        // Sensed crate at same coordinates with different ID
+        bb.revise({
+            crates: [
+                { id: 'new_id_1', x: 1, y: 1 }
+            ]
+        });
+        assert.ok(!bb.crates.has('old_id_1'));
+        assert.ok(bb.crates.has('new_id_1'));
+
+        // Match to closest out-of-view crate
+        bb.crates.set('far_crate', { id: 'far_crate', x: 4, y: 4 });
+        bb.revise({
+            crates: [
+                { id: 'new_id_1', x: 1, y: 1 },
+                { id: 'sensed_far_crate', x: 3, y: 4 } // near (4,4) but not exact
+            ]
+        });
+        // far_crate should be associated and moved to (3,4) with new ID
+        assert.ok(!bb.crates.has('far_crate'));
+        assert.ok(bb.crates.has('sensed_far_crate'));
+        const updated = bb.crates.get('sensed_far_crate');
+        assert.strictEqual(updated.x, 3);
+        assert.strictEqual(updated.y, 4);
+    });
+
+    test('parcel carriage history tracking', () => {
+        const bb = new BeliefBase();
+        bb.me = { id: 'me', x: 1, y: 1 };
+        bb.carried = ['p1'];
+        bb.revise({
+            parcels: [
+                { id: 'p1', x: 1, y: 1, reward: 20, carriedBy: 'me' },
+                { id: 'p2', x: 2, y: 2, reward: 30, carriedBy: 'other_agent' }
+            ]
+        });
+
+        assert.ok(bb.parcelHistory.has('p1'));
+        assert.ok(bb.parcelHistory.has('p2'));
+        assert.ok(bb.parcelHistory.get('p1').has('me'));
+        assert.ok(bb.parcelHistory.get('p2').has('other_agent'));
+    });
+
+    test('local dropped and delivered parcels latency tracking', () => {
+        const bb = new BeliefBase();
+        bb.me = { id: 'me_agent', x: 0, y: 0 };
+        
+        // Simulate carrying p1 and p2
+        bb.carried = ['p1', 'p2'];
+        
+        // 1. Simulate dropping p1 on pavement (added to droppedParcels)
+        bb.droppedParcels.add('p1');
+        bb.carried = ['p2'];
+        
+        // 2. Receive stale sensing frame where server still says we carry both p1 and p2
+        bb.revise({
+            me: {
+                id: 'me_agent',
+                x: 0,
+                y: 0,
+                carrying: [
+                    { id: 'p1', reward: 10 },
+                    { id: 'p2', reward: 15 }
+                ]
+            }
+        });
+        
+        // Assert that bb.carried only has p2 (p1 is filtered out because it is in droppedParcels)
+        assert.deepStrictEqual(bb.carried, ['p2']);
+        assert.ok(bb.droppedParcels.has('p1'));
+
+        // 3. Receive fresh sensing frame where server has updated and no longer lists p1
+        bb.revise({
+            me: {
+                id: 'me_agent',
+                x: 0,
+                y: 0,
+                carrying: [
+                    { id: 'p2', reward: 15 }
+                ]
+            }
+        });
+        
+        // Assert that p1 is removed from droppedParcels as server caught up
+        assert.ok(!bb.droppedParcels.has('p1'));
+        assert.deepStrictEqual(bb.carried, ['p2']);
+    });
 });

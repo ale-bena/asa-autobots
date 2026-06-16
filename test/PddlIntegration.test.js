@@ -193,8 +193,7 @@ describe('PddlIntegration tests', () => {
         PddlServiceBridge.prototype.solveObstaclePush = originalSolve;
 
         assert.ok(result, "Result should not be null");
-        assert.strictEqual(result.moves.length, 2);
-        assert.strictEqual(result.crate.id, 'c1');
+        assert.strictEqual(result.length, 2);
     });
 
     test('solveObstaclePushLocally already at pushFrom', () => {

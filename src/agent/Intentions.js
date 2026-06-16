@@ -513,24 +513,27 @@ export class IntentionEngine {
         if (this.beliefs.carried.length < capacity) {
             const currentX = Math.round(this.beliefs.me.x);
             const currentY = Math.round(this.beliefs.me.y);
-            const parcelHere = Array.from(this.beliefs.parcels.values()).find(
-                p => !p.carriedBy && !this.beliefs.carried.includes(p.id) && Math.round(p.x) === currentX && Math.round(p.y) === currentY
-            );
-            if (parcelHere) {
-                console.log(`[BDI Opportunistic] Found parcel ${parcelHere.id} on our current tile (${currentX}, ${currentY}). Picking it up.`);
-                const engineState = this._getEngineState();
-                const success = await dispatchAction(
-                    { action: 'pickup', target: parcelHere.id },
-                    this.beliefs,
-                    this.socket,
-                    engineState,
-                    () => this.getPeerAgentId(),
-                    (g) => this.instantiatePlanRecipe(g)
+            const currentTileCode = this.beliefs.map ? this.beliefs.map.getTileCode(currentX, currentY) : null;
+            if (currentTileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
+                const parcelHere = Array.from(this.beliefs.parcels.values()).find(
+                    p => !p.carriedBy && !this.beliefs.carried.includes(p.id) && Math.round(p.x) === currentX && Math.round(p.y) === currentY
                 );
-                this._applyEngineState(engineState);
-                if (success) {
-                    this.tickCounter = this.GOAL_EVAL_INTERVAL; // Force immediate goal evaluation on next tick
-                    return;
+                if (parcelHere) {
+                    console.log(`[BDI Opportunistic] Found parcel ${parcelHere.id} on our current tile (${currentX}, ${currentY}). Picking it up.`);
+                    const engineState = this._getEngineState();
+                    const success = await dispatchAction(
+                        { action: 'pickup', target: parcelHere.id },
+                        this.beliefs,
+                        this.socket,
+                        engineState,
+                        () => this.getPeerAgentId(),
+                        (g) => this.instantiatePlanRecipe(g)
+                    );
+                    this._applyEngineState(engineState);
+                    if (success) {
+                        this.tickCounter = this.GOAL_EVAL_INTERVAL; // Force immediate goal evaluation on next tick
+                        return;
+                    }
                 }
             }
         }

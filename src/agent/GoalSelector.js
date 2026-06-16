@@ -315,6 +315,10 @@ export function selectBestGoal(beliefs, engineState) {
             
             if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
             
+            // Skip targeting parcels for pickup if they are located on a delivery zone tile (prevents delivery loops)
+            const parcelTileCode = beliefs.map ? beliefs.map.getTileCode(parcel.x, parcel.y) : null;
+            if (parcelTileCode === MapRepresentation.TILE_CODES.DELIVERY) continue;
+            
             // Evaluate denial candidacy at the TARGET valid stack size, not current.
             // Stack-size rules ("cannot deliver < 3") are delivery-time constraints,
             // not pickup-time constraints. A parcel deliverable at the right stack
@@ -462,55 +466,62 @@ export function selectBestGoal(beliefs, engineState) {
                 engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
             };
         } else if (deliveryZone) {
-            // Generalized required stack size check
-            let shouldHuntInstead = false;
-            let targetStackForHunt = null;
-            let targetStackValue = 0;
+            const isAlreadyAtZone = Math.round(beliefs.me.x) === deliveryZone.x && Math.round(beliefs.me.y) === deliveryZone.y;
+            const cannotDeliverNow = optDirect.bestSubset.length === 0;
 
-            if (beliefs.carried.length < capacity) {
-                if (carriedValueAtDelivery <= 0) {
-                    shouldHuntInstead = true;
-                    targetStackForHunt = beliefs.policyRules.requiredStackSize || (beliefs.carried.length + 1);
-                } else {
-                    const searchBudgetMs = 40 * avgMoveTime;
-                    const maxSearchCap = isFinite(capacity) ? capacity : 20;
-                    for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
-                        const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
-                        const huntParcels = beliefs.carried.map(cid => {
-                            const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
-                            const cpVal = Math.max(0, cp.reward - decayLoss);
-                            return { ...cp, reward: cpVal };
-                        });
-                        const optHunt = optimizeDeliveryStack(beliefs, huntParcels, deliveryZone.x, deliveryZone.y, S);
-                        const S_value = optHunt.bestReward;
+            if (isAlreadyAtZone && cannotDeliverNow) {
+                logger.bdi(`[BDI] Already at delivery zone but cannot deliver anything now (optDirect.bestSubset is empty). Skipping early deliver goal return.`);
+            } else {
+                // Generalized required stack size check
+                let shouldHuntInstead = false;
+                let targetStackForHunt = null;
+                let targetStackValue = 0;
 
-                        // If waiting to reach stack S yields a positive reward that is better than delivering now:
-                        if (S_value > carriedValueAtDelivery) {
-                            shouldHuntInstead = true;
-                            targetStackForHunt = S;
-                            targetStackValue = S_value;
-                            break;
+                if (beliefs.carried.length < capacity) {
+                    if (carriedValueAtDelivery <= 0) {
+                        shouldHuntInstead = true;
+                        targetStackForHunt = beliefs.policyRules.requiredStackSize || (beliefs.carried.length + 1);
+                    } else {
+                        const searchBudgetMs = 40 * avgMoveTime;
+                        const maxSearchCap = isFinite(capacity) ? capacity : 20;
+                        for (let S = beliefs.carried.length + 1; S <= maxSearchCap; S++) {
+                            const decayLoss = decayEnabled ? ((T_direct + searchBudgetMs) * decayPerMs) : 0;
+                            const huntParcels = beliefs.carried.map(cid => {
+                                const cp = beliefs.parcels.get(cid) || { id: cid, reward: 20 };
+                                const cpVal = Math.max(0, cp.reward - decayLoss);
+                                return { ...cp, reward: cpVal };
+                            });
+                            const optHunt = optimizeDeliveryStack(beliefs, huntParcels, deliveryZone.x, deliveryZone.y, S);
+                            const S_value = optHunt.bestReward;
+
+                            // If waiting to reach stack S yields a positive reward that is better than delivering now:
+                            if (S_value > carriedValueAtDelivery) {
+                                shouldHuntInstead = true;
+                                targetStackForHunt = S;
+                                targetStackValue = S_value;
+                                break;
+                            }
                         }
                     }
                 }
-            }
 
-            if (shouldHuntInstead) {
-                const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
-                if (huntZone) {
-                    const safeTile = findAdjacentClearNonSpawnTile(beliefs, huntZone.x, huntZone.y);
-                    console.log(`[BDI] Current stack (${beliefs.carried.length}) has value ${carriedValueAtDelivery.toFixed(1)}, but waiting/hunting for stack size ${targetStackForHunt} yields value ${targetStackValue.toFixed(1)}. Hunting near spawn zone (${huntZone.x}, ${huntZone.y}), standing at (${safeTile.x}, ${safeTile.y}) instead of early delivery.`);
-                    return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                if (shouldHuntInstead) {
+                    const huntZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
+                    if (huntZone) {
+                        const safeTile = findAdjacentClearNonSpawnTile(beliefs, huntZone.x, huntZone.y);
+                        console.log(`[BDI] Current stack (${beliefs.carried.length}) has value ${carriedValueAtDelivery.toFixed(1)}, but waiting/hunting for stack size ${targetStackForHunt} yields value ${targetStackValue.toFixed(1)}. Hunting near spawn zone (${huntZone.x}, ${huntZone.y}), standing at (${safeTile.x}, ${safeTile.y}) instead of early delivery.`);
+                        return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                    }
                 }
+                logger.bdi(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
+                return {
+                    type: deliverType,
+                    targetId: null,
+                    x: deliveryZone.x,
+                    y: deliveryZone.y,
+                    engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
+                };
             }
-            logger.bdi(`[BDI] Heading to ${deliverType} (utilityDeliver=${utilityDeliver.toFixed(3)} >= bestPickupUtility=${bestPickupUtility.toFixed(3)})`);
-            return {
-                type: deliverType,
-                targetId: null,
-                x: deliveryZone.x,
-                y: deliveryZone.y,
-                engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
-            };
         } else {
             console.log(`[BDI] Want to deliver but ALL delivery zones blocked. Falling through.`);
         }
@@ -531,6 +542,10 @@ export function selectBestGoal(beliefs, engineState) {
         if (isTeammateTgt) continue;
         
         if (beliefs.blockedTargets.has(parcel.id) || beliefs.blockedTargets.has(`${parcel.x},${parcel.y}`)) continue;
+        
+        // Skip targeting parcels for pickup if they are located on a delivery zone tile (prevents delivery loops)
+        const parcelTileCode = beliefs.map ? beliefs.map.getTileCode(parcel.x, parcel.y) : null;
+        if (parcelTileCode === MapRepresentation.TILE_CODES.DELIVERY) continue;
         
         // Evaluate denial candidacy at the TARGET valid stack size, not current.
         // Stack-size rules ("cannot deliver < 3") are delivery-time constraints,
@@ -632,13 +647,23 @@ export function selectBestGoal(beliefs, engineState) {
             ? { x: courierRelayContract.x, y: courierRelayContract.y }
             : findNearestDeliveryZone(beliefs, beliefs.me.x, beliefs.me.y, engineState.blockedDeliveryZones);
         if (fallbackDelivery) {
-            return {
-                type: deliverType,
-                targetId: null,
-                x: fallbackDelivery.x,
-                y: fallbackDelivery.y,
-                engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
-            };
+            const isAlreadyAtZone = Math.round(beliefs.me.x) === fallbackDelivery.x && Math.round(beliefs.me.y) === fallbackDelivery.y;
+            let canDeliverSomething = true;
+            if (isAlreadyAtZone) {
+                const optDirect = optimizeDeliveryStack(beliefs, beliefs.carried.map(cid => beliefs.parcels.get(cid) || { id: cid, reward: 20 }), fallbackDelivery.x, fallbackDelivery.y);
+                if (!optDirect.bestSubset || optDirect.bestSubset.length === 0) {
+                    canDeliverSomething = false;
+                }
+            }
+            if (canDeliverSomething) {
+                return {
+                    type: deliverType,
+                    targetId: null,
+                    x: fallbackDelivery.x,
+                    y: fallbackDelivery.y,
+                    engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null
+                };
+            }
         }
     }
 

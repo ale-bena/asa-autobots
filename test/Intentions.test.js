@@ -447,4 +447,125 @@ describe('Intentions / IntentionEngine tests', () => {
         let res = gen.next(); // NavigateTo 0,0 done -> yields first wait tick for drop/wait logic
         assert.strictEqual(res.value.action, 'putdown');
     });
+
+    test('IntentionEngine delivery stack policy and congruent parcel IDs with 4 parcels', async () => {
+        const beliefs = new BeliefBase();
+        beliefs.me = { id: AGENT_IDS.BDI_AGENT_ID, name: 'Agent BDI', x: 0, y: 0, score: 0 };
+        
+        // Define a 6x1 grid: pavement at 0,1,2,3,4 and delivery zone at 5
+        const tiles = [
+            { x: 0, y: 0, type: '3' },
+            { x: 1, y: 0, type: '3' },
+            { x: 2, y: 0, type: '3' },
+            { x: 3, y: 0, type: '3' },
+            { x: 4, y: 0, type: '3' },
+            { x: 5, y: 0, type: '2' }  // DELIVERY
+        ];
+        beliefs.map = new MapRepresentation(5, 0, tiles);
+        beliefs.config = { GAME: { player: { capacity: 5 } } };
+        beliefs.variables.synced = true;
+
+        // Apply policy: cannot deliver less than 4 parcels
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [{ min: 0, max: 4 }],
+                rewardBounds: [],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        // Populate 4 parcels on the map
+        beliefs.parcels.set('p1', { id: 'p1', x: 1, y: 0, reward: 20 });
+        beliefs.parcels.set('p2', { id: 'p2', x: 2, y: 0, reward: 20 });
+        beliefs.parcels.set('p3', { id: 'p3', x: 3, y: 0, reward: 20 });
+        beliefs.parcels.set('p4', { id: 'p4', x: 4, y: 0, reward: 20 });
+
+        class SimulatedSocket {
+            constructor(bel) {
+                this.beliefs = bel;
+                this.emitted = [];
+                this.says = [];
+                this.putdownsCalledWith = [];
+            }
+            async emitMove(dir) {
+                this.emitted.push({ type: 'move', dir });
+                let { x, y } = this.beliefs.me;
+                if (dir === 'right') x++;
+                else if (dir === 'left') x--;
+                else if (dir === 'up') y++;
+                else if (dir === 'down') y--;
+                return { x, y };
+            }
+            async emitPickup() {
+                this.emitted.push({ type: 'pickup' });
+                const cx = Math.round(this.beliefs.me.x);
+                const cy = Math.round(this.beliefs.me.y);
+                const parcel = Array.from(this.beliefs.parcels.values()).find(
+                    p => !p.carriedBy && Math.round(p.x) === cx && Math.round(p.y) === cy
+                );
+                if (parcel) {
+                    parcel.carriedBy = this.beliefs.me.id;
+                    return [{ id: parcel.id, xy: { x: cx, y: cy } }];
+                }
+                return [];
+            }
+            async emitPutdown(selected) {
+                this.emitted.push({ type: 'putdown', selected });
+                this.putdownsCalledWith.push(selected);
+                const droppedIds = (selected && selected.length > 0) ? selected : [...this.beliefs.carried];
+                return droppedIds.map(id => ({ id }));
+            }
+            async emitSay(recipient, msg) {
+                this.says.push({ recipient, msg });
+                return true;
+            }
+            async emitShout() {}
+        }
+
+        const socket = new SimulatedSocket(beliefs);
+        const engine = new IntentionEngine(beliefs, socket);
+
+        // Run ticks to pick up and deliver the parcels
+        // We limit it to 60 iterations to avoid infinite loop on bug
+        let ticks = 0;
+        while (ticks < 60) {
+            await engine.tick();
+            
+            // Revise beliefs to simulate server sensing updates
+            beliefs.revise({
+                me: {
+                    id: AGENT_IDS.BDI_AGENT_ID,
+                    x: beliefs.me.x,
+                    y: beliefs.me.y,
+                    carrying: beliefs.carried.map(cid => ({ id: cid }))
+                },
+                parcels: Array.from(beliefs.parcels.values())
+            });
+
+            // Break once we have delivered all parcels and returned to idle state
+            if (beliefs.carried.length === 0 && ticks > 20) {
+                break;
+            }
+            ticks++;
+        }
+
+        // Verify that it successfully picked up and carried all 4 parcels before delivering
+        assert.ok(ticks < 60, `Simulation finished within ${ticks} ticks`);
+        
+        // Assert no deliveries were made when carried count was less than 4
+        // The first putdown call must only happen when carrying all 4 parcels
+        assert.strictEqual(socket.putdownsCalledWith.length, 4, 'Should have performed 4 putdowns at delivery zone');
+        
+        // Assert all parcel IDs in putdown calls are congruent and valid
+        const expectedIds = ['p1', 'p2', 'p3', 'p4'];
+        const actualPutdowns = socket.putdownsCalledWith.flat();
+        assert.deepStrictEqual(actualPutdowns.sort(), expectedIds.sort(), 'Putdowns should be called with exactly the 4 parcel IDs');
+        
+        // Verify final state: agent delivered everything and holds 0 carried parcels
+        assert.strictEqual(beliefs.carried.length, 0, 'Carried list should be empty after delivery');
+    });
 });

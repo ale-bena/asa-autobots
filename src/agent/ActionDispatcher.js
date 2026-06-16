@@ -5,6 +5,7 @@
  */
 
 import fs from 'fs';
+import { MapRepresentation } from '../mapping/MapRepresentation.js';
 
 /**
  * Determines the direction string between two adjacent coordinates.
@@ -194,6 +195,9 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
                     if (id && !beliefs.carried.includes(id)) {
                         beliefs.carried.push(id);
                     }
+                    if (id) {
+                        beliefs.droppedParcels.delete(id);
+                    }
                 }
                 engineState.mustDeliver = true;
                 console.log('[BDI] mustDeliver flag SET — will deliver before considering new pickups.');
@@ -216,10 +220,23 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
 
             if (dropped) {
                 console.log('[BDI] Cargo successfully dropped:', dropped);
-                if (action.target) {
-                    beliefs.carried = beliefs.carried.filter(id => id !== action.target);
-                } else {
-                    beliefs.carried = [];
+                const isDeliveryTile = beliefs.map && beliefs.map.getTileCode(beliefs.me.x, beliefs.me.y) === MapRepresentation.TILE_CODES.DELIVERY;
+                const targets = action.target ? [action.target] : [...beliefs.carried];
+                for (const t of targets) {
+                    if (isDeliveryTile) {
+                        beliefs.deliveredParcels.add(t);
+                        beliefs.parcels.delete(t);
+                        beliefs.lockedTargets.delete(t);
+                    } else {
+                        beliefs.droppedParcels.add(t);
+                        const p = beliefs.parcels.get(t);
+                        if (p) {
+                            p.x = beliefs.me.x;
+                            p.y = beliefs.me.y;
+                            p.carriedBy = null;
+                        }
+                    }
+                    beliefs.carried = beliefs.carried.filter(id => id !== t);
                 }
                 engineState.mustDeliver = false;
                 console.log('[BDI] mustDeliver flag CLEARED — free to evaluate new pickups.');

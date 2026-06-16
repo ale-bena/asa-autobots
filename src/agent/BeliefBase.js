@@ -65,6 +65,18 @@ export class BeliefBase {
         this.lockedTargets = new Set();
 
         /**
+         * Set of parcel IDs dropped on pavement tiles.
+         * @type {Set<string>}
+         */
+        this.droppedParcels = new Set();
+
+        /**
+         * Set of parcel IDs delivered to delivery zones.
+         * @type {Set<string>}
+         */
+        this.deliveredParcels = new Set();
+
+        /**
          * Active policy guidelines parsed from coordinator agent.
          * @type {{avoidTiles: Array<string>, minRewardThreshold: number, maxRewardLimit: number, requiredStackSize: number|null, multiplierRules: Array<Object>, bonusRules: Array<Object>}}
          */
@@ -137,10 +149,30 @@ export class BeliefBase {
         if (!sensorPayload) return;
 
         // 1. Revise Self info
+        // 1. Revise Self info
         if (sensorPayload.me) {
             Object.assign(this.me, sensorPayload.me);
             this.me.x = Math.round(this.me.x);
             this.me.y = Math.round(this.me.y);
+            if (sensorPayload.me.carrying) {
+                const serverCarrying = sensorPayload.me.carrying.map(p => typeof p === 'object' ? p.id : p);
+                
+                // Filter out any IDs that are locally known to be dropped or delivered
+                this.carried = serverCarrying.filter(id => !this.droppedParcels.has(id) && !this.deliveredParcels.has(id));
+
+                // Garbage-collect droppedParcels: if a parcel ID is not in serverCarrying, it means the server has updated and knows we dropped it
+                for (const id of this.droppedParcels) {
+                    if (!serverCarrying.includes(id)) {
+                        this.droppedParcels.delete(id);
+                    }
+                }
+                // Same for deliveredParcels
+                for (const id of this.deliveredParcels) {
+                    if (!serverCarrying.includes(id)) {
+                        this.deliveredParcels.delete(id);
+                    }
+                }
+            }
         }
 
         // 2. Revise Map Config if present
@@ -371,6 +403,16 @@ export class BeliefBase {
      * @private
      */
     _reviseParcelsSpatialMemory(sensedParcels) {
+        // Filter out delivered parcels that the server might still report
+        sensedParcels = sensedParcels.filter(p => !this.deliveredParcels.has(p.id));
+        
+        // Override carriedBy to null for recently dropped parcels
+        sensedParcels.forEach(p => {
+            if (this.droppedParcels.has(p.id) && p.carriedBy === this.me.id) {
+                p.carriedBy = null;
+            }
+        });
+
         const sensedParcelMap = new Map();
         sensedParcels.forEach(p => {
             sensedParcelMap.set(p.id, p);
@@ -468,8 +510,11 @@ export class BeliefBase {
             const distance = Math.abs(parcel.x - this.me.x) + Math.abs(parcel.y - this.me.y);
             if (distance < this.observationDistance) {
                 // Sensed area doesn't contain this parcel anymore. It decayed or was collected.
-                this.parcels.delete(id);
-                this.lockedTargets.delete(id);
+                // Exception: do not delete if it was recently dropped and we are waiting for the server to sense it
+                if (!this.droppedParcels.has(id)) {
+                    this.parcels.delete(id);
+                    this.lockedTargets.delete(id);
+                }
             }
         }
     }

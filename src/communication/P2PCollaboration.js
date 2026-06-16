@@ -73,6 +73,7 @@ export class P2PManager {
                             nextStep: message.payload.nextStep || null,
                             path: message.payload.path || [],
                             carried: message.payload.carried || [],
+                            currentGoal: message.payload.currentGoal || null,
                             source: 'p2p',
                             lastSeen: Date.now()
                         });
