@@ -1,38 +1,30 @@
 \chapter{PDDL Use}
 \label{ch:pddl}
 
-The BDI reasoning loop described above is complemented by a second planning layer
-used for one specific sub-problem: clearing pushable crates that block a corridor.
-PDDL (Planning Domain Definition Language) is an exact symbolic planner. It cannot
-reason about reward economics, but it is ideal for the discrete, combinatorial
+The BDI loop is complemented by a symbolic planning layer reserved for one
+sub-problem: clearing a pushable crate that blocks a corridor. PDDL(Planning Domain Definition Language) 
+is an exact sybolic planner, useless for reward economics but ideal for the discrete, combinatorial
 question ``what sequence of moves and pushes relocates this crate out of the way?'',
 where an ad-hoc heuristic would be brittle.
 
-\section{Role and scope: a macro-planner, not a pathfinder}
-
-The deliberate design choice is to invoke the planner as narrowly as possible.
-Ordinary tile-by-tile navigation is handled by A\textsuperscript{*} over the grid,
-which is fast and runs constantly. The PDDL solver is reserved for the
-\emph{crate-clearing macro-action} alone. The reason is cost: a general-purpose
-solver invoked for every navigation query would be far too slow to drive a
-\SI{60}{\hertz} control loop. Restricting it to occasional obstacle resolution
-keeps the planner out of the main loop, while still providing the agent with a correct plan in complex situations
-where local heuristic fails.
-
-\section{Local solver}
-
-The planner is reached through the \texttt{pddl-client} online-solver interface,
-but instead of the public hosted endpoint, for thesting and developing \emph{local} planning
-service running on \texttt{http://localhost:5001} (configured via the
-\texttt{PAAS\_HOST} environment variable) is used. The motivation is purely performance:
-the public online solver takes on the order of
-\SIrange{1}{3}{\second} per query, with additional network latency, whereas a local
-instance returns plans far faster and without round-trip overhead. Since crate
-clearing temporarily suspends the agent's active plan, reducing that latency
-directly shortens the time the executor stands still in front of an obstacle.
+\section{Role and scope}
+\label{sec:role_scope}
+The design choice is to invoke it as narrowly as possible. Ordinary tile-by-tile
+navigation stays with A\textsuperscript{*}, which is fast and runs constantly; a
+general-purpose solver called on every query would be far too slow for a
+\SI{60}{\hertz} control loop. Restricting PDDL to occasional obstacle resolution keeps
+it off the main loop while still guaranteeing a correct plan where local heuristics fail.
+\\
+The planner is reached through the \texttt{pddl-client} interface. For testing and
+development we point it at a \emph{local} service on \texttt{http://localhost:5001}
+(set via the \texttt{PAAS\_HOST} variable) rather than the public hosted endpoint, for
+performance: the online solver takes \SIrange{1}{3}{\second} per query plus network
+latency, whereas a local instance answers far faster. Since crate clearing suspends the
+agent's active plan, cutting that latency directly shortens the time it stands idle
+before an obstacle.
 
 \section{The domain}
-
+\label{sec:domain}
 The domain, \texttt{deliveroo-crates}, is a compact STRIPS(STanford Research Institute Problem Solver) 
 model with two families of actions:
 
@@ -46,13 +38,13 @@ model with two families of actions:
         The effects flip the clear predicates accordingly.
 \end{itemize}
 
-\underline{Directionality is encoded as explicit adjacency predicates
-(\texttt{right/left/up/down}) rather than coordinates, so the planner reasons over
-a symbolic graph. This way the one-way gate rules are respected, since adjacency is derived only
-when the legality check is satisfied.}
+Directionality is encoded as explicit adjacency predicates
+(right/left/up/down) rather than coordinates, so the planner reasons over
+a symbolic graph.  Because these predicates are emitted only when the move-legality check passes, the
+one-way gate rules are respected automatically.
 
 \section{The problem}
-
+\label{sec:problem}
 Each time a crate must be cleared, a fresh problem is compiled from the agent's
 current beliefs. The compiler scans the walkable tiles and produces four kinds of
 facts:
@@ -109,10 +101,10 @@ search). Resolution then proceeds in tiers, cheapest first:
 \end{center}
 
 A purely local, single-push computation is tried first because it is instantaneous
-and covers the common case where the crate is bypassable using and adjcent tile.
-Only when that fails, typically because the push
+and covers the common case where the crate is bypassable using and adjacent tile.
+When that fails, typically because the push
 requires manoeuvring around further crates, the agent falls back to the
 PDDL solver, which can chain multiple pushes and moves. Failed solves are recorded
-with a cooldown so the agent does not repeatedly hammer the planner on an
+with a 30\,s cooldown so the agent does not repeatedly hammer the planner on an
 unsolvable blockage; in that case the blocked target is shelved temporarily and the
 deliberation layer simply chooses something else to do and so picks a different goal.

@@ -19,28 +19,24 @@ pre-filtered: each agent ignores its own messages and anything that does not mat
 the cooperative JSON schema, so ordinary Admin text and opponent chatter never reach
 the protocol handlers.
 
-Underlying everything is a steady stream of \texttt{PEER\_STATUS} heartbeats sent in
-both directions a few times per second. Each heartbeat carries the sender's position,
-score, carried inventory, planned next step, and known crates. This is how each agent
-keeps an up-to-date model of its partner even when it is out of sensing range, and
-how crate sightings are shared so both agents navigate around the same obstacles. A
-lightweight \texttt{PING}/\texttt{PONG} pair serves the same purpose on demand.
-
-The same heartbeat also carries each agent's current target parcel and planned next
-step. By broadcasting this information continuously, both agents can see in advance
-when they are converging on the same parcel or tile and react, one yielding or
-re-deliberating toward a different target, without any explicit negotiation or
-locking protocol.
+Underlying everything is a steady stream of \texttt{PEER\_STATUS} heartbeats sent
+directly to the partner a few times per second. Each carries the sender's position,
+score, carried inventory, planned path and next step, and known crates. This keeps each
+agent's model of its partner current even when it is out of sensing range, shares crate
+sightings so both navigate around the same obstacles, and lets each agent see in advance
+when they are converging on the same tile, so one can yield or re-deliberate toward a
+different target without any explicit negotiation or locking.
 
 \section{Message Structure}
 
 Every cooperative message is a JSON object with a \texttt{type} field that selects a
-handler; the remaining fields are the payload. The vocabulary groups into four
+handler; the remaining fields are the payload. The vocabulary groups into three
 families:
 
 \begin{itemize}
-  \item \textbf{Status:} \texttt{PING}, \texttt{PONG}, \texttt{PEER\_STATUS}, for
-        position, cargo and obstacle sharing.
+  \item \textbf{Status:} \texttt{PEER\_STATUS}, for position, cargo and obstacle
+        sharing, and the \texttt{SYNC\_REQ}/\texttt{SYNC\_ACK} pair used once at
+        startup so neither agent acts before its partner is online (\ref{sec:init_state}).
   \item \textbf{Direct commands} (coordinator to executor): \texttt{MOVE\_TO},
         \texttt{HOLD}, \texttt{RESUME}, \texttt{APPLY\_RULES}, \texttt{SET\_VARIABLE},
         and \texttt{INSTRUCT\_SAY}. Of these, only \texttt{MOVE\_TO} expects a reply:
@@ -69,8 +65,8 @@ coordination and perception update the same beliefs through the same revision pa
 \section{Coordination Workflow}
 
 \paragraph{Contract handshake.} Multi-agent manoeuvres are negotiated as
-\emph{contracts} rather than hard-coded. One agent proposes, the other validates that
-the target is reachable and accepts, both mark it active, and either may cancel it
+\emph{contracts} rather than hard-coded. One agent proposes, the other validates that 
+the target tile is valid and walkable and accepts, both mark it active, and either may cancel it
 later. We chose a propose/accept handshake over simply commanding the partner so that
 a contract is never acted upon unless both agents agree it is feasible, which avoids
 one agent waiting forever for a partner that cannot reach the meeting point. Three

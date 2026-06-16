@@ -4,8 +4,7 @@ Both agents are built on the same Belief--Desire--Intention reasoning core: each
 constructs a \texttt{BeliefBase} and runs an \texttt{IntentionEngine}. The physical
 executor uses it directly to move, pick up and deliver; the LLM coordinator
 (Chapter~\ref{ch:llm}) reuses the same structure and extends it with
-natural-language reasoning. \uline{This chapter therefore describes the architecture once,
-as the foundation shared by the whole team.}
+natural-language reasoning.
 
 The agent maintains a model of the world (\emph{beliefs}), evaluates which goals
 are worth pursuing (\emph{desires}), commits to one (\emph{intention}), and
@@ -28,7 +27,7 @@ of the schema below at a tick every 16ms, so roughly \SI{60}{\hertz}.
 
 \section{Sensing and Belief Revision}
 
-Sensing happens at each movement and whenever something new enters the observation
+Sensing happens at each movement and whenever something new enters the observation 
 zone. A raw perception frame from the server reports the agent's own state, the
 visible map configuration, and the nearby agents, crates and parcels, but only
 within the observation radius, so it is partial and momentary. The agent never
@@ -102,13 +101,32 @@ time and adjusting it by the coordinator's policy multipliers and bonuses:
   \mathrm{utility} = \frac{\mathrm{value}}{t_{\text{trip}}}.
 \end{equation}
 %
-Because travel time is real, a distant high-reward parcel may be outscored by a
-closer modest one. When already carrying cargo, the agent additionally weighs
-delivering now against detouring for one more pickup, bounded by capacity, by the
-decay risk to the cargo already held, and by any required-stack-size incentive,
-which can make it worth delaying delivery to assemble a larger batch. When no
-option scores positively, \underline{deliberation degrades gracefully: deliver what is held,
-anchor near a relay tile, patrol the parcel spawn zones, and finally wander.}
+Because travel time is real, a closer modest parcel can outscore a distant high-reward
+one. When already carrying cargo, the agent also weighs delivering now against detouring
+for one more pickup. This trade-off is bounded by three factors: the carrying capacity,
+the decay risk to the cargo already held, and any required-stack-size incentive, which
+can make it worth delaying delivery to assemble a larger batch. When no option scores
+positively, deliberation degrades gracefully: it delivers what is held, anchors near a
+relay tile, patrols the parcel spawn zones, and finally wanders.
+
+\subsection{Delivery Optimization}
+
+Both the utility estimates above and the delivery step itself defer to a dedicated
+optimizer (\texttt{DeliveryOptimizer.js}): on reaching a delivery tile the agent rarely
+just drops everything, since policy rules may bound which rewards score or require a
+minimum stack size. \texttt{optimizeDeliveryStack} jointly chooses \emph{which subset}
+of cargo to deliver and \emph{how long to wait} first (candidate wait times are taken
+from the policy reward boundaries, the instants a parcel crosses an allowed band).
+Each (subset, wait) pair is scored as
+%
+\begin{equation}
+  \mathrm{score} = R_{\text{delivered}} + \tfrac{1}{2}\,V_{\text{kept}}
+                   - \lambda\, t_{\text{wait}},
+\end{equation}
+%
+balancing the reward actually delivered against the discounted value of cargo kept back
+and a waiting penalty; parcels that can never yield positive value are discarded. The
+same routine is reused during goal selection, keeping valuation and execution consistent.
 
 \section{Intention Commitment and Plans}
 
@@ -145,8 +163,16 @@ never deadlock over a tile during testing. Before moving, each agent uses the pa
 position and planned next step to detect a possible conflict where both aim for the same tile (see
 Section~\ref{sec:agent-comm}).
 When this happens one agent must yield, and this is decided deterministically by comparing agent identifiers,
-so both reach the same conclusion independently without any negotiation.
-If a collision occurs anyway, the agent first waits briefly and retries (100ms), then, if the tile keeps
-rejecting it, marks that tile as blocked and re-plans a route around it. After that the blocked tile is cleared so it's reusable in the future.
+so both reach the same conclusion independently without any negotiation(higher ID yields). The yeilding agent 
+pauses \SI{150}{\milli\second} to let the other pass. If a move is still rejected,
+the agent waits one tick (\SI{100}{\milli\second}) and retries, and after two repeated
+collisions on the same step it marks that tile as blocked and re-plans a route around it.
+The block is cleared after a short timeout so the tile stays reusable.
 When a plan finishes, the engine resumes any suspended plan or clears the goal and
 re-deliberates on the next tick.
+
+
+
+%If a collision occurs anyway, the agent waits one tick and retries; if the same tile
+%keeps rejecting it across repeated attempts, it marks the tile as blocked and re-plans
+%a route around it, clearing the mark again after a short timeout so the tile stays reusable.

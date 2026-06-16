@@ -3,15 +3,16 @@
 
 This second agent is a cognitive coordinator. It is built on the same BDI core as the
 executor, owning a \texttt{BeliefBase} and an \texttt{IntentionEngine}, so it can
-itself move, pick up, and deliver, including the PDDL-based crate clearing described
-above. What sets it apart is an additional natural-language reasoning layer. Its
-distinctive job is to receive instructions from the Admin in free-form chat, reason
+itself move, pick up, and deliver, including the PDDL-based crate clearing described in 
+\ref{ch:pddl}. 
+What sets it apart is an additional natural-language reasoning layer. Its job is to 
+receive instructions from the Admin in the chat, reason
 about them, and translate them into concrete commands and policies for the whole
 team. It never invents game actions from this reasoning directly: every effect is
 mediated either by a tool or by a peer-to-peer message, and any movement it commands,
 whether for itself or the partner, is ultimately carried out by a BDI agent through
 the loop of the previous chapters.
-There were 3 possibl model to chose from and the one selected is llama-3.3-70b-lmstudio.
+There were 3 possible models to chose from and the one selected is \texttt{llama-3.3-70b-lmstudio}.
 
 \begin{center}
 \begin{verbatim}
@@ -24,12 +25,12 @@ There were 3 possibl model to chose from and the one selected is llama-3.3-70b-l
 \section{The reasoning loop}
 
 A prompt triggers an iterative, single-step reasoning loop driven by a language
-model under a fixed system prompt. The model returns one \underline{strictly} validated JSON
+model under a fixed system prompt. The model returns one validated JSON
 object per turn, of exactly one of three kinds:
 
 \begin{itemize}
   \item \textbf{tool}, a request to execute one of the available tools;
-  \item \textbf{answer}, a piece of textual output to return;
+  \item \textbf{answer}, a textual output to return;
   \item \textbf{stop}, a signal that the prompt has been fully handled.
 \end{itemize}
 
@@ -37,24 +38,48 @@ Chain-of-thought is elicited through delimited reasoning that is stripped before
 parsing, and the model runs at zero temperature for determinism. After each turn the
 model executes the requested tool (or records the answer), feeds the result
 back as the next input, and repeats until a \texttt{stop} is produced. Outputs that
-violate the schema are rejected and re-requested with an error description, up to a
-retry bound. The loop advances one step at a time by design, so a prompt bundling
-several tasks is decomposed and resolved in presentation order, with intermediate
-answers returned in that same order(\underline{limitation section}).
+violate the schema are rejected and re-requested with an error description, up to three attempts. 
+The loop advances one step at a time by design, so a message containing
+several tasks \uline{is decomposed and resolved in presentation order}, with intermediate
+answers returned in that same order(\ref{sub:res_and_lim}).
+
+
+
 
 \section{Prompt construction}
 
-The system prompt is fixed and structured into a role description, explicit
-definitions of \emph{reward}, \emph{task}, and \emph{rule}, the response-format
-contract, the available tools, and a bank of worked examples. The definitions are
-what let the model reliably tell a one-off rewarded task from a standing rule, the
-distinction that drives feasibility gating. The behaviour is taught largely by
-example: the prompt is few-shot, with curated cases for feasibility checks,
-multi-task decomposition, rule application, and cooperation, which is what keeps a
-mid-size model on the strict JSON protocol and the one-step-at-a-time discipline.
-The tools section of the prompt is generated automatically from the same registry
-the coordinator executes against, so the descriptions the model reads can never
-drift from the tools that actually run.
+The system prompt is fixed for the whole run and organised into clearly delimited
+sections. A \emph{role} description frames the model as the team's reasoning brain
+and lists the agent identifiers. A \emph{definitions} block gives precise meanings
+for the three concepts the coordinator must tell apart: a \emph{reward} (the points
+gained or lost by carrying out an instruction, possibly written as an expression), a
+\emph{task} (a single unit of work, where one message may contain several), and a
+\emph{rule} (a standing instruction that changes how future tasks are scored). A set
+of operating \emph{rules} then fixes the procedure the model must follow, and a
+\emph{response-format} contract pins down the exact JSON it may emit. The prompt ends
+with the available tools and a bank of worked examples.
+
+The definitions and operating rules are what make the behaviour reliable rather than
+improvised. Because \emph{reward}, \emph{task}, and \emph{rule} are defined
+explicitly, the model can consistently separate a one-off rewarded task from a
+standing rule, the distinction that drives feasibility gating (a task is checked for
+a positive reward before acting, a rule is simply applied). The operating rules
+encode the rest of the discipline: expressions must be solved with the arithmetic
+tool instead of computed by the model, multi-task prompts must be decomposed and
+answered in presentation order, and unknown facts such as positions or map extremes
+must be fetched with a context tool rather than guessed. They also carry targeted
+guardrails learned from failures, for instance checking that a target tile is
+walkable before a move is ordered, and never sending both agents to the same tile.
+
+Beyond stating the rules, the prompt teaches them largely by example. It is
+few-shot, with curated cases covering feasibility checks, multi-task decomposition,
+rule application, holds and resumes, and cooperation contracts, each showing the full
+turn-by-turn exchange. \texttt{The examples, more than the rules alone, are what holps the model to 
+hold the JSOM protocol and execute one step at a time.(remove)}
+Finally, the tools section of the prompt
+is generated automatically from the same registry the coordinator executes against,
+so the descriptions the model reads can never drift from the tools that actually run.
+
 
 \section{Message filtering and history}
 
@@ -70,12 +95,14 @@ the intermediate reasoning or tool calls, so the prompt stays compact.
 \section{Feasibility gating}
 
 The central reasoning discipline is that effectful actions are gated on a feasibility
-check. Any expression, whether a reward value or a logical condition such as a parity
-test, must be resolved through the arithmetic tool rather than computed by the model
-itself. World- or rule-changing actions (movement, variable setting, cooperation
-proposals) are \textbf{reward-gated}: they are issued only once the arithmetic
-evaluation has confirmed a strictly positive reward for the current prompt. A prompt
-with no reward yields no action and no chat output.
+check. Any expression, whether a reward value or a logical condition, must be resolved
+through the arithmetic tool rather than computed by the model itself. World- or
+rule-changing actions (movement, variable setting, cooperation proposals) are
+reward-gated: they are issued only once the arithmetic evaluation has confirmed a
+strictly positive reward for the current prompt. Once confirmed, the gate is sticky
+for the rest of that prompt, so later numeric evaluations such as computing
+coordinates do not re-lock it. A prompt with no reward yields no action and no chat
+output.
 
 Two classes are intentionally exempt. \emph{Standing policy rules}
 (``from now on\ldots'', penalties, multipliers) are announcements of an effect, not
@@ -96,4 +123,4 @@ The key design point is symmetry of effect. When an act tool targets the coordin
 itself (or ``all''), it mutates the coordinator's own beliefs directly; when it
 targets the executor (or ``all''), it additionally emits a peer-to-peer message so
 the executor applies the same change to its belief base. The same vocabulary governs
-both agents through one uniform mechanism, detailed in Chapter~\ref{ch:coordination}.
+both agents through one uniform mechanism, detailed in Chapter \ref{ch:coordination}.
