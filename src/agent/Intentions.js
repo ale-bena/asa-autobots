@@ -516,7 +516,7 @@ export class IntentionEngine {
             const currentTileCode = this.beliefs.map ? this.beliefs.map.getTileCode(currentX, currentY) : null;
             if (currentTileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
                 const parcelHere = Array.from(this.beliefs.parcels.values()).find(
-                    p => !p.carriedBy && !this.beliefs.carried.includes(p.id) && Math.round(p.x) === currentX && Math.round(p.y) === currentY
+                    p => !p.carriedBy && !this.beliefs.carried.includes(p.id) && !this.beliefs.droppedParcels.has(p.id) && Math.round(p.x) === currentX && Math.round(p.y) === currentY
                 );
                 if (parcelHere) {
                     console.log(`[BDI Opportunistic] Found parcel ${parcelHere.id} on our current tile (${currentX}, ${currentY}). Picking it up.`);

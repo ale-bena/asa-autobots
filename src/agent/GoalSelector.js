@@ -314,6 +314,7 @@ export function selectBestGoal(beliefs, engineState) {
         for (const parcel of beliefs.parcels.values()) {
             if (parcel.carriedBy) continue;
             if (beliefs.carried.includes(parcel.id)) continue;
+            if (beliefs.droppedParcels && beliefs.droppedParcels.has(parcel.id)) continue;
             
             const isTeammateTgt = isTeammateTarget(beliefs, parcel);
             if (isTeammateTgt) continue;
@@ -545,6 +546,7 @@ export function selectBestGoal(beliefs, engineState) {
     for (const parcel of beliefs.parcels.values()) {
         if (parcel.carriedBy) continue;
         if (beliefs.carried.includes(parcel.id)) continue;
+        if (beliefs.droppedParcels && beliefs.droppedParcels.has(parcel.id)) continue;
         
         const isTeammateTgt = isTeammateTarget(beliefs, parcel);
         if (isTeammateTgt) continue;
