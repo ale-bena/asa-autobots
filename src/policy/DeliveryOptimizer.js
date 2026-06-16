@@ -248,7 +248,7 @@ export function optimizeDeliveryStack(beliefs, carriedParcels, x, y, forcedStack
 
             const score = deliveredReward + KEPT_DISCOUNT_FACTOR * keptValue - waitingPenalty;
 
-            if (score > bestScore) {
+            if (score > bestScore || (score === bestScore && subset.length > bestSubset.length)) {
                 bestScore = score;
                 bestReward = deliveredReward;
                 bestSubset = subset;
@@ -278,9 +278,9 @@ export function optimizeDeliveryStack(beliefs, carriedParcels, x, y, forcedStack
         return true;
     };
 
-    // If the best reward is non-positive, it's better to deliver nothing now.
-    // We only discard parcels that are truly useless (can never be delivered for a positive reward).
-    if (bestReward <= 0) {
+    // Only fall back to discard if no subset was selected at all.
+    // A 0-reward subset is still worth delivering (costs nothing at the delivery zone).
+    if (bestSubset.length === 0) {
         const uselessParcels = carriedParcels.filter(isUseless);
         logger.optimizer(`Best reward is <= 0. Discarding ${uselessParcels.length} useless parcels.`);
         return {
