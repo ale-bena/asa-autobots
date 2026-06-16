@@ -703,8 +703,8 @@ export class IntentionEngine {
 
                 const opt = optimizeDeliveryStack(this.beliefs, currentParcels, this.beliefs.me.x, this.beliefs.me.y);
 
-                if (opt.bestReward <= 0) {
-                    // Discard non-optimal useless parcels if any, then break
+                if (!opt.bestSubset || opt.bestSubset.length === 0) {
+                    // No deliverable subset — discard truly useless parcels and stop
                     if (opt.discardSubset && opt.discardSubset.length > 0) {
                         yield* this._discardParcelsAction(opt.discardSubset);
                     }
