@@ -299,8 +299,13 @@ export function selectBestGoal(beliefs, engineState) {
         });
         const optDirect = optimizeDeliveryStack(beliefs, targetParcelsDirect, dx, dy);
         const carriedValueAtDelivery = optDirect.bestReward;
+        // If the optimizer says we need to wait (bestWaitMs > 0), the parcels
+        // aren't valid for delivery yet.  Don't head to the delivery zone to
+        // idle — keep exploring/picking up.  Treat delivery utility as 0 so
+        // pickup detours always win.
+        const needsWaitAtZone = optDirect.bestWaitMs > 0;
         const T_total = T_direct + optDirect.bestWaitMs;
-        const utilityDeliver = carriedValueAtDelivery / (T_total + 1);
+        const utilityDeliver = needsWaitAtZone ? 0 : carriedValueAtDelivery / (T_total + 1);
 
         let bestPickup = null;
         let bestPickupUtility = -Infinity;
@@ -446,8 +451,11 @@ export function selectBestGoal(beliefs, engineState) {
             }
             if (adjustedDetourReward <= 0) continue;
 
+            // If detour parcels also need to wait at the zone, discount
+            // their utility the same way as direct delivery.
+            const detourNeedsWait = optDetour.bestWaitMs > 0;
             const T_total_detour = T_detour + optDetour.bestWaitMs;
-            const utility = adjustedDetourReward / (T_total_detour + 1);
+            const utility = detourNeedsWait ? (adjustedDetourReward / (T_total_detour + 1)) * 0.1 : adjustedDetourReward / (T_total_detour + 1);
             logger.bdi(`[BDI] Detour/pickup candidate ${parcel.id}: distToP=${distToParcel}, delivDistFromP=${deliveryDistFromP}, utility=${utility.toFixed(3)} (vs deliver: ${utilityDeliver.toFixed(3)})`);
 
             if (utility > bestPickupUtility) {
@@ -629,7 +637,10 @@ export function selectBestGoal(beliefs, engineState) {
 
         if (adjustedReward <= 0) continue;
 
-        const totalTripWithWaitMs = totalTripMs + waitMs;
+        // If the parcel needs to wait at the zone to become valid, don't
+        // penalise picking it up — it's still worth collecting.  Just don't
+        // count the wait in the utility so pickup remains attractive.
+        const totalTripWithWaitMs = totalTripMs; // exclude waitMs — we'll re-evaluate at delivery time
         const utility = adjustedReward / (totalTripWithWaitMs + 1);
         if (utility > bestUtility) {
             bestUtility = utility;

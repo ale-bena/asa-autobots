@@ -1258,6 +1258,89 @@ async function runTests() {
         assert(opt3.bestSubset.length === 3, `Step 4: Should deliver all 3 parcels (got ${opt3.bestSubset.length})`);
     }
 
+    // Case 28: Value-based partial delivery — 6 parcels, only 3 match value criteria.
+    // Policy: reward x 0 if parcel.reward >= 8 (parcels with reward >= 8 cannot be delivered).
+    // Agent carries 3 parcels with reward 10 (invalid) and 3 with reward 5 (valid).
+    // Optimizer should deliver the 3 valid parcels immediately (bestWaitMs = 0),
+    // not wait for the invalid ones to decay.
+    {
+        console.log('--- Testing Case 28: Value-based partial delivery - deliver valid subset immediately ---');
+        const beliefs = new BeliefBase();
+        beliefs.config = { GAME: { player: { capacity: 10 } } };
+        // Rule: multiplier 0 if parcel.reward >= 8
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [],
+                rewardBounds: [{ min: 8, max: null }],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        const carried = [
+            { id: 'p1', reward: 10 },  // invalid (>= 8)
+            { id: 'p2', reward: 10 },  // invalid
+            { id: 'p3', reward: 10 },  // invalid
+            { id: 'p4', reward: 5 },   // valid (< 8)
+            { id: 'p5', reward: 5 },   // valid
+            { id: 'p6', reward: 5 },   // valid
+        ];
+
+        const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+        // Should deliver the 3 valid parcels immediately
+        assert(opt.bestSubset.length === 3, `Should deliver exactly 3 valid parcels (got ${opt.bestSubset.length})`);
+        assert(opt.bestWaitMs === 0, `Should deliver immediately without waiting (got ${opt.bestWaitMs})`);
+        assert(opt.bestReward === 15, `Should yield reward 15 (got ${opt.bestReward})`);
+        // Verify the correct parcels are in the subset
+        assert(opt.bestSubset.includes('p4'), `Should include p4 in delivery`);
+        assert(opt.bestSubset.includes('p5'), `Should include p5 in delivery`);
+        assert(opt.bestSubset.includes('p6'), `Should include p6 in delivery`);
+        assert(!opt.bestSubset.includes('p1'), `Should NOT include p1 (invalid)`);
+        assert(!opt.bestSubset.includes('p2'), `Should NOT include p2 (invalid)`);
+        assert(!opt.bestSubset.includes('p3'), `Should NOT include p3 (invalid)`);
+    }
+
+    // Case 28b: Same as 28 but with decay enabled — invalid parcels CAN decay
+    // into valid range. Optimizer should STILL prefer immediate delivery of valid
+    // subset over waiting for invalid ones to decay.
+    {
+        console.log('--- Testing Case 28b: Value-based partial delivery with decay - still prefer immediate ---');
+        const beliefs = new BeliefBase();
+        beliefs.config = { GAME: { player: { capacity: 10 } } };
+        beliefs.parcelDecayIntervalMs = 1000; // 1 point per second
+        const rules = [
+            {
+                all_tiles: true,
+                tiles: [],
+                stackSizeBounds: [],
+                rewardBounds: [{ min: 8, max: null }],
+                multiplier: 0,
+                bonus: null
+            }
+        ];
+        beliefs.applyPolicyRules(rules);
+
+        const carried = [
+            { id: 'p1', reward: 10 },  // invalid now, valid after 3s decay
+            { id: 'p2', reward: 10 },
+            { id: 'p3', reward: 10 },
+            { id: 'p4', reward: 5 },   // valid now
+            { id: 'p5', reward: 5 },
+            { id: 'p6', reward: 5 },
+        ];
+
+        const opt = optimizeDeliveryStack(beliefs, carried, 5, 5);
+        // Should STILL deliver the 3 valid parcels immediately, not wait
+        assert(opt.bestSubset.length === 3, `Should deliver 3 valid parcels immediately (got ${opt.bestSubset.length})`);
+        assert(opt.bestWaitMs === 0, `Should deliver immediately (got ${opt.bestWaitMs})`);
+        assert(opt.bestSubset.includes('p4'), `Should include p4`);
+        assert(opt.bestSubset.includes('p5'), `Should include p5`);
+        assert(opt.bestSubset.includes('p6'), `Should include p6`);
+    }
+
     console.log('=== All Unit Tests Passed Successfully ===');
 }
 

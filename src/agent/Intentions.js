@@ -719,13 +719,12 @@ export class IntentionEngine {
                     yield* this._discardParcelsAction(opt.discardSubset);
                 }
 
-                // Now wait for the optimal decay wait time if needed
+                // If parcels need to decay before they become valid, don't
+                // idle at the delivery zone.  Break out so the goal selector
+                // can send us exploring / picking up more parcels instead.
                 if (opt.bestWaitMs > 0) {
-                    console.log(`[BDI Deliver] Waiting at delivery zone for ${opt.bestWaitMs}ms.`);
-                    const waitSteps = Math.ceil(opt.bestWaitMs / 100);
-                    for (let i = 0; i < waitSteps; i++) {
-                        yield { action: 'wait' };
-                    }
+                    console.log(`[BDI Deliver] Parcels need ${opt.bestWaitMs}ms to become valid. Leaving delivery zone to explore instead of waiting.`);
+                    break;
                 }
 
                 // Deliver remaining optimal cargo

@@ -36,6 +36,14 @@ export function hasStrictCannotDeliverRule(beliefs, stackSize, x, y, parcel = nu
 
         let applies = true;
 
+        const isRewardRestricted = (rule.minReward !== null && rule.minReward !== undefined) ||
+                                   (rule.maxReward !== null && rule.maxReward !== undefined) ||
+                                   (rule.rewardBounds && rule.rewardBounds.length > 0);
+
+        if (!parcel && isRewardRestricted) {
+            applies = false;
+        }
+
         // 1. Check coordinates (tiles)
         if (rule.all_tiles === false) {
             if (!rule.tiles || rule.tiles.length === 0) {
@@ -362,12 +370,39 @@ export function optimizeDeliveryStack(beliefs, carriedParcels, x, y, forcedStack
     let bestNonEmptyReward = -Infinity;
     let bestNonEmptyScore = -Infinity;
 
+    // Track the best subset deliverable immediately (at t=0) so we always
+    // prefer delivering what we CAN now over waiting for more to become valid.
+    let bestImmediateSubset = [];
+    let bestImmediateReward = 0;
+    let bestImmediateScore = -Infinity;
+
     // 4. Evaluate each subset at each candidate wait time.
     for (const subset of subsets) {
         const subsetIds = subset.map(p => p.id);
         const keptParcels = usefulParcels.filter(p => !subsetIds.includes(p.id));
 
         for (const t of uniqueWaitTimes) {
+            // Check if this subset/wait time violates a strict constraint
+            let violatesStrict = false;
+            if (subset.length > 0) {
+                // 1. Check if the subset size itself violates a strict constraint
+                if (hasStrictCannotDeliverRule(beliefs, subset.length, x, y)) {
+                    violatesStrict = true;
+                } else {
+                    // 2. Check if any parcel in the subset violates a strict constraint at wait time t
+                    for (const cp of subset) {
+                        const decayedReward = decayEnabled ? Math.max(0, (cp.reward || 0) - (t / decayMs)) : (cp.reward || 0);
+                        if (hasStrictCannotDeliverRule(beliefs, subset.length, x, y, { ...cp, reward: decayedReward })) {
+                            violatesStrict = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (violatesStrict) {
+                continue;
+            }
+
             let deliveredReward = 0;
             if (subset.length > 0) {
                 for (const cp of subset) {
@@ -419,8 +454,29 @@ export function optimizeDeliveryStack(beliefs, carriedParcels, x, y, forcedStack
                     bestNonEmptyReward = deliveredReward;
                     bestNonEmptyScore = score;
                 }
+
+                // Track the best immediately-deliverable subset (t=0, positive reward)
+                if (t === 0 && deliveredReward > 0) {
+                    if (deliveredReward > bestImmediateReward ||
+                        (Math.abs(deliveredReward - bestImmediateReward) < 1e-5 && subset.length > bestImmediateSubset.length)) {
+                        bestImmediateSubset = subset;
+                        bestImmediateReward = deliveredReward;
+                        bestImmediateScore = score;
+                    }
+                }
             }
         }
+    }
+
+    // Always prefer delivering what we CAN now over waiting for more parcels
+    // to become valid.  This prevents the agent from idling at the delivery
+    // zone or oscillating between delivery and pickup.
+    if (bestWaitMs > 0 && bestImmediateSubset.length > 0 && bestImmediateReward > 0) {
+        logger.optimizer(`Preferring immediate delivery of ${bestImmediateSubset.length} parcels (reward ${bestImmediateReward.toFixed(1)}) over waiting ${bestWaitMs.toFixed(0)}ms for ${bestSubset.length} parcels (reward ${bestReward.toFixed(1)}).`);
+        bestSubset = bestImmediateSubset;
+        bestWaitMs = 0;
+        bestReward = bestImmediateReward;
+        bestScore = bestImmediateScore;
     }
 
     logger.optimizer(`Optimization complete. Best reward: ${bestReward.toFixed(1)} (wait ${bestWaitMs.toFixed(0)}ms) for subset [${bestSubset.map(p => `${p.id}(val:${p.reward.toFixed(1)})`).join(', ')}]`);
