@@ -50,52 +50,48 @@ Pre-compiled execution plans represented as generator functions:
 </p>
 
 <h3>2.1. NavigateTo</h3>
-<p class="commentable" data-comment-id="nav-to-desc">Routes an agent to coordinates while respecting active policy constraints (avoided cells, directional arrows) and Manhattan distance radius.</p>
-<pre><code class="language-javascript">function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
-    // Check if within radius to target. If so, succeed immediately.
-    // If not, find closest walkable, obstacle-free tile in radius and route to it.
-    const path = beliefs.grid.findAStarPath(
-        beliefs.me.x, beliefs.me.y, targetX, targetY, beliefs.policy
-    );
+<p class="commentable" data-comment-id="nav-to-desc">Routes an agent to coordinates while respecting active policy constraints (avoided cells) and Manhattan distance radius.</p>
+<pre><code class="language-javascript">export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
+    // 1. Round coordinates and clamp within map boundaries.
+    // 2. If already within radius of target on a walkable tile, return true.
+    // 3. Find walkable candidates within radius, select best target.
+    // 4. Calculate A* path using findAStarPath (respecting policyRules and crates).
+    // 5. Yield move actions sequentially, recalculating path if displaced or blocked.
+    const path = findAStarPath(beliefs.map, beliefs.me, target, beliefs.policyRules, beliefs);
     for (const step of path) {
         yield { action: 'move', target: step };
     }
 }</code></pre>
 
 <h3>2.2. CollectAndDeliver</h3>
-<p class="commentable" data-comment-id="collect-deliver-desc">Navigates to pick up a parcel and delivers it to the nearest valid delivery zone.</p>
-<pre><code class="language-javascript">function* CollectAndDeliver(beliefs, parcelId) {
+<p class="commentable" data-comment-id="collect-deliver-desc">Navigates to pick up a parcel.</p>
+<pre><code class="language-javascript">export function* CollectAndDeliver(beliefs, parcelId) {
     const parcel = beliefs.parcels.get(parcelId);
-    yield* NavigateTo(beliefs, parcel.x, parcel.y);
+    if (!parcel) return;
+    const reached = yield* NavigateTo(beliefs, parcel.x, parcel.y);
+    if (!reached) return;
     yield { action: 'pickup', target: parcelId };
-    const zone = beliefs.grid.findNearestDelivery(beliefs.me.x, beliefs.me.y, beliefs.policy);
-    yield* NavigateTo(beliefs, zone.x, zone.y);
-    yield { action: 'deliver', target: parcelId };
 }</code></pre>
 
 <h3>2.3. RendezvousDrop</h3>
 <p class="commentable" data-comment-id="rendezvous-drop-desc">Navigates to a target, drops the parcel, backs off to a neighboring clear tile to establish an escape path, and speaks <code>RELEASE_CARGO</code>.</p>
-<pre><code class="language-javascript">function* RendezvousDrop(beliefs, coopId, x, y) {
-    yield* NavigateTo(beliefs, x, y);
+<pre><code class="language-javascript">export function* RendezvousDrop(beliefs, coopId, x, y) {
+    const reached = yield* NavigateTo(beliefs, x, y);
+    if (!reached) return;
     yield { action: 'putdown' };
-    const escape = beliefs.grid.findAdjacentClearTile(x, y);
+    const escape = findAdjacentClearTile(beliefs, x, y);
     yield* NavigateTo(beliefs, escape.x, escape.y);
     yield { action: 'say', payload: { type: 'RELEASE_CARGO', coopId } };
 }</code></pre>
 
-<h3>2.4. Handoff</h3>
-<p class="commentable" data-comment-id="handoff-desc">Navigates to the handoff region, drops cargo, steps aside, waits for peer, returns to collect swapped cargo, and marks handoffCompleted.</p>
-<pre><code class="language-javascript">function* Handoff(beliefs, hx, hy, coopId) {
-    yield* NavigateTo(beliefs, hx, hy, radius);
-    while (beliefs.carried.length > 0) yield { action: 'putdown' };
-    const escape = beliefs.grid.findAdjacentClearTile(hx, hy);
-    yield* NavigateTo(beliefs, escape.x, escape.y);
-    yield { action: 'say', payload: { type: 'SIGNAL_READY', coopId } };
-    while (!peerReady) yield { action: 'wait' };
-    yield* NavigateTo(beliefs, hx, hy);
-    while (beliefs.carried.length < capacity) yield { action: 'pickup' };
-    beliefs.variables.handoffCompleted = true;
-}</code></pre>
+<h3>2.4. Intention Engine & Macro Goals</h3>
+<p class="commentable" data-comment-id="handoff-desc">Complex coordination behaviors are managed at a higher level as intention cases inside <code>Intentions.js</code>. For example:
+<ul>
+  <li><code>handoff</code>: Directs the dropper to navigate to the handoff zone, drop cargo, step aside to clear space, wait for peer ready, and retrieve swapped cargo.</li>
+  <li><code>patrol</code> / <code>patrol_spawn</code>: Drives the agent to scan and travel between distant spawn zones to discover new parcels.</li>
+  <li><code>clear_corridor</code>: Triggers the PDDL crate-pushing solver to clear blocked hallways.</li>
+</ul>
+</p>
 </section>
 
 <!-- 3. P2P Message Schema -->
@@ -124,87 +120,155 @@ Messages are serialized JSON strings sent over the standard game chat.
 </tr>
 <tr class="commentable" data-comment-id="msg-pong">
 <td><code>PONG</code></td>
-<td><code>{"type": "PONG", "payload": {"x", "y", "score"}}</code></td>
-<td>Status response containing coordinates.</td>
+<td><code>{"type": "PONG", "payload": {"name", "x", "y", "score"}}</code></td>
+<td>Status response containing coordinates and score.</td>
 </tr>
-<tr class="commentable" data-comment-id="msg-propose">
-<td><code>PROPOSE_CONTRACT</code></td>
-<td><code>{"type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y", "radius", "holdDuration"}</code></td>
-<td>Proposes a handoff, rendezvous, or corridor clearing task with optional radius/timers.</td>
-<td><code>MOVE_TO</code></td>
-<td><code>{"type": "MOVE_TO", "x", "y", "holdOnArrival", "holdDuration"}</code></td>
-<td>Commands movement with optional timer pause on arrival.</td>
+<tr class="commentable" data-comment-id="msg-peer-status">
+<td><code>PEER_STATUS</code></td>
+<td><code>{"type": "PEER_STATUS", "payload": { "name", "x", "y", "score", "nextStep", "path", "carried", "currentGoal", "crates" }}</code></td>
+<td>Sends full spatial, intent, carried inventory, and visible crate positions to the partner.</td>
 </tr>
-<tr class="commentable" data-comment-id="msg-accept">
-<td><code>ACCEPT_CONTRACT</code></td>
-<td><code>{"type": "ACCEPT_CONTRACT", "coopId"}</code></td>
-<td>Executor accepts contract and suspends current actions.</td>
+<tr class="commentable" data-comment-id="msg-sync-req">
+<td><code>SYNC_REQ</code></td>
+<td><code>{"type": "SYNC_REQ"}</code></td>
+<td>Request to synchronize initial state.</td>
 </tr>
-<tr class="commentable" data-comment-id="msg-ready">
-<td><code>SIGNAL_READY</code></td>
-<td><code>{"type": "SIGNAL_READY", "coopId", "role"}</code></td>
-<td>Sent when dropper or picker arrives at coordinates.</td>
-</tr>
-<tr class="commentable" data-comment-id="msg-release">
-<td><code>RELEASE_CARGO</code></td>
-<td><code>{"type": "RELEASE_CARGO", "coopId"}</code></td>
-<td>Dropper has cleared the tile; Picker may step forward.</td>
-</tr>
-<tr class="commentable" data-comment-id="msg-close">
-<td><code>CLOSE_CONTRACT</code></td>
-<td><code>{"type": "CLOSE_CONTRACT", "coopId"}</code></td>
-<td>Handoff/cooperation complete; returns both to standard queues.</td>
+<tr class="commentable" data-comment-id="msg-sync-ack">
+<td><code>SYNC_ACK</code></td>
+<td><code>{"type": "SYNC_ACK"}</code></td>
+<td>Acknowledge synchronization request.</td>
 </tr>
 <tr class="commentable" data-comment-id="msg-lock">
 <td><code>LOCK_TARGET</code></td>
 <td><code>{"type": "LOCK_TARGET", "targetId"}</code></td>
-<td>Target parcel lock to prevent duplicate pathing.</td>
+<td>Claims a lock on a parcel target to avoid redundant pickup runs.</td>
 </tr>
 <tr class="commentable" data-comment-id="msg-release-target">
 <td><code>RELEASE_TARGET</code></td>
 <td><code>{"type": "RELEASE_TARGET", "targetId"}</code></td>
-<td>Releases a locked target.</td>
+<td>Releases a target lock when parcel is lost or delivered.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-propose">
+<td><code>PROPOSE_CONTRACT</code></td>
+<td><code>{"type": "PROPOSE_CONTRACT", "coopId", "contractType", "x", "y", "radius", "holdDuration", "courierId"}</code></td>
+<td>Proposes a coordination contract (RENDEZVOUS, HANDOFF, RELAY, CLEARING) at coordinates.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-accept">
+<td><code>ACCEPT_CONTRACT</code></td>
+<td><code>{"type": "ACCEPT_CONTRACT", "coopId"}</code></td>
+<td>Confirms acceptance of proposed contract.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-ready">
+<td><code>SIGNAL_READY</code></td>
+<td><code>{"type": "SIGNAL_READY", "coopId"}</code></td>
+<td>Signals that the agent has arrived at the coordinate and is ready for the contract step.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-release">
+<td><code>RELEASE_CARGO</code></td>
+<td><code>{"type": "RELEASE_CARGO", "coopId"}</code></td>
+<td>Signals that cargo has been dropped and the peer can step forward to pick it up.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-close">
+<td><code>CLOSE_CONTRACT</code></td>
+<td><code>{"type": "CLOSE_CONTRACT", "coopId"}</code></td>
+<td>Closes the cooperation contract, resuming normal agent loops.</td>
 </tr>
 <tr class="commentable" data-comment-id="msg-apply-rules">
 <td><code>APPLY_RULES</code></td>
 <td><code>{"type": "APPLY_RULES", "rules"}</code></td>
-<td>Sets dynamically evaluated agent rules containing stack size and parcel value bounds.</td>
+<td>Updates the partner agent's belief base with new policy rules.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-move-to">
+<td><code>MOVE_TO</code></td>
+<td><code>{"type": "MOVE_TO", "x", "y", "holdOnArrival", "holdDuration", "dropOnArrival"}</code></td>
+<td>Directs partner movement to coordinates.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-move-to-ack">
+<td><code>MOVE_TO_ACK</code></td>
+<td><code>{"type": "MOVE_TO_ACK", "success", "x", "y"}</code></td>
+<td>Acknowledge movement completion status.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-hold">
+<td><code>HOLD</code></td>
+<td><code>{"type": "HOLD"}</code></td>
+<td>Pauses the physical agent.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-resume">
+<td><code>RESUME</code></td>
+<td><code>{"type": "RESUME"}</code></td>
+<td>Resumes the physical agent and clears active coordination contracts.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-instruct-say">
+<td><code>INSTRUCT_SAY</code></td>
+<td><code>{"type": "INSTRUCT_SAY", "message"}</code></td>
+<td>Instructs the agent to say a public chat message.</td>
+</tr>
+<tr class="commentable" data-comment-id="msg-set-variable">
+<td><code>SET_VARIABLE</code></td>
+<td><code>{"type": "SET_VARIABLE", "name", "value"}</code></td>
+<td>Sets a variable inside the partner agent memory.</td>
 </tr>
 </tbody>
 </table>
 </section>
 
-<!-- 4. AST Policy Rules Schema -->
+<!-- 4. Policy Engine Rules & Evaluation -->
 <section id="ast-policy-rules">
 <div class="section-header">
 <div class="section-num">4</div>
-<h2>AST Policy Rules Schema</h2>
+<h2>Policy Engine Rules & Evaluation</h2>
 </div>
  <h3>4.1. General Evaluation Engine Identifiers</h3>
  <p class="commentable" data-comment-id="ast-desc">
- Level 2/3 challenge restrictions are evaluated by checking AST condition assertions at every tick. Standard identifiers supported:
+ Level 2/3 challenge restrictions are evaluated by checking mathematical/logical condition expressions at every tick. Standard variables resolved against agent beliefs:
  </p>
  <ul>
  <li><code>x</code>, <code>y</code>: Current agent coordinate.</li>
  <li><code>score</code>: Current agent score.</li>
- <li><code>carrying.size</code> / <code>stack_size</code>: Current inventory count.</li>
+ <li><code>carrying.size</code> / <code>stack_size</code>: Current carried inventory size.</li>
  <li><code>parcel.id</code>, <code>parcel.reward</code>, <code>parcel.x</code>, <code>parcel.y</code>, <code>parcel.carriedBy</code>: Candidate/carried parcel properties.</li>
- <li><code>parcel.previouslyCarriedByOther</code>: Evaluates to true if the parcel history contains other agent IDs.</li>
+ <li><code>parcel.previouslyCarriedByOther</code>: Evaluates to true if another agent has carried the parcel.</li>
+ <li><code>path.traverses_X_Y</code>: Evaluates to true if the planned path traverses tile (X, Y).</li>
  </ul>
- <pre><code class="language-json">{
-  "avoidTiles": ["x,y"],
-  "maxRewardLimit": 100,
-  "minRewardThreshold": 5,
-  "requiredStackSize": 3,
-  "multiplierRules": [
-    { "condition": "parcel.previouslyCarriedByOther == true", "multiplier": 0.5 }
-  ],
-  "bonusRules": [
-    { "condition": "x == 2 && y == 3", "bonus": 100 }
-  ]
-}</code></pre>
+ 
+ <h3>4.2. Policy Rules JSON Structure</h3>
+ <p class="commentable" data-comment-id="rules-structure-desc">
+ Rules are sent as an array of objects to <code>apply_agent_rules</code>. The engine supports two primary rule styles which can be used individually or combined:
+ </p>
+ 
+ <h4>1. Bounds-Based Rules</h4>
+ <p>Rules specifying explicit physical coordinate lists, carried stack size limits, and parcel reward boundaries to automatically scale or add bonuses to deliveries:</p>
+ <pre><code class="language-json">[
+  {
+    "all_tiles": false,
+    "tiles": ["2,3", "2,4"],
+    "stackSizeBounds": [
+      { "min": 3, "max": null }
+    ],
+    "rewardBounds": [
+      { "min": 10, "max": 100 }
+    ],
+    "multiplier": 0.5,
+    "bonus": 100
+  }
+]</code></pre>
 
- <h3>4.2. Rule Enforcements & Wait-to-Decay Mechanics</h3>
+ <h4>2. Expression & Rule Arrays (Shunting-Yard Evaluated)</h4>
+ <p>Rules evaluated dynamically on each tick using the Shunting-Yard expression evaluator. These support conditional checks on live variables and nested rule definitions:</p>
+ <pre><code class="language-json">[
+  {
+    "all_tiles": true,
+    "condition": "carrying.size >= 3 && score < 200",
+    "multiplierRules": [
+      { "condition": "parcel.previouslyCarriedByOther == true", "multiplier": 0.5 }
+    ],
+    "bonusRules": [
+      { "condition": "x == 2 && y == 3", "bonus": -50 }
+    ]
+  }
+]</code></pre>
+
+ <h3>4.3. Rule Enforcements & Wait-to-Decay Mechanics</h3>
  <p class="commentable" data-comment-id="ast-enforce-desc">
  Active policy rules received by the agent are processed cumulatively. The agent recalculates the parameters (e.g. <code>minRewardThreshold</code>, <code>maxRewardLimit</code>, <code>requiredStackSize</code>, <code>maxStackSize</code>, and <code>avoidTiles</code>) over all active policy rules, avoiding previous constraints from being overwritten.
  </p>
@@ -268,11 +332,15 @@ The coordinator relies on formatting constraints and XML tag isolation:
 
 <h3>6.2. Coordinator Tool Manifest</h3>
 <ul>
+<li class="commentable" data-comment-id="tool-history"><code>get_history()</code></li>
 <li class="commentable" data-comment-id="tool-math"><code>evaluate_math_expression(expression)</code></li>
-<li class="commentable" data-comment-id="tool-move"><code>move_agent_to_coordinate(agentId, x, y)</code></li>
-<li class="commentable" data-comment-id="tool-rules"><code>apply_agent_rules(agentId, rules)</code></li>
-<li class="commentable" data-comment-id="tool-coop"><code>cooperate_with_agent(agentId, contract)</code></li>
-<li class="commentable" data-comment-id="tool-say"><code>instruct_agent_to_say(agentId, message)</code></li>
+<li class="commentable" data-comment-id="tool-move"><code>move_agent_to_coordinate(id, x, y, holdOnArrival, holdDuration, dropOnArrival)</code></li>
+<li class="commentable" data-comment-id="tool-rules"><code>apply_agent_rules(id, rules)</code></li>
+<li class="commentable" data-comment-id="tool-coop"><code>cooperate_with_agent(id, contract)</code></li>
+<li class="commentable" data-comment-id="tool-context"><code>get_local_context()</code></li>
+<li class="commentable" data-comment-id="tool-variable"><code>set_agent_variable(id, name, value)</code></li>
+<li class="commentable" data-comment-id="tool-hold"><code>hold_agent(id, duration)</code></li>
+<li class="commentable" data-comment-id="tool-resume"><code>resume_agent(id)</code></li>
 </ul>
 </section>
 </main>

@@ -65,8 +65,8 @@
     "xmlhttprequest-ssl": "^2.1.2"
   },
   "scripts": {
-    "start": "npm start --prefix doc-server",
-    "doc": "npm start --prefix doc-server",
+    "start": "node scripts/serve.js",
+    "doc": "node scripts/serve.js",
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
     "benchmark": "node src/benchmark/run_benchmark.js",

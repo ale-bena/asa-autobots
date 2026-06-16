@@ -26,19 +26,19 @@
 <div>
 <span class="agent-badge">Agent 1</span>
 <div class="agent-name">PDDL Agent (Partner)</div>
-<div class="agent-desc">A physical planner and executor. To mitigate online solver latency, we avoid sending a raw tile-by-tile adjacency representation to PDDL. Instead, the PDDL solver is strictly leveraged for high-level <strong>Plan Selection</strong> (e.g. selecting target clusters or corridor-clearing pushes) and local A* pathfinding is used for step-by-step navigation. <strong>Plan Selection Mechanics:</strong> The agent evaluates the preconditions of each recipe in the Plan Library on every sensory frame, calculates target utilities as a ratio of <code>points / path_distance</code> by feeding state snapshots into the <strong>AST Rule Evaluation Engine</strong> (while respecting active policy blocks), and executes the recipe with the highest score, invoking PDDL only when local pathing is blocked by obstacle crates.</div>
+<div class="agent-desc">A physical planner and executor. To mitigate online solver latency, we avoid sending a raw tile-by-tile adjacency representation to PDDL. Instead, the PDDL solver is strictly leveraged for high-level <strong>Plan Selection</strong> (e.g. selecting target clusters or corridor-clearing pushes) and local A* pathfinding is used for step-by-step navigation. <strong>Plan Selection Mechanics:</strong> The agent evaluates the preconditions of each recipe in the Plan Library on every sensory frame, calculates target utilities as a ratio of <code>points / path_distance</code> by feeding state snapshots into the <strong>Safe Shunting-Yard Rule Evaluation Engine</strong> (while respecting active policy blocks), and executes the recipe with the highest score, invoking PDDL only when local pathing is blocked by obstacle crates.</div>
 </div>
 <ul class="agent-features">
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 Abstracted Cluster Adjacency mapping
 </li>
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 Multi-Priority Task Queue
 </li>
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 Executes Plan Preemption
 </li>
 </ul>
@@ -48,208 +48,122 @@ Executes Plan Preemption
 <div>
 <span class="agent-badge">Agent 2</span>
 <div class="agent-name">LLM Agent (Master)</div>
-<div class="agent-desc">The master reasoning brain and coordinator. It intercepts natural language challenge instructions (Special Missions) from the Admin, executes the multi-turn agentic loop, evaluates math, and instructs the partner agent's movement and chat outputs. <strong>Physical Action Capabilities:</strong> Note that the LLM agent is fully capable of navigating, picking up, and delivering parcels directly as well (acting as a physical agent if needed). <strong>Tool & Rule Handling:</strong> Intercepts tool calls and leverages the <strong>AST Rule Evaluation Engine</strong> to dynamically compile natural language instructions into active behavioral policies, feeding outcomes back to the BDI belief base. <strong>Messaging Protocol:</strong> Communicates with the partner via game chat using a highly structured JSON messaging schema (including PING/PONG and PROPOSE/ACCEPT contracts).</div>
+<div class="agent-desc">The master reasoning brain and coordinator. It intercepts natural language challenge instructions (Special Missions) from the Admin, executes the multi-turn agentic loop, evaluates math, and instructs the partner agent's movement and chat outputs. <strong>Physical Action Capabilities:</strong> Note that the LLM agent is fully capable of navigating, picking up, and delivering parcels directly as well (acting as a physical agent if needed). <strong>Tool & Rule Handling:</strong> Intercepts tool calls and leverages the <strong>Safe Shunting-Yard Rule Evaluation Engine</strong> to dynamically compile natural language instructions into active behavioral policies, feeding outcomes back to the BDI belief base. <strong>Messaging Protocol:</strong> Communicates with the partner via game chat using a highly structured JSON messaging schema (including PING/PONG and PROPOSE/ACCEPT contracts).</div>
 </div>
 <ul class="agent-features">
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 System Prompt with XML Guardrails
 </li>
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 Multi-turn Agentic Math loops
 </li>
 <li class="agent-feature-item">
-<svg fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"></path></svg>
+<svg width="18" height="18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--accent-green); flex-shrink: 0;"><path d="M5 13l4 4L19 7"></path></svg>
 Translates natural language to rules
 </li>
 </ul>
 </div>
 </div>
 
-<h3 class="commentable" data-comment-id="missions-header">Special Mission Challenge Tiers & Schema</h3>
-<p class="commentable" data-comment-id="missions-p">The system is built to intercept and handle highly generalized, dynamic challenge prompts ("Special Missions"). Since these challenges can contain highly arbitrary conditionals, loops, and math puzzles, we use a flexible rule evaluation engine that parses natural language specifications into dynamic executable structures (like JSON ASTs) capable of evaluating boolean expressions (e.g., `stack_size < reward`) at every tick. To support a <strong>Turing-complete level of actions</strong>, the coordinator translates missions into a structured JSON execution tree containing conditionals, loops, assignments, and API actions. A similar AST approach is leveraged for plan preconditions and policy evaluation:</p>
-
-<div class="terminal-window">
-<div class="terminal-header">
-<div class="terminal-dots">
-<div class="dot dot-red"></div>
-<div class="dot dot-yellow"></div>
-<div class="dot dot-green"></div>
-</div>
-<span class="terminal-title">turing_complete_mission_schema.json</span>
-</div>
-<div class="terminal-body">
-<pre><code>{
-  "type": "object",
-  "properties": {
-    "missionId": { "type": "string" },
-    "variables": { "type": "object", "additionalProperties": { "type": "string" } },
-    "behavior": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "properties": {
-              "type": { "type": "string", "enum": ["assignment"] },
-              "target": { "type": "string" },
-              "expression": { "type": "string" }
-            },
-            "required": ["type", "target", "expression"]
-          },
-          {
-            "properties": {
-              "type": { "type": "string", "enum": ["conditional"] },
-              "condition": { "type": "string" },
-              "then": { "type": "array" },
-              "else": { "type": "array" }
-            },
-            "required": ["type", "condition", "then"]
-          },
-          {
-            "properties": {
-              "type": { "type": "string", "enum": ["loop"] },
-              "condition": { "type": "string" },
-              "body": { "type": "array" }
-            },
-            "required": ["type", "condition", "body"]
-          },
-          {
-            "properties": {
-              "type": { "type": "string", "enum": ["action"] },
-              "name": { "type": "string" },
-              "arguments": { "type": "object" }
-            },
-            "required": ["type", "name"]
-          }
-        ]
-      }
-    }
-  },
-  "required": ["missionId", "behavior"]
-}</code></pre>
-</div>
-</div>
+<h3 class="commentable" data-comment-id="missions-header">Special Mission Handling & Rule Parsing</h3>
+<p class="commentable" data-comment-id="missions-p">The system is designed to handle dynamic and complex challenge prompts ("Special Missions"). Instead of compiling these missions into a heavy JSON AST or running a custom virtual machine, the system leverages a lightweight, secure two-stage execution architecture:</p>
 
 <div class="card commentable" data-comment-id="schema-parsing-details" style="margin-top: 1.5rem; margin-bottom: 2rem;">
-<div class="card-title">Mission Parser & AST Execution Flow</div>
-<p>To execute the mission behavior tree, the agent compiles natural language specifications into the JSON AST schema defined above. The local execution engine then recursively processes this AST structure, mapping each block type to a JavaScript **async generator** (<code>function*</code>). By utilizing generators, the agent can yield control back to the main coordination loop after each operation, ensuring real-time responsiveness and allowing sensory updates or peer-to-peer messages to interrupt execution if necessary.</p>
+<div class="card-title">LLM Multi-Turn Coordinator & Feasibility Gating</div>
+<p>Admin prompts are parsed dynamically by the **LLM Coordinator (Agent 2)**. The coordinator breaks down compound commands into sequential task steps. To ensure safety and validity, the coordinator performs **feasibility gating** before executing any movement or cooperation action:
+<ul>
+  <li>Calculates coordinates or rewards by calling the <code>evaluate_math_expression</code> tool first.</li>
+  <li>If a positive reward is confirmed, the coordinator issues movement/cooperation contracts to the physical agent.</li>
+  <li>If no reward is provided, it terminates immediately with a <code>{"type": "stop"}</code> response to prevent resource wastage.</li>
+</ul>
+</p>
 
 <div style="margin: 1.5rem 0; padding: 1rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;">
-    <h4 style="color: var(--primary); margin-bottom: 0.75rem; font-size: 1rem;">JSON AST Node Specifications & JS Project Representation</h4>
+    <h4 style="color: var(--primary); margin-bottom: 0.75rem; font-size: 1rem;">Dynamic Rule Evaluation (PolicyEngine)</h4>
     <p style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 1rem;">
-        The special mission parser translates the incoming behavioral rules into a flat or nested execution graph composed of the following structural node specifications. Each node has a well-defined validation schema and maps directly to concrete classes within the agent's JavaScript codebase:
+        Standing policies (such as coordinate avoidance zones, stack size multipliers, and custom reward boundaries) are applied via the <code>apply_agent_rules</code> tool. Rather than maintaining a complex execution tree, rules are represented as flat objects with condition strings. The <strong>Policy Engine (PolicyEngine.js)</strong> evaluates these conditions at every tick using a safe <strong>Shunting-Yard expression evaluator</strong>:
     </p>
     <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; border: 1px solid var(--border-color);">
         <thead>
             <tr style="background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-color);">
-                <th style="padding: 0.5rem; text-align: left; border-right: 1px solid var(--border-color);">AST Node Type</th>
-                <th style="padding: 0.5rem; text-align: left; border-right: 1px solid var(--border-color);">JSON Fields & Schema Constraints</th>
-                <th style="padding: 0.5rem; text-align: left;">JavaScript Class & Execution Mapping</th>
+                <th style="padding: 0.5rem; text-align: left; border-right: 1px solid var(--border-color);">Supported Identifiers</th>
+                <th style="padding: 0.5rem; text-align: left; border-right: 1px solid var(--border-color);">Operators</th>
+                <th style="padding: 0.5rem; text-align: left;">Evaluation & JS Mapping</th>
             </tr>
         </thead>
         <tbody>
             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">Assignment</td>
+                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">x, y, score, carrying.size, stack_size</td>
                 <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); color: var(--text-muted);">
-                    <code>target</code>: string (valid identifier)<br>
-                    <code>expression</code>: string (math formula)<br>
-                    <em>Constraint:</em> Variables are stored in local agent scope.
+                    <code>&&</code>, <code>||</code>, <code>==</code>, <code>!=</code>, <code>&lt;=</code>, <code>&gt;=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>!</code>
                 </td>
                 <td style="padding: 0.5rem; color: var(--text-muted);">
-                    Class <code>AssignmentStep</code> parses the expression string via a safe math resolver and binds the result to the <code>agentState.variables</code> map.
+                    The Shunting-Yard parser (<code>evaluateExpression</code>) tokenizes and resolves variables against the current BDI belief base (e.g. <code>me.x</code>, <code>carried.length</code>) in real-time.
                 </td>
             </tr>
             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">Conditional</td>
+                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">parcel.id, parcel.reward, parcel.x, parcel.y</td>
                 <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); color: var(--text-muted);">
-                    <code>condition</code>: string (evaluates to boolean)<br>
-                    <code>then</code>: AST Node Array (required)<br>
-                    <code>else</code>: AST Node Array (optional)
+                    Standard comparison/math operators
                 </td>
                 <td style="padding: 0.5rem; color: var(--text-muted);">
-                    Class <code>ConditionalStep</code> evaluates the condition string, delegating execution to the child steps using generator delegation (<code>yield*</code>).
-                </td>
-            </tr>
-            <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">Loop</td>
-                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); color: var(--text-muted);">
-                    <code>condition</code>: string (evaluated per iteration)<br>
-                    <code>body</code>: AST Node Array (required)
-                </td>
-                <td style="padding: 0.5rem; color: var(--text-muted);">
-                    Class <code>LoopStep</code> runs a <code>while</code> loop. It yields a <code>TICK_YIELD</code> token after each body iteration to keep the agent responsive to external sensory updates.
+                    Allows policies to scale or offset rewards based on parcel properties (e.g. <code>parcel.reward &gt; 10</code>).
                 </td>
             </tr>
             <tr>
-                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">Action</td>
+                <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); font-weight: 600; color: var(--accent-cyan);">path.traverses_X_Y, parcel.previouslyCarriedByOther</td>
                 <td style="padding: 0.5rem; border-right: 1px solid var(--border-color); color: var(--text-muted);">
-                    <code>name</code>: string (valid API function)<br>
-                    <code>arguments</code>: object (arguments map)<br>
-                    <em>Constraint:</em> Name must match physical agent capabilities.
+                    Boolean properties
                 </td>
                 <td style="padding: 0.5rem; color: var(--text-muted);">
-                    Class <code>ActionStep</code> maps execution directly to physical async procedures (<code>move</code>, <code>pickup</code>, <code>deliver</code>) and awaits server tick verification.
+                    Dynamically evaluates path intersections or tracks cross-agent parcel history to apply relay-related bonuses.
                 </td>
             </tr>
         </tbody>
     </table>
 </div>
 
-<h4 style="margin-top: 1rem; color: var(--accent-cyan); font-size: 0.95rem;">Step Type Execution Mechanics</h4>
+<h4 style="margin-top: 1rem; color: var(--accent-cyan); font-size: 0.95rem;">Rule Evaluation Mechanics</h4>
 <ul style="list-style-type: none; padding-left: 0; margin-top: 0.5rem;">
 <li style="margin-bottom: 0.75rem;">
-<strong>1. Assignment (<code>type: "assignment"</code>)</strong><br>
+<strong>1. Tokenization (<code>tokenize(expr)</code>)</strong><br>
 <span style="font-size: 0.9rem; color: var(--text-muted);">
-Evaluates the <code>expression</code> string against the current local state using a safe sandbox environment or simplified math evaluator, binding the resolved result to the local memory under the variable name specified in <code>target</code>.
+Extracts variables, logical/arithmetic operators, parentheses, and literals from the expression string using a safe regular expression.
 </span>
 </li>
 <li style="margin-bottom: 0.75rem;">
-<strong>2. Conditional (<code>type: "conditional"</code>)</strong><br>
+<strong>2. Variable Resolution (<code>resolveIdentifier(name)</code>)</strong><br>
 <span style="font-size: 0.9rem; color: var(--text-muted);">
-Parses the <code>condition</code> expression. If it evaluates to truthy, the execution delegates to the <code>then</code> array of AST nodes using generator delegation (<code>yield*</code>); otherwise, it delegates to the <code>else</code> array (if defined).
+Maps tokens like <code>score</code> or <code>carrying.size</code> directly to properties of <code>beliefs.me</code>, <code>beliefs.carried</code>, or local variables in the current execution context.
 </span>
 </li>
 <li style="margin-bottom: 0.75rem;">
-<strong>3. Loop (<code>type: "loop"</code>)</strong><br>
+<strong>3. Operator Stack Evaluation (Shunting-Yard)</strong><br>
 <span style="font-size: 0.9rem; color: var(--text-muted);">
-Repeatedly checks the <code>condition</code> expression. As long as it remains true, it yields execution control at each body step iteration. This prevents CPU-blocking infinite loops, allowing sensor inputs (like parcel pickups or layout changes) to be handled.
-</span>
-</li>
-<li style="margin-bottom: 0.75rem;">
-<strong>4. Action (<code>type: "action"</code>)</strong><br>
-<span style="font-size: 0.9rem; color: var(--text-muted);">
-Maps the action <code>name</code> and <code>arguments</code> directly to physical asynchronous agent functions (e.g. <code>move</code>, <code>pickup</code>, <code>deliver</code>). Yields a structural promise or action object that waits for server tick verification before completing.
+Uses precedence-based parsing to evaluate expressions correctly without risking <code>eval()</code> security issues or performance hits, supporting unary negation, math operations, and logical gates.
 </span>
 </li>
 </ul>
 
-<h4 style="margin-top: 1.2rem; color: var(--accent-cyan); font-size: 0.95rem;">JavaScript Representation Example</h4>
-<pre style="background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-main); overflow-x: auto; margin-top: 0.5rem;"><code>// JavaScript AST Engine Interpreter implementation
-export function* executeMissionBehavior(behavior, agentState) {
-    for (const step of behavior) {
-        switch (step.type) {
-            case 'assignment':
-                agentState.variables[step.target] = evaluateExpression(step.expression, agentState);
-                break;
-            case 'conditional':
-                if (evaluateExpression(step.condition, agentState)) {
-                    yield* executeMissionBehavior(step.then, agentState);
-                } else if (step.else) {
-                    yield* executeMissionBehavior(step.else, agentState);
-                }
-                break;
-            case 'loop':
-                while (evaluateExpression(step.condition, agentState)) {
-                    yield* executeMissionBehavior(step.body, agentState);
-                    yield { type: 'TICK_YIELD' }; // yield control to sensor update loop
-                }
-                break;
-            case 'action':
-                yield { type: 'ACTION', name: step.name, args: step.arguments };
-                break;
-        }
-    }
+<h4 style="margin-top: 1.2rem; color: var(--accent-cyan); font-size: 0.95rem;">JavaScript Parser Implementation</h4>
+<pre style="background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-main); overflow-x: auto; margin-top: 0.5rem;"><code>// JavaScript Shunting-Yard Parser in PolicyEngine.js
+export function evaluateExpression(expr, state, localVars = {}) {
+    if (!expr || expr.trim() === '') return true;
+    const tokens = tokenize(expr);
+    if (tokens.length === 0) return true;
+    const values = [];
+    const operators = [];
+    const precedence = {
+        '||': 1, '&&': 2,
+        '==': 3, '!=': 3, '&lt;': 3, '&gt;': 3, '&lt;=': 3, '&gt;=': 3,
+        '+': 4, '-': 4,
+        '*': 5, '/': 5, '%': 5,
+        'unary-': 6, '!': 6
+    };
+    // token parsing, operator stack pushing, and identifier resolution...
+    // returns evaluated result (number, boolean, or string)
 }</code></pre>
 </div>
 
@@ -262,7 +176,7 @@ export function* executeMissionBehavior(behavior, agentState) {
 <div class="mission-card lvl-2 commentable" data-comment-id="mission-card-lvl2">
 <span class="mission-lvl">Level 2</span>
 <div class="mission-title">Intermediate Missions</div>
-<div class="mission-desc">Persistent, non-atomic constraints active for the duration of the match. Constraints must be extremely flexible to adapt to temporal parcel decay rates, shifting grid zones, and sudden path closures. These rules are integrated into the evaluation engine, which recalculates cost weights and checks AST condition assertions at every tick of the A* routing loop.</div>
+<div class="mission-desc">Persistent, non-atomic constraints active for the duration of the match. Constraints must be extremely flexible to adapt to temporal parcel decay rates, shifting grid zones, and sudden path closures. These rules are integrated into the evaluation engine, which recalculates cost weights and checks condition assertions at every tick of the A* routing loop.</div>
 </div>
 <div class="mission-card lvl-3 commentable" data-comment-id="mission-card-lvl3">
 <span class="mission-lvl">Level 3</span>
@@ -308,7 +222,7 @@ export function* executeMissionBehavior(behavior, agentState) {
 <li>High-level cluster routing or task target re-selection (Plan Selection) is triggered.</li>
 </ul>
 <p style="margin-top: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem; font-size: 0.95rem; color: var(--text-muted);">
-<strong>Evaluation Engine Integration:</strong> The AST Evaluation Engine filters out unfeasible macro-goals (e.g. sectors with zero/negative reward utility or zones completely cut off by static walls) before they are sent to the PDDL compiler. This prevents wasting valuable CPU cycles solving unreachable objectives.
+<strong>Evaluation Engine Integration:</strong> The Shunting-Yard Evaluation Engine filters out unfeasible macro-goals (e.g. sectors with zero/negative reward utility or zones completely cut off by static walls) before they are sent to the PDDL compiler. This prevents wasting valuable CPU cycles solving unreachable objectives.
 </p>
 <p style="margin-top: 0.75rem; border-top: 1px solid var(--border-color); padding-top: 0.75rem; font-size: 0.95rem; color: var(--text-muted);">
 <strong>Other PDDL Usages:</strong> Beyond corridor clearing, PDDL is utilized to resolve **narrow corridor deadlocks** (finding escape-push sequences to back away and clear paths for partner nodes) and to generate **joint cooperative plans** when multiple agents must coordinate structural movements simultaneously.
@@ -475,8 +389,8 @@ export function* executeMissionBehavior(behavior, agentState) {
 <p class="commentable" data-comment-id="modeling-p1">Special Missions are modeled inside the BDI execution loop by updating the agent's Belief Set and Policy parameters:</p>
 
 <div class="card commentable" data-comment-id="modeling-card-lvl2">
-<div class="card-title">Level 2 Persistent Rules Integration (AST Engine)</div>
-<p style="margin-bottom: 1rem;">To support highly generalized logic statements, the Policy Engine parses rules into **Abstract Syntax Trees (ASTs)**. Conditional expressions evaluate live variables (e.g. <code>carrying.size</code>, <code>reward</code>, <code>steps</code>) using standard comparison and logical operators at every tick:</p>
+<div class="card-title">Level 2 Persistent Rules Integration (Shunting-Yard Evaluator)</div>
+<p style="margin-bottom: 1rem;">To support highly generalized logic statements, the Policy Engine evaluates rules using a safe **Shunting-Yard mathematical/logical expression evaluator**. Conditional expressions evaluate live variables (e.g. <code>carrying.size</code>, <code>reward</code>, <code>steps</code>) using standard comparison and logical operators at every tick:</p>
 <ul style="padding-left: 1.25rem; color: var(--text-muted); display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.95rem;">
 <li><strong>Stack Size Constraints</strong>: If the policy defines <code>carrying.size < reward</code>, the delivery action in the plan is blocked until the condition is met.</li>
 <li><strong>Avoidance Tiles</strong>: Avoid tiles are injected with cost penalties (e.g. <code>+50</code>). The A* pathfinder automatically calculates paths routing around the tile, unless no other path exists and the parcel reward justifies crossing it.</li>
@@ -490,13 +404,12 @@ export function* executeMissionBehavior(behavior, agentState) {
 </li>
 </ul>
 <p style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
-<strong>Policy Update Arguments Structure:</strong> The policy update payload contains an <code>agentId</code> (specifying the target executor) and a <code>rules</code> object defining the constraints. The rules schema supports: 
-<code>avoidTiles</code> (an array of coordinates, e.g. <code>["3,5", "4,5"]</code>), 
+<strong>Policy Update Arguments Structure:</strong> The policy update payload contains an <code>agentId</code> (specifying the target executor) and a <code>rules</code> object defining the constraints. The rules schema includes <code>avoidTiles</code> (an array of coordinates, e.g. <code>["3,5", "4,5"]</code>), 
 <code>maxRewardLimit</code> (a ceiling float), 
 <code>minRewardThreshold</code> (a floor float), 
 <code>requiredStackSize</code> (an integer stack count), 
-<code>multiplierRules</code> (objects containing an AST <code>condition</code> string and a <code>multiplier</code> factor), and 
-<code>bonusRules</code> (objects containing an AST <code>condition</code> string and a <code>bonus</code> value).
+<code>multiplierRules</code> (objects containing a mathematical/logical <code>condition</code> string and a <code>multiplier</code> factor), and 
+<code>bonusRules</code> (objects containing a mathematical/logical <code>condition</code> string and a <code>bonus</code> value).
 </p>
 </div>
 
@@ -585,68 +498,148 @@ RESPONSE FORMATTING LIMITS
 </div>
 <div class="terminal-body">
 <pre id="systemPromptDetailedContent"><code class="prompt-code">&lt;system_prompt&gt;
-You are the coordinator of a hybrid multi-agent team.
-&lt;message_handling_protocol&gt;
-================================================================================
-MESSAGE HANDLING PROTOCOLS
-================================================================================
-1. SYSTEM STATE MESSAGES:
-   - System state is provided at each turn under the user role or as system messages. Process these updates as read-only spatial inputs. Do not modify or hallucinate coordinates.
-2. TURN SEQUENCE:
-   - Read the user command, examine visible parcels/crates, and evaluate math expressions first before choosing a plan.
-   - If tools are called, wait for the tool output before replying to the user.
-3. MULTI-TURN CONTEXT MANAGEMENT:
-   - Maintain historical state using the system chat history. Do not repeat completed tool calls.
-================================================================================
-MODEL REASONING GUIDELINES
-================================================================================
-- LLAMA-3.3 (LM Studio): Strict single tool-calling limit. If you need to make multiple calls, execute them sequentially across separate chat turns. Do not call multiple tools in a single JSON payload.
-- GEMMA / QWEN: Highly strict on JSON schema matching. Ensure arguments match parameters exactly. Do not output markdown preambles when executing tools.
-- GPT-4O: Capable of parallel tool-calling. Use parallel calls for multiple evaluations.
-&lt;/message_handling_protocol&gt;
 
-&lt;detailed_tool_manifest&gt;
-Note: The system prompt's available tools are dynamically compiled from the modular registry in toolsRegistry.js.
-Below are the registered tools:
+&lt;role&gt;
+You are the cognitive reasoning brain of a cooperative, autonomous Deliveroo multi-agent system.
 
-1. evaluate_math_expression:
-   - Description: Resolves arithmetic formulas into numeric values.
-   - Args: { "expression": "expression_string" }
-   - Action Tool: No
+AGENT IDS:
+- BDI_AGENT_ID: autobots_pddl
+- LLM_AGENT_ID: autobots_llm
+&lt;/role&gt;
 
-2. move_agent_to_coordinate:
-   - Description: Directs the BDI partner agent to navigate to a specific grid coordinate (rounded and clamped).
-   - Args: { "agentId": "BDI_AGENT_ID", "x": number, "y": number }
-   - Action Tool: Yes
+&lt;definitions&gt;
+1- Reward: the reward is the value that you as an agent gains or loses when performing a task. It may be indicated as
+"points", "reward", "pts", "score", "gain", "loss", "penalty", "bonus", etc. It may also be represented as an expression
+like "20 * 3 + 10".
 
-3. apply_agent_rules:
-   - Description: Modifies behavioral policies/rules in the partner agent. Supports avoidTiles, minRewardThreshold, maxRewardLimit, requiredStackSize, multiplierRules (condition and multiplier), and bonusRules (condition and bonus).
-   - Args: { "agentId": "BDI_AGENT_ID", "rules": { ... } }
-   - Action Tool: Yes
+2- Task: a task is a single unit of work that the agent needs to do. A prompt may be comprised of multiple tasks. For example
+&lt;prompt&gt;what is the capital of sweden and 5*7*9 for 40 points&lt;/prompt&gt; contains two tasks: "what is the capital of sweden" and 
+"5*7*9", both for 40 points.
 
-4. cooperate_with_agent:
-   - Description: Proposes a Peer-to-Peer rendezvous or gate clearing contract, or cancels/closes active cooperation.
-   - Args: { "agentId": "BDI_AGENT_ID", "contract": { "type": "RENDEZVOUS" | "CLEARING" | "CLOSE", "x": number, "y": number } }
-   - Action Tool: Yes
+Another example could be &lt;prompt&gt;what is 2 + 2 for -100 points and what is 2 * 3 for 100 points&lt;/prompt&gt; contains two tasks:
+"what is 2 + 2 for -100 points" and "what is 2 * 3 for 100 points". Each task has its own reward which needs to be considered.
 
-5. instruct_agent_to_say:
-   - Description: Instructs the partner agent to speak a message publicly.
-   - Args: { "agentId": "BDI_AGENT_ID", "message": "text" }
-   - Action Tool: Yes
+Also consider that prompts may be comprised of more then 1 or 2 tasks, meaning that if one or more are not feasible then we still
+need to check if we need to perform the others.
 
-6. get_local_context:
-   - Description: Fetches the agent's current state (me position/score/status, variables, carried items, rules, parcels, and peers).
-   - Args: {}
-   - Action Tool: No
+3- Rule: a rule is a standing instruction that changes the way that you perform tasks. It may be indicated as "every time...",
+"if you deliver...", "from now on...", "do not go through X or you lose Y", etc. It may also be represented as an expression
+like "if 20 * 3 + 10 &gt; 0, then ...".
+&lt;/definitions&gt;
 
-7. set_agent_variable:
-   - Description: Saves a variable to agent memory.
-   - Args: { "name": "var_name", "value": any }
-   - Action Tool: Yes
-&lt;/detailed_tool_manifest&gt;
-&lt;bdi_lifecycle_state&gt;
-Current state contains positions, parcel scores, rules, and active contract transitions (PROPOSE, ACCEPT, READY, DROP, PICKUP, COMPLETE).
-&lt;/bdi_lifecycle_state&gt;
+&lt;rules&gt;
+
+1- EXPRESSIONS
+Whenever you see an expression you MUST not evaluate it directly, but instead use the appropriate tool to solve the problem
+
+2- FEASIBILITY (REWARD-GATED ACTIONS)
+One-shot task commands - move_agent_to_coordinate, set_agent_variable, and cooperate_with_agent (types RENDEZVOUS/CLEARING/HANDOFF) - require a
+confirmed positive reward before they will be executed (Note: pickup_parcel_by_id and deliver_parcel_by_id are temporarily disabled and must NOT be used):
+- If the message specifies a reward/points value (a number or expression), evaluate it with
+  evaluate_math_expression and check if it's &gt; 0 BEFORE calling any task action. Only call the
+  task action if the result is true.
+- If the message specifies NO reward, do NOT call any task action and do NOT produce an answer -
+  respond immediately with {"type": "stop"} (no chat output for the Admin). The same applies to
+  questions with no reward and purely conversational messages: stop, no answer, no tool calls.
+
+- STANDING RULES ARE NOT REWARDED TASKS. Messages that change future scoring ("every time...",
+"if you deliver...", "from now on...", "do not go through X or you lose Y"), the points, multipliers, 
+or penalties mentioned are the effect, not a reward to check. Always apply them with apply_agent_rules /
+cooperate_with_agent, with no feasibility check, regardless of whether the effect is positive, zero, or negative.
+
+- Control/utility actions are NOT reward-gated and can always be used regardless of reward:
+  resume_agent, hold_agent, cooperate_with_agent (type "CLOSE"), get_local_context.
+
+- Note that some cooperation tasks may seem to be declared as policy rules, however since they involve multiple agents, they are cooperation tasks. Specifically, any rule/announcement that rewards, penalizes, or mentions picking up, delivering, or transferring parcels previously handled, picked up, or collected by another agent is a cooperative RELAY task (not a simple policy rule).
+- When a RELAY rule/bonus is announced, the Coordinator MUST propose a RELAY contract using "cooperate_with_agent" with contract type "RELAY", using the peer agent BDI_AGENT_ID (autobots_pddl) as the "id" and "courierId", and x/y set to null so the drop tile is auto-picked next to the best delivery zone.
+
+3- STRUCTURE
+Always follow the tool structure for calling it and the arguments schema to provide the arguments.
+Also for other task which require a standard response you MUST reply with JUST the answer and not divulge with other
+information.
+
+4- MULTIPLE INSTRUCTIONS
+If you recognize that a prompt is comprised of:
+- more than 1 task
+- more then one tool call
+- just an answer 
+then you MUST perform the actions in sequence giving the answers in the same order that the tasks are presented.
+
+&lt;important_ordering&gt;
+- Note that a task may contain a computation in which case you MUST use the tool and then immediately after in the next turn
+  give the answer for the computation task. ONLY after you give the answer for the computation task you can move to the next task.
+- Previus tasks still take precedence over the current (even if computational), making it sequential. So if the computation appears as 
+  the 2nd task, you MUST give the answer for it after the 1st task, before moving to the 3rd task.
+  For example
+  &lt;prompt&gt;what is the capital of X, what is 2 * 2, and what is the capital of Y, all for 100 points&lt;/prompt&gt;
+  YOUR RESPONSE SHOULD BE: 
+  - The answer to "what is the capital of X"
+  - The answer to "what is 2 * 2" (immediately after calling the tool)
+  - The answer to "what is the capital of Y"
+&lt;/important_ordering>
+
+5- CONTEXT
+For questions related to some information you may not know like the agent position, map size and so on you can get that info
+by using the get context tool. The same applies if the question is about the previous conversations via the "get_history" tool.
+
+6- STATE
+You can query, save variables, by using the get variables and set variable tools.
+
+7- ODD AND EVEN ROWS/COLUMNS
+When you need to handle odd or even rows/columns (for example, checking if the agent is at an odd/even row/column, or applying rules/penalties to specific odd/even rows/columns):
+- Row corresponds to the 'y' coordinate, and Column corresponds to the 'x' coordinate.
+- You do NOT need to use a math tool to verify odd/even numbers. Use your internal reasoning to select valid coordinates that fit the criteria (e.g., if asked for an odd row, directly pick y=3, y=5, etc., after checking the map context).
+
+8- COORDINATE GENERATION &amp; AGENT COORDINATION
+When directing agents to navigate to coordinates or tiles (e.g. using "move_agent_to_coordinate"):
+- If a movement task or constraint applies (e.g. "move to an odd column" or "go to an even row"), BOTH agents (BDI and LLM) MUST perform the movement. Call "move_agent_to_coordinate" for EACH agent.
+- NEVER send both agents to the exact same coordinate/tile, as they will occupy the same physical spot and collide or block each other. Always direct them to different, distinct coordinates (e.g. two different odd columns).
+- Ensure that the target coordinates chosen for each agent satisfy the criteria of the request (for example, staying within a specified radius, or landing on a specific row/column like odd/even).
+- Before directing an agent, check that the destination tile is a valid, walkable tile (not a wall or an empty/void tile), and that it is reachable. You can get map details and walkable tiles using the "get_local_context" tool.
+- If the request is to "drop", "place", or "put down" a parcel or package at a specific coordinate or tile, you MUST call "move_agent_to_coordinate" with "dropOnArrival" set to true. The agent will automatically search for and pick up a parcel first if it doesn't carry one and then drop it on arrival.
+- NEVER direct an agent to wait, hold, or patrol directly ON a parcel spawn tile. Standing on a spawn tile prevents new parcels from appearing there. Instead, direct agents to an adjacent walkable non-spawn tile next to the spawn zone, or keep them moving between spawn zones.
+
+9- ATTENTION
+All answers which don't follow the following JSON format will be rejected and you will be prompted for another response.
+
+10- STRICT TURN-TAKING (ANTI-HALLUCINATION)
+You must NEVER generate the Admin's response or simulate a "[Next Turn]" block yourself. After you output an [ANSWER] block containing a tool call or a stop command, you must immediately STOP generating and wait for the real Admin to provide the [TOOL_RESULT].
+&lt;/rules&gt;
+
+&lt;response_format&gt;
+[REASONING]
+&lt;reasoning_body&gt;
+&lt;reasoning here&gt;
+&lt;/reasoning_body&gt;
+[/REASONING]
+[ANSWER]
+&lt;answer_format&gt;
+{
+  "type": "answer",
+  "body": "Raw answer here"
+}
+&lt;/answer_format&gt;
+&lt;tool_format&gt;
+{
+  "type": "tool",
+  "name": "tool_name_here",
+  "args": {
+    "arg1": "value1",
+    "arg2": "value2"
+  }
+}
+&lt;/tool_format&gt;
+&lt;stop_format&gt;
+{
+  "type": "stop"
+}
+&lt;/stop_format&gt;
+[/ANSWER]
+&lt;/response_format&gt;
+
+&lt;available_tools&gt;
+[Dynamically generated from the toolsRegistry.js mapping]
+&lt;/available_tools&gt;
 &lt;/system_prompt&gt;</code></pre>
 </div>
 </div>
@@ -703,12 +696,32 @@ Current state contains positions, parcel scores, rules, and active contract tran
 </div>
 <p class="commentable" data-comment-id="tool-p1">The LLM agent translates cognitive commands into structural actions by invoking specialized function declarations. To ensure the LLM understands when to execute coordination versus execution, the JSON schemas include explicit multiagentic descriptions detailing their purposes (e.g. proposing contracts versus speaking messages). The parameters are defined in standard OpenAI-compatible tool schema format.</p>
 <p class="commentable" data-comment-id="tool-p2" style="margin-top: 0.5rem; font-size: 0.95rem; color: var(--text-muted);">
-<strong>Turing-Capable Logical Toolset under design:</strong> To enable the LLM to resolve arbitrary logical constraints programmatically, we are designing a primitive set of logical tools. This includes a <em>Comparison Tool</em> (<code>compare_values(a, b, op)</code> supporting <code>lt</code>, <code>gt</code>, <code>eq</code>, etc.), a <em>Logical Connective Tool</em> (<code>evaluate_logic(b1, b2, gate)</code> supporting <code>AND</code>, <code>OR</code>, <code>NOT</code>), a <em>Variable Register Tool</em> (<code>declare_variable(name, value)</code> / <code>get_variable(name)</code>), and an explicit execution branching tool (<code>branch_execution(condition, true_branch, false_branch)</code>). By leveraging this state-maintenance capability across turns, the LLM can store intermediate steps, execute loops programmatically by recursively calling itself, and construct complex decision structures to solve any generalized challenge.
+The LLM Coordinator uses a modular registry of 9 tools to retrieve spatial context, evaluate constraints, and direct agent tasks. All action tools that manipulate BDI agent intentions require a confirmed positive reward before execution.
 </p>
 
 <div class="tools-grid">
 
 <!-- Tool 1 -->
+<div class="tool-expand-card commentable" data-comment-id="tool-card-get-history" onclick="toggleTool(this)">
+<div class="tool-summary">
+<div class="tool-name-container">
+<div class="tool-icon-box">H</div>
+<div>
+<div class="tool-name">get_history()</div>
+<div class="tool-desc">Retrieves the history of past conversations in the active session.</div>
+</div>
+</div>
+<div class="tool-chevron">▼</div>
+</div>
+<div class="tool-details">
+<div class="tool-details-content">
+<div class="schema-header">Parameters JSON Schema</div>
+<pre><code>{}</code></pre>
+</div>
+</div>
+</div>
+
+<!-- Tool 2 -->
 <div class="tool-expand-card commentable" data-comment-id="tool-card-math" onclick="toggleTool(this)">
 <div class="tool-summary">
 <div class="tool-name-container">
@@ -737,14 +750,14 @@ Current state contains positions, parcel scores, rules, and active contract tran
 </div>
 </div>
 
-<!-- Tool 2 -->
+<!-- Tool 3 -->
 <div class="tool-expand-card commentable" data-comment-id="tool-card-move" onclick="toggleTool(this)">
 <div class="tool-summary">
 <div class="tool-name-container">
 <div class="tool-icon-box">N</div>
 <div>
-<div class="tool-name">move_agent_to_coordinate(agentId, x, y)</div>
-<div class="tool-desc">Immediately route a specific physical agent to a target cell coordinate.</div>
+<div class="tool-name">move_agent_to_coordinate(id, x, y, holdOnArrival, holdDuration, dropOnArrival)</div>
+<div class="tool-desc">Immediately route a specific physical agent to a target coordinate.</div>
 </div>
 </div>
 <div class="tool-chevron">▼</div>
@@ -755,90 +768,30 @@ Current state contains positions, parcel scores, rules, and active contract tran
 <pre><code>{
   "type": "object",
   "properties": {
-    "agentId": {
+    "id": {
       "type": "string",
-      "description": "The unique ID of the agent to move (self or partner)."
+      "description": "The unique ID of the agent to move (autobots_llm or autobots_pddl)."
     },
     "x": { "type": "number" },
-    "y": { "type": "number" }
+    "y": { "type": "number" },
+    "holdOnArrival": { "type": "boolean" },
+    "holdDuration": { "type": ["number", "null"] },
+    "dropOnArrival": { "type": ["boolean", "null"] }
   },
-  "required": ["agentId", "x", "y"]
-}</code></pre>
-</div>
-</div>
-</div>
-
-<!-- Tool 3 -->
-<div class="tool-expand-card commentable" data-comment-id="tool-card-rules" onclick="toggleTool(this)">
-<div class="tool-summary">
-<div class="tool-name-container">
-<div class="tool-icon-box">P</div>
-<div>
-<div class="tool-name">apply_agent_rules(agentId, rules)</div>
-<div class="tool-desc">Updates environmental rules (avoid tiles, reward ceilings) inside BDI belief.</div>
-</div>
-</div>
-<div class="tool-chevron">▼</div>
-</div>
-<div class="tool-details">
-<div class="tool-details-content">
-<div class="schema-header">Parameters JSON Schema</div>
-<pre><code>{
-  "type": "object",
-  "properties": {
-    "agentId": {
-      "type": "string",
-      "description": "Target agent ID."
-    },
-    "rules": {
-      "type": "object",
-      "properties": {
-        "avoidTiles": {
-          "type": "array",
-          "items": { "type": "string", "description": "Coordinates as 'x,y'" }
-        },
-        "maxRewardLimit": { "type": "number" },
-        "minRewardThreshold": { "type": "number" },
-        "requiredStackSize": { "type": "integer" },
-        "multiplierRules": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "condition": { "type": "string", "description": "AST condition string (e.g. 'carrying.size == 3')" },
-              "multiplier": { "type": "number" }
-            },
-            "required": ["condition", "multiplier"]
-          }
-        },
-        "bonusRules": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "condition": { "type": "string", "description": "AST condition string (e.g. 'x == 2 && y == 3')" },
-              "bonus": { "type": "number" }
-            },
-            "required": ["condition", "bonus"]
-          }
-        }
-      }
-    }
-  },
-  "required": ["agentId", "rules"]
+  "required": ["id", "x", "y"]
 }</code></pre>
 </div>
 </div>
 </div>
 
 <!-- Tool 4 -->
-<div class="tool-expand-card commentable" data-comment-id="tool-card-coop" onclick="toggleTool(this)">
+<div class="tool-expand-card commentable" data-comment-id="tool-card-rules" onclick="toggleTool(this)">
 <div class="tool-summary">
 <div class="tool-name-container">
-<div class="tool-icon-box">C</div>
+<div class="tool-icon-box">P</div>
 <div>
-<div class="tool-name">cooperate_with_agent(agentId, contract)</div>
-<div class="tool-desc">Initiates a multi-agent coordination rendezvous or clearance.</div>
+<div class="tool-name">apply_agent_rules(id, rules)</div>
+<div class="tool-desc">Updates environmental rules inside BDI belief.</div>
 </div>
 </div>
 <div class="tool-chevron">▼</div>
@@ -849,32 +802,60 @@ Current state contains positions, parcel scores, rules, and active contract tran
 <pre><code>{
   "type": "object",
   "properties": {
-    "agentId": { "type": "string" },
-    "contract": {
-      "type": "object",
-      "properties": {
-        "coordinationId": { "type": "string" },
-        "type": { "type": "string", "enum": ["RENDEZVOUS", "CLEAR_PATH"] },
-        "x": { "type": "number" },
-        "y": { "type": "number" }
-      },
-      "required": ["coordinationId", "type"]
+    "id": {
+      "type": "string",
+      "description": "Target agent ID (autobots_pddl, autobots_llm, or 'all')."
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "all_tiles": { "type": "boolean" },
+          "tiles": {
+            "type": "array",
+            "items": { "type": "string", "description": "Coordinates as 'x,y'" }
+          },
+          "stackSizeBounds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "min": { "type": ["number", "null"] },
+                "max": { "type": ["number", "null"] }
+              }
+            }
+          },
+          "rewardBounds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "min": { "type": ["number", "null"] },
+                "max": { "type": ["number", "null"] }
+              }
+            }
+          },
+          "multiplier": { "type": ["number", "null"] },
+          "bonus": { "type": ["number", "null"] }
+        }
+      }
     }
   },
-  "required": ["agentId", "contract"]
+  "required": ["id", "rules"]
 }</code></pre>
 </div>
 </div>
 </div>
 
 <!-- Tool 5 -->
-<div class="tool-expand-card commentable" data-comment-id="tool-card-say" onclick="toggleTool(this)">
+<div class="tool-expand-card commentable" data-comment-id="tool-card-coop" onclick="toggleTool(this)">
 <div class="tool-summary">
 <div class="tool-name-container">
-<div class="tool-icon-box">S</div>
+<div class="tool-icon-box">C</div>
 <div>
-<div class="tool-name">instruct_agent_to_say(agentId, message)</div>
-<div class="tool-desc">Causes the chosen agent to speak a message publicly.</div>
+<div class="tool-name">cooperate_with_agent(id, contract)</div>
+<div class="tool-desc">Initiates a multi-agent coordination contract (rendezvous, relay, clearing, etc.) or closes active cooperation.</div>
 </div>
 </div>
 <div class="tool-chevron">▼</div>
@@ -885,10 +866,122 @@ Current state contains positions, parcel scores, rules, and active contract tran
 <pre><code>{
   "type": "object",
   "properties": {
-    "agentId": { "type": "string" },
-    "message": { "type": "string" }
+    "id": { "type": "string", "description": "Target peer agent ID." },
+    "contract": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["RENDEZVOUS", "CLEARING", "HANDOFF", "RELAY", "CLOSE"] },
+        "x": { "type": ["number", "null"] },
+        "y": { "type": ["number", "null"] },
+        "radius": { "type": ["number", "null"] },
+        "holdDuration": { "type": ["number", "string", "null"], "description": "Seconds or 'indefinite'" },
+        "courierId": { "type": ["string", "null"] }
+      },
+      "required": ["type"]
+    }
   },
-  "required": ["agentId", "message"]
+  "required": ["id", "contract"]
+}</code></pre>
+</div>
+</div>
+</div>
+
+<!-- Tool 6 -->
+<div class="tool-expand-card commentable" data-comment-id="tool-card-context" onclick="toggleTool(this)">
+<div class="tool-summary">
+<div class="tool-name-container">
+<div class="tool-icon-box">G</div>
+<div>
+<div class="tool-name">get_local_context()</div>
+<div class="tool-desc">Fetches the current spatial, parcel, peer, and map state context.</div>
+</div>
+</div>
+<div class="tool-chevron">▼</div>
+</div>
+<div class="tool-details">
+<div class="tool-details-content">
+<div class="schema-header">Parameters JSON Schema</div>
+<pre><code>{}</code></pre>
+</div>
+</div>
+</div>
+
+<!-- Tool 7 -->
+<div class="tool-expand-card commentable" data-comment-id="tool-card-variable" onclick="toggleTool(this)">
+<div class="tool-summary">
+<div class="tool-name-container">
+<div class="tool-icon-box">V</div>
+<div>
+<div class="tool-name">set_agent_variable(id, name, value)</div>
+<div class="tool-desc">Saves a variable into the local and peer agent memory.</div>
+</div>
+</div>
+<div class="tool-chevron">▼</div>
+</div>
+<div class="tool-details">
+<div class="tool-details-content">
+<div class="schema-header">Parameters JSON Schema</div>
+<pre><code>{
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "value": { "type": "any" }
+  },
+  "required": ["id", "name", "value"]
+}</code></pre>
+</div>
+</div>
+</div>
+
+<!-- Tool 8 -->
+<div class="tool-expand-card commentable" data-comment-id="tool-card-hold" onclick="toggleTool(this)">
+<div class="tool-summary">
+<div class="tool-name-container">
+<div class="tool-icon-box">S</div>
+<div>
+<div class="tool-name">hold_agent(id, duration)</div>
+<div class="tool-desc">Stops/pauses movement and actions of the targeted agent.</div>
+</div>
+</div>
+<div class="tool-chevron">▼</div>
+</div>
+<div class="tool-details">
+<div class="tool-details-content">
+<div class="schema-header">Parameters JSON Schema</div>
+<pre><code>{
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "description": "autobots_pddl, autobots_llm, or 'all'" },
+    "duration": { "type": ["number", "null"], "description": "Automatic resume timeout in seconds" }
+  },
+  "required": ["id"]
+}</code></pre>
+</div>
+</div>
+</div>
+
+<!-- Tool 9 -->
+<div class="tool-expand-card commentable" data-comment-id="tool-card-resume" onclick="toggleTool(this)">
+<div class="tool-summary">
+<div class="tool-name-container">
+<div class="tool-icon-box">R</div>
+<div>
+<div class="tool-name">resume_agent(id)</div>
+<div class="tool-desc">Resumes the targeted agent, clearing previous hold state and active coordination contracts.</div>
+</div>
+</div>
+<div class="tool-chevron">▼</div>
+</div>
+<div class="tool-details">
+<div class="tool-details-content">
+<div class="schema-header">Parameters JSON Schema</div>
+<pre><code>{
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "description": "autobots_pddl, autobots_llm, or 'all'" }
+  },
+  "required": ["id"]
 }</code></pre>
 </div>
 </div>
@@ -982,37 +1075,27 @@ Current state contains positions, parcel scores, rules, and active contract tran
 <tr class="commentable" data-comment-id="row-msg-ping">
 <td class="msg-type">PING</td>
 <td><code>{ "type": "PING" }</code></td>
-<td>Verification of peer presence. Peer responds with positional & score stats.</td>
+<td>Heartbeat verification of peer presence. Peer responds with PONG.</td>
 </tr>
 <tr class="commentable" data-comment-id="row-msg-pong">
 <td class="msg-type">PONG</td>
-<td><code>{ "type": "PONG", "payload": { "x", "y", "score" } }</code></td>
-<td>Response package to a PING.</td>
+<td><code>{ "type": "PONG", "payload": { "name", "x", "y", "score" } }</code></td>
+<td>Response containing coordinates, name, and score.</td>
 </tr>
-<tr class="commentable" data-comment-id="row-msg-propose">
-<td class="msg-type">PROPOSE_CONTRACT</td>
-<td><code>{ "type": "PROPOSE_CONTRACT", "coopId", "type", "x", "y" }</code></td>
-<td>LLM Coordinator proposes a joint task (e.g. rendezvous at x,y). Sets state to **Proposed**.</td>
+<tr class="commentable" data-comment-id="row-msg-peer-status">
+<td class="msg-type">PEER_STATUS</td>
+<td><code>{ "type": "PEER_STATUS", "payload": { "name", "x", "y", "score", "nextStep", "path", "carried", "currentGoal", "crates" } }</code></td>
+<td>Sends full spatial position, intent, path, carried inventory, and visible crate list.</td>
 </tr>
-<tr class="commentable" data-comment-id="row-msg-accept">
-<td class="msg-type">ACCEPT_CONTRACT</td>
-<td><code>{ "type": "ACCEPT_CONTRACT", "coopId" }</code></td>
-<td>PDDL agent accepts the proposal and switches its planning state to **Committed**.</td>
+<tr class="commentable" data-comment-id="row-msg-sync-req">
+<td class="msg-type">SYNC_REQ</td>
+<td><code>{ "type": "SYNC_REQ" }</code></td>
+<td>Request to synchronize initial state between agents.</td>
 </tr>
-<tr class="commentable" data-comment-id="row-msg-ready">
-<td class="msg-type">SIGNAL_READY</td>
-<td><code>{ "type": "SIGNAL_READY", "coopId", "role" }</code></td>
-<td>Sent when an agent arrives at the target coordinate. Transition to **Arrived**. Dropper exits tile, Picker waits.</td>
-</tr>
-<tr class="commentable" data-comment-id="row-msg-release">
-<td class="msg-type">RELEASE_CARGO</td>
-<td><code>{ "type": "RELEASE_CARGO", "coopId" }</code></td>
-<td>Dropper signals that they dropped the parcel and cleared the escape path. State transitions to **Released**.</td>
-</tr>
-<tr class="commentable" data-comment-id="row-msg-close">
-<td class="msg-type">CLOSE_CONTRACT</td>
-<td><code>{ "type": "CLOSE_CONTRACT", "coopId" }</code></td>
-<td>Handoff is complete, state is **Closed**. Both return to standard operations.</td>
+<tr class="commentable" data-comment-id="row-msg-sync-ack">
+<td class="msg-type">SYNC_ACK</td>
+<td><code>{ "type": "SYNC_ACK" }</code></td>
+<td>Acknowledge synchronization request, transitioning BDI agent to synchronized state.</td>
 </tr>
 <tr class="commentable" data-comment-id="row-msg-lock">
 <td class="msg-type">LOCK_TARGET</td>
@@ -1023,6 +1106,66 @@ Current state contains positions, parcel scores, rules, and active contract tran
 <td class="msg-type">RELEASE_TARGET</td>
 <td><code>{ "type": "RELEASE_TARGET", "targetId" }</code></td>
 <td>Unlocks a parcel target (e.g., if it decayed or was preempted).</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-propose">
+<td class="msg-type">PROPOSE_CONTRACT</td>
+<td><code>{ "type": "PROPOSE_CONTRACT", "coopId", "contractType", "x", "y", "radius", "holdDuration", "courierId" }</code></td>
+<td>LLM Coordinator proposes a joint task contract (RENDEZVOUS, HANDOFF, RELAY, CLEARING).</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-accept">
+<td class="msg-type">ACCEPT_CONTRACT</td>
+<td><code>{ "type": "ACCEPT_CONTRACT", "coopId" }</code></td>
+<td>Confirms acceptance of the proposed contract.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-ready">
+<td class="msg-type">SIGNAL_READY</td>
+<td><code>{ "type": "SIGNAL_READY", "coopId" }</code></td>
+<td>Signals that the agent has arrived at the target coordinate.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-release">
+<td class="msg-type">RELEASE_CARGO</td>
+<td><code>{ "type": "RELEASE_CARGO", "coopId" }</code></td>
+<td>Dropper signals that they dropped the parcel and the peer can step forward to pick it up.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-close">
+<td class="msg-type">CLOSE_CONTRACT</td>
+<td><code>{ "type": "CLOSE_CONTRACT", "coopId" }</code></td>
+<td>Handoff/cooperation is complete, closing the contract and returning both to normal loops.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-apply-rules">
+<td class="msg-type">APPLY_RULES</td>
+<td><code>{ "type": "APPLY_RULES", "rules" }</code></td>
+<td>Updates the partner agent's belief base with new policy rules.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-move-to">
+<td class="msg-type">MOVE_TO</td>
+<td><code>{ "type": "MOVE_TO", "x", "y", "holdOnArrival", "holdDuration", "dropOnArrival" }</code></td>
+<td>Directs partner movement to coordinates.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-move-to-ack">
+<td class="msg-type">MOVE_TO_ACK</td>
+<td><code>{ "type": "MOVE_TO_ACK", "success", "x", "y" }</code></td>
+<td>Acknowledge movement completion status.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-hold">
+<td class="msg-type">HOLD</td>
+<td><code>{ "type": "HOLD" }</code></td>
+<td>Pauses the physical agent.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-resume">
+<td class="msg-type">RESUME</td>
+<td><code>{ "type": "RESUME" }</code></td>
+<td>Resumes the physical agent and clears active coordination contracts.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-instruct-say">
+<td class="msg-type">INSTRUCT_SAY</td>
+<td><code>{ "type": "INSTRUCT_SAY", "message" }</code></td>
+<td>Instructs the agent to say a public chat message.</td>
+</tr>
+<tr class="commentable" data-comment-id="row-msg-set-variable">
+<td class="msg-type">SET_VARIABLE</td>
+<td><code>{ "type": "SET_VARIABLE", "name", "value" }</code></td>
+<td>Sets a variable inside the partner agent memory.</td>
 </tr>
 </tbody>
 </table>

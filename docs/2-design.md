@@ -168,7 +168,7 @@ The codebase is structured into cohesive modules with distinct responsibilities 
 <div class="card-title">BeliefBase.js</div>
 <p>Maintains local mental states of the agent, including parcel layouts, coordinate estimates, other agent stats, and established coordination contracts.</p>
 <p style="font-size:0.9rem; margin-bottom:1rem; color:var(--text-muted);">
-<strong>Flexible Policy Rules:</strong> To avoid static rules breaking when matches drift, policy rules (avoidance zones, thresholds) are represented as AST-based string conditions (e.g. <code>"carrying.size >= 3 && score < 200"</code>) compiled dynamically at runtime, allowing the evaluation engine to compute active blocks on the fly.
+<strong>Flexible Policy Rules:</strong> To avoid static rules breaking when matches drift, policy rules (avoidance zones, thresholds) are represented as mathematical/logical string conditions (e.g. <code>"carrying.size >= 3 && score < 200"</code>) evaluated dynamically at runtime using the Shunting-Yard evaluator, allowing the evaluation engine to compute active blocks on the fly.
 </p>
 
 <div class="terminal-window">
