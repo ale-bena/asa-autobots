@@ -275,8 +275,7 @@ export function selectBestGoal(beliefs, engineState) {
             console.log(`[BDI] At capacity but ALL delivery zones blocked. Falling through to patrol.`);
             const spawnZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
             if (spawnZone) {
-                const safeTile = findAdjacentClearNonSpawnTile(beliefs, spawnZone.x, spawnZone.y);
-                return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+                return { type: 'patrol_spawn', targetId: null, x: spawnZone.x, y: spawnZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
             }
             return { type: 'patrol', targetId: null, x: null, y: null, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
         }
@@ -674,8 +673,7 @@ export function selectBestGoal(beliefs, engineState) {
     // 5. Fallback to navigating to a spawn zone to collect parcels (smart patrolling).
     const spawnZone = findPatrolSpawnZone(beliefs, beliefs.me.x, beliefs.me.y);
     if (spawnZone) {
-        const safeTile = findAdjacentClearNonSpawnTile(beliefs, spawnZone.x, spawnZone.y);
-        return { type: 'patrol_spawn', targetId: null, x: safeTile.x, y: safeTile.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
+        return { type: 'patrol_spawn', targetId: null, x: spawnZone.x, y: spawnZone.y, engineUpdates: Object.keys(engineUpdates).length > 0 ? engineUpdates : null };
     }
 
     // 6. Absolute fallback to random patrolling.
