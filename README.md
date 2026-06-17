@@ -8,7 +8,7 @@
 ---
 
 <p align="center">
-  <video src="output.mp4" width="100%" style="max-width: 850px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);" controls autoplay loop muted></video>
+  <img src="output.gif" width="100%" style="max-width: 850px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);" alt="Cooperative Multi-Agent System Showcase" />
 </p>
 
 This repository contains the implementation, test suites, and documentation for a cooperative multi-agent delivery system designed for the Deliveroo competitive simulator. The project demonstrates hybrid planning, combining reactive agents, cognitive LLM-based coordination, and STRIPS PDDL symbolic path clearance.
