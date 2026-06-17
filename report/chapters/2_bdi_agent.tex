@@ -1,9 +1,9 @@
 \chapter{BDI Agent}
-\label(ch:bdi)
+\label{ch:bdi}
 Both agents are built on the same Belief--Desire--Intention reasoning core: each
 constructs a \texttt{BeliefBase} and runs an \texttt{IntentionEngine}. The physical
 executor uses it directly to move, pick up and deliver; the LLM coordinator
-(Chapter~\ref{ch:llm}) reuses the same structure and extends it with
+(\cref{ch:llm}) reuses the same structure and extends it with
 natural-language reasoning.
 
 The agent maintains a model of the world (\emph{beliefs}), evaluates which goals
@@ -151,7 +151,7 @@ replaces the running one only when \texttt{shouldPreemptActivePlan(...)}
 (\texttt{PreemptionManager.js}) judges the switch worthwhile, which prevents
 oscillation between comparable options. The exception is a path blocked by a crate,
 which suspends the active plan and injects a PDDL \texttt{clear\_corridor} plan
-instead (Chapter~\ref{ch:pddl}).
+instead (\cref{ch:pddl}).
 
 On commit, \texttt{instantiatePlanRecipe(goal)} maps the goal type to a
 generator-based plan recipe (e.g. \texttt{pickup} $\to$ \texttt{CollectAndDeliver},
@@ -177,7 +177,7 @@ goal evaluation (deliberation). This is done to avoid leaving reachable parcels 
 The second is \emph{collision avoidance} between the two teammates, designed so they
 never deadlock over a tile during testing. Before moving, each agent uses the partner's broadcast
 position and planned next step to detect a possible conflict where both aim for the same tile (see
-Section~\ref{sec:agent-comm}).
+\cref{sec:agent-comm}).
 When this happens one agent must yield, and this is decided deterministically by comparing agent identifiers,
 so both reach the same conclusion independently without any negotiation(higher ID yields). The yeilding agent 
 pauses \SI{150}{\milli\second} to let the other pass. If a move is still rejected,

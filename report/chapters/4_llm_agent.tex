@@ -1,8 +1,8 @@
 \chapter{LLM Agent}
 \label{ch:llm}
 This second agent is a cognitive coordinator. It is built on the same BDI core as the
-executor (\ref{ch:bdi}), so it too can move, pick up, deliver, and clear crates
-with PDDL (\ref{ch:pddl}). What sets it apart is an additional natural-language
+executor (\cref{ch:bdi}), so it too can move, pick up, deliver, and clear crates
+with PDDL (\cref{ch:pddl}). What sets it apart is an additional natural-language
 reasoning layer: it receives instructions from the Admin in the chat, reasons about
 them, and translates them into concrete commands and policies for the whole team. It
 never acts on this reasoning directly; every effect is mediated by a tool or a
@@ -50,7 +50,7 @@ back as the next input, and repeats until a \texttt{stop} is produced. Outputs t
 violate the schema are rejected and re-requested with an error description, up to three attempts. 
 The loop advances one step at a time by design, so a message containing
 several tasks is decomposed and resolved alongside intermediate
-answers (\ref{sub:res_and_lim}).
+answers (\cref{sub:res_and_lim}).
 
 
 \section{Prompt construction}
@@ -126,4 +126,4 @@ The key design point is symmetry of effect. When an act tool targets the coordin
 itself (or ``all''), it mutates the coordinator's own beliefs directly; when it
 targets the executor (or ``all''), it additionally emits a peer-to-peer message so
 the executor applies the same change to its belief base. The same vocabulary governs
-both agents through one uniform mechanism, detailed in Chapter \ref{ch:coordination}.
+both agents through one uniform mechanism, detailed in \cref{ch:coordination}.
