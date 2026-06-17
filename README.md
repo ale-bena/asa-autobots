@@ -23,7 +23,7 @@ graph TD
 ```
 
 ### 1. BDI Physical Executor (Agent 1)
-* **Execution Paradigm**: Driven by a Belief-Desire-Intention (BDI) control loop operating at ~60 Hz.
+* **Execution Paradigm**: Driven by a Belief-Desire-Intention (BDI) control loop.
 * **Spatial Memory**: Maintains persistent grid representations with negative inference (removing stale objects) and local parcel value decay simulation.
 * **Goal Selection**: Structured utility cascade prioritizing administrative commands, cooperative contract execution, and expiration-aware economic utilities.
 * **Delivery Stack Optimization**: Solves cargo subset optimization and wait-time bounds using dynamic programming to maximize policy-adjusted returns.
