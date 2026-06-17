@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { selectBestGoal, evaluatePolicyReward } from '../src/agent/GoalSelector.js';
+import { selectBestGoal } from '../src/agent/GoalSelector.js';
 import { MapRepresentation } from '../src/mapping/MapRepresentation.js';
 import { AGENT_IDS } from '../src/config/config.js';
 

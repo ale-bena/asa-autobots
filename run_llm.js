@@ -69,7 +69,7 @@ async function runGameLoop() {
                 console.error('[LLM] Intention tick cycle encountered error:', e.message);
             }
         }
-        await new Promise(resolve => setTimeout(resolve, 16)); // ~60 Hz
+        await new Promise(resolve => setTimeout(resolve, 16));
     }
 }
 runGameLoop();
@@ -145,13 +145,6 @@ async function processIncomingMessage(senderId, name, msg) {
 }
 
 socket.onDisconnect((reason) => {
-    console.warn(`[LLM] Socket connection disconnected (${reason}).`);
-    // 'io server disconnect' = the server deliberately closed the session;
-    // socket.io does NOT auto-reconnect in that case - retry manually.
-    if (reason === 'io server disconnect') {
-        console.warn('[LLM] Server-initiated disconnect. Attempting manual reconnect in 2s...');
-        setTimeout(() => {
-            if (!socket.connected) socket.connect();
-        }, 2000);
-    }
+    console.error(`[LLM] Socket connection disconnected (${reason}).`);
+    process.exit(1);
 });

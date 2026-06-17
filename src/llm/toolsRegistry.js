@@ -93,6 +93,8 @@ async function waitUntilReached(agentId, targetX, targetY, coordinator, sendTime
 
 /**
  * Blocking wait until the agent has successfully picked up the specified parcel or timed out.
+ * NOTE: Currently preserved as a utility function for direct physical action coordination
+ * (e.g. for future/legacy physical coordination support or test assertions).
  */
 async function waitUntilPickedUp(agentId, parcelId, coordinator) {
     const beliefs = coordinator.beliefs;
@@ -127,6 +129,8 @@ async function waitUntilPickedUp(agentId, parcelId, coordinator) {
 
 /**
  * Blocking wait until the agent has successfully delivered/dropped the specified parcel or timed out.
+ * NOTE: Preserved as part of the LLM tool wait-loop utility suite for future physical tool
+ * coordination extensions or test suite assertions.
  */
 async function waitUntilDelivered(agentId, parcelId, coordinator) {
     const beliefs = coordinator.beliefs;

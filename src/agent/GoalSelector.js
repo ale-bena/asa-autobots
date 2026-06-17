@@ -13,10 +13,6 @@ import { AGENT_IDS } from '../config/config.js';
 import { MapRepresentation } from '../mapping/MapRepresentation.js';
 import { logger } from '../utils/logger.js';
 
-// evaluatePolicyReward moved to PolicyEngine.js (also needed by PlanLibrary for
-// delivery-tile scoring). Re-exported here for existing importers (Intentions.js).
-export { evaluatePolicyReward };
-
 /**
  * Checks if a parcel is targeted/locked by our teammate.
  */
@@ -604,8 +600,6 @@ export function selectBestGoal(beliefs, engineState) {
             : null;
         if (!pathToDelivery) continue;
         const distToDelivery = pathToDelivery.length - 1;
-
-        const tripPath = pathToParcel.concat(pathToDelivery.slice(1));
 
         const totalTripMs = (distToParcel + distToDelivery) * avgMoveTime + avgPickupTime + avgPutdownTime;
 

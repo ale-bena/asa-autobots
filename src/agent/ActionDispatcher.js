@@ -258,7 +258,7 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
                     await socket.emitSay(peerId, JSON.stringify(message));
                     success = true;
                     break;
-                } catch (e) {
+                } catch {
                     // fallback to shout
                 }
             }

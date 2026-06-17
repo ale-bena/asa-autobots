@@ -4,10 +4,10 @@ import { evaluatePolicyReward } from '../src/policy/PolicyEngine.js';
 
 function assert(condition, message) {
     if (!condition) {
-        console.error(`❌ Assertion failed: ${message}`);
+        console.error(`Assertion failed: ${message}`);
         process.exit(1);
     }
-    console.log(`✅ Passed: ${message}`);
+    console.log(`Passed: ${message}`);
 }
 
 async function runTests() {
@@ -742,7 +742,7 @@ async function runTests() {
         console.log(`Case 16 goal: type=${goal.type}, targetId=${goal.targetId}, x=${goal.x}, y=${goal.y}`);
         assert(goal.type === 'patrol_spawn', `Idle receiver should anchor (got ${goal.type})`);
         assert(goal.x === 0 && goal.y === 0, `Receiver anchor should be at (0,0) closest to delivery (got (${goal.x},${goal.y}))`);
-        console.log('✅ Passed: Receiver anchored successfully towards delivery zone');
+        console.log('Passed: Receiver anchored successfully towards delivery zone');
     }
 
     // Case 17: Force hunt/patrol when direct delivery yields <= 0 reward
@@ -826,7 +826,7 @@ async function runTests() {
         // Strict pathfinding (blockPeers = true) -> path should be blocked
         const pathBlocked = findAStarPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, null, beliefs, true);
         assert(pathBlocked === null, `Should NOT find path when blockPeers = true`);
-        console.log('✅ Passed: blockPeers correctly blocks pathfinding around other agents');
+        console.log('Passed: blockPeers correctly blocks pathfinding around other agents');
     }
 
     // Case 19: Testing DeliveryOptimizer quick check (bypass) when no policy rules are active
@@ -845,7 +845,7 @@ async function runTests() {
         assert(opt.bestSubset.length === 3, `Should select all parcels when no policies exist (got ${opt.bestSubset.length})`);
         assert(opt.bestReward === 60, `Should yield direct sum of rewards (got ${opt.bestReward})`);
         assert(opt.bestWaitMs === 0, `Should yield 0 wait time (got ${opt.bestWaitMs})`);
-        console.log('✅ Passed: DeliveryOptimizer bypasses optimization and delivers all when rules are empty');
+        console.log('Passed: DeliveryOptimizer bypasses optimization and delivers all when rules are empty');
     }
 
     // Case 20: Testing DeliveryOptimizer adaptive subset selection with 7+ parcels under policy rules
@@ -885,7 +885,7 @@ async function runTests() {
         assert(opt.bestSubset.length === 4, `Should select exactly the 4 valid parcels (got ${opt.bestSubset.length})`);
         assert(opt.bestReward === 40, `Should yield reward 40 for valid subset (got ${opt.bestReward})`);
         assert(opt.discardSubset.length === 3, `Should identify the 3 invalid/useless parcels to discard (got ${opt.discardSubset.length})`);
-        console.log('✅ Passed: DeliveryOptimizer adaptive subset selection correctly filters out invalid parcels with large stacks');
+        console.log('Passed: DeliveryOptimizer adaptive subset selection correctly filters out invalid parcels with large stacks');
     }
 
     // Case 21: Policy: cannot deliver less than 4 and more than 5 parcels
@@ -999,7 +999,7 @@ async function runTests() {
         ], 5, 0);
         assert(opt7.bestSubset.length === 5, `Should select exactly 5 parcels for delivery when carrying 7 (got ${opt7.bestSubset.length})`);
 
-        console.log('✅ Passed: Case 21 logic works perfectly and targets correctly under the policy');
+        console.log('Passed: Case 21 logic works perfectly and targets correctly under the policy');
     }
 
     // Case 22: Baseline - No policy -> deliver all at once

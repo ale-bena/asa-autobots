@@ -125,11 +125,7 @@ export class MapRepresentation {
     }
 
     /**
-     * Locates the extreme walkable tiles of the map. The leftmost walkable tile
-     * may not be at x=0 (walls/void), so callers must use these instead of the
-     * raw bounds. Topmost = highest y, bottommost = lowest y (Cartesian).
-     * Ties at the same extreme coordinate are broken by Manhattan distance to
-     * the reference point.
+     * Locates the extreme walkable tiles of the map.
      * @param {number} [refX=0] - Reference X for tie-breaking.
      * @param {number} [refY=0] - Reference Y for tie-breaking.
      * @returns {{leftmost: {x: number, y: number}|null, rightmost: {x: number, y: number}|null, topmost: {x: number, y: number}|null, bottommost: {x: number, y: number}|null}}
@@ -210,7 +206,7 @@ export class MapRepresentation {
     }
 
     /**
-     * Prints a beautiful colored ANSI representation of the grid map to the console.
+     * Prints a colored ANSI representation of the grid map to the console.
      */
     printMap() {
         console.log('\n🗺️  ASA Grid Map Representation:');

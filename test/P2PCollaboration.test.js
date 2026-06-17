@@ -39,36 +39,18 @@ describe('P2PCollaboration tests', () => {
         assert.strictEqual(beliefs.peers.size, 0);
     });
 
-    test('handleIncomingChat messages: PING, PONG, SYNC_REQ, SYNC_ACK', async () => {
+    test('handleIncomingChat messages: SYNC_REQ, SYNC_ACK', async () => {
         const beliefs = new BeliefBase();
         beliefs.me = { id: AGENT_IDS.BDI_AGENT_ID, name: 'BDI_Me', x: 1, y: 1, score: 0 };
         const socket = new MockSocket();
         const p2p = new P2PManager(beliefs, socket);
 
-        // 1. PING -> should send PONG with our coords
-        await p2p.handleIncomingChat(AGENT_IDS.LLM_AGENT_ID, JSON.stringify({ type: 'PING' }));
-        assert.strictEqual(socket.emitted.length, 1);
-        assert.strictEqual(socket.emitted[0].recipient, AGENT_IDS.LLM_AGENT_ID);
-        const reply = JSON.parse(socket.emitted[0].message);
-        assert.strictEqual(reply.type, 'PONG');
-        assert.strictEqual(reply.payload.x, 1);
-
-        // 2. PONG -> should update peer info in beliefs
-        await p2p.handleIncomingChat(AGENT_IDS.LLM_AGENT_ID, JSON.stringify({
-            type: 'PONG',
-            payload: { name: 'LLM_Peer', x: 2, y: 2, score: 20 }
-        }));
-        assert.ok(beliefs.peers.has(AGENT_IDS.LLM_AGENT_ID));
-        const peer = beliefs.peers.get(AGENT_IDS.LLM_AGENT_ID);
-        assert.strictEqual(peer.name, 'LLM_Peer');
-        assert.strictEqual(peer.x, 2);
-
-        // 3. SYNC_REQ -> should reply with SYNC_ACK
+        // 1. SYNC_REQ -> should reply with SYNC_ACK
         await p2p.handleIncomingChat(AGENT_IDS.LLM_AGENT_ID, JSON.stringify({ type: 'SYNC_REQ' }));
-        const syncAck = JSON.parse(socket.emitted[1].message);
+        const syncAck = JSON.parse(socket.emitted[0].message);
         assert.strictEqual(syncAck.type, 'SYNC_ACK');
 
-        // 4. SYNC_ACK -> should set synced = true in variables
+        // 2. SYNC_ACK -> should set synced = true in variables
         assert.ok(!beliefs.variables.synced);
         await p2p.handleIncomingChat(AGENT_IDS.LLM_AGENT_ID, JSON.stringify({ type: 'SYNC_ACK' }));
         assert.strictEqual(beliefs.variables.synced, true);

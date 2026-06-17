@@ -34,42 +34,7 @@ function resolveIdentifier(name, state, localVars = {}) {
         return state.variables[name];
     }
 
-    if (name.startsWith('path.traverses_')) {
-        const parts = name.split('_');
-        if (parts.length === 3) {
-            const targetX = Number(parts[1]);
-            const targetY = Number(parts[2]);
-            const path = localVars.path || state.path;
-            if (path && Array.isArray(path)) {
-                return path.some(node => Math.round(node.x) === targetX && Math.round(node.y) === targetY);
-            }
-        }
-        return false;
-    }
-
     const beliefs = state.beliefs || state;
-
-    if (name.startsWith('parcel.')) {
-        const parcel = localVars.parcel || state.parcel;
-        if (!parcel) return 0;
-
-        if (name === 'parcel.previouslyCarriedByOther') {
-            if (beliefs.parcelHistory) {
-                const history = beliefs.parcelHistory.get(parcel.id);
-                if (history) {
-                    const myId = beliefs.me ? beliefs.me.id : '';
-                    return Array.from(history).some(agentId => agentId !== myId);
-                }
-            }
-            return false;
-        }
-
-        const prop = name.split('.')[1];
-        if (parcel[prop] !== undefined) {
-            return parcel[prop];
-        }
-        return 0;
-    }
 
     switch (name) {
         case 'x':
@@ -83,19 +48,6 @@ function resolveIdentifier(name, state, localVars = {}) {
         case 'stack_size':
             return beliefs.carried ? beliefs.carried.length : 0;
         default:
-            // Resolve nested properties if any (e.g. me.x)
-            if (name.includes('.')) {
-                const parts = name.split('.');
-                let val = beliefs;
-                for (const part of parts) {
-                    if (val && val[part] !== undefined) {
-                        val = val[part];
-                    } else {
-                        return 0;
-                    }
-                }
-                return val;
-            }
             return 0;
     }
 }

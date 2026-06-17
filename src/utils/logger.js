@@ -41,8 +41,7 @@ export const logger = {
 
     p2p(type, payload, recipient, isPrivate = true) {
         if (process.env.LOG_P2P === 'false') return;
-        const isHeartbeat = ['PEER_STATUS', 'PING', 'PONG'].includes(type);
-        if (isHeartbeat && process.env.LOG_PEER_STATUS !== 'true') return;
+        if (type == 'PEER_STATUS' && process.env.LOG_PEER_STATUS !== 'true') return;
 
         const privacy = isPrivate ? 'privately' : 'publicly (shout)';
         console.log(format(COLORS.yellow, '[P2P]', `Sent ${type} ${privacy} to ${recipient}: ${JSON.stringify(payload)}`));
@@ -50,8 +49,7 @@ export const logger = {
 
     p2pReceived(type, payload, senderId) {
         if (process.env.LOG_P2P === 'false') return;
-        const isHeartbeat = ['PEER_STATUS', 'PING', 'PONG'].includes(type);
-        if (isHeartbeat && process.env.LOG_PEER_STATUS !== 'true') return;
+        if (type == 'PEER_STATUS' && process.env.LOG_PEER_STATUS !== 'true') return;
 
         console.log(format(COLORS.yellow, '[P2P]', `Received ${type} from ${senderId}: ${JSON.stringify(payload)}`));
     },

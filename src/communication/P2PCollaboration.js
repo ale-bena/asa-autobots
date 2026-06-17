@@ -46,22 +46,6 @@ export class P2PManager {
             logger.p2pReceived(message.type, message, senderId);
 
             switch (message.type) {
-                case 'PING':
-                    this.sendPong(senderId);
-                    break;
-
-                case 'PONG':
-                    if (message.payload) {
-                        this.beliefs.peers.set(senderId, {
-                            id: senderId,
-                            name: message.payload.name || senderId,
-                            x: message.payload.x,
-                            y: message.payload.y,
-                            score: message.payload.score
-                        });
-                    }
-                    break;
-
                 case 'PEER_STATUS':
                     if (message.payload) {
                         this.beliefs.peers.set(senderId, {
@@ -229,22 +213,6 @@ export class P2PManager {
             }
         }
         await this.socket.emitShout(rawString);
-    }
-
-    /**
-     * Sends a pong heartbeat back containing our agent's coordinates.
-     * @param {string} [targetId] - Recipient agent ID.
-     */
-    sendPong(targetId) {
-        this.broadcast({
-            type: 'PONG',
-            payload: {
-                name: this.beliefs.me.name,
-                x: this.beliefs.me.x,
-                y: this.beliefs.me.y,
-                score: this.beliefs.me.score
-            }
-        }, targetId);
     }
 
     /**

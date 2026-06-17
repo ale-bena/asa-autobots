@@ -68,48 +68,6 @@ describe('PolicyEngine tests', () => {
             assert.strictEqual(evaluateExpression('carrying.size == 2', state), true);
             assert.strictEqual(evaluateExpression('carrying.length == 2', state), true);
             assert.strictEqual(evaluateExpression('stack_size == 2', state), true);
-            
-            // Nested resolution check
-            assert.strictEqual(evaluateExpression('me.score == 500', state), true);
-            assert.strictEqual(evaluateExpression('nonexistent.val == 0', state), true); // returns 0
-        });
-
-        test('parcel variables resolution', () => {
-            const state = {
-                beliefs: {
-                    me: { id: 'me_agent' },
-                    parcelHistory: new Map([
-                        ['parcel_1', new Set(['other_agent', 'me_agent'])]
-                    ])
-                }
-            };
-            const localVars = {
-                parcel: { id: 'parcel_1', reward: 100 }
-            };
-
-            assert.strictEqual(evaluateExpression('parcel.reward == 100', state, localVars), true);
-            assert.strictEqual(evaluateExpression('parcel.previouslyCarriedByOther', state, localVars), true);
-
-            // Parcel not previously carried by other
-            const stateNoOther = {
-                beliefs: {
-                    me: { id: 'me_agent' },
-                    parcelHistory: new Map([
-                        ['parcel_2', new Set(['me_agent'])]
-                    ])
-                }
-            };
-            const localNoOther = { parcel: { id: 'parcel_2', reward: 50 } };
-            assert.strictEqual(evaluateExpression('parcel.previouslyCarriedByOther', stateNoOther, localNoOther), false);
-        });
-
-        test('path traverses identifier', () => {
-            const state = {
-                path: [{ x: 1, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 2 }]
-            };
-            assert.strictEqual(evaluateExpression('path.traverses_1_2', state), true);
-            assert.strictEqual(evaluateExpression('path.traverses_1_3', state), false);
-            assert.strictEqual(evaluateExpression('path.traverses_invalid_format', state), false);
         });
     });
 
