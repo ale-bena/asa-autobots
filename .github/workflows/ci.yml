@@ -1,0 +1,35 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Syntax Validation
+        run: |
+          find src/ -name "*.js" | xargs -I {} node --check {}
+          find test/ -name "*.js" | xargs -I {} node --check {}
+
+      - name: Run Dead Code Analysis (Knip)
+        run: npx knip
+
+      - name: Run Test Suite
+        run: find test/ -name "*.test.js" | xargs node --test

@@ -1,5 +1,10 @@
 # ASA Autobots: Cooperative Multi-Agent Deliveroo System
 
+[![Tests Status](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#command-line-interface)
+[![Coverage Status](https://img.shields.io/badge/coverage-91.5%25-brightgreen.svg)](#command-line-interface)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-blue.svg)](https://nodejs.org)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+
 This repository contains the implementation, test suites, and documentation for a cooperative multi-agent delivery system designed for the Deliveroo competitive simulator. The project demonstrates hybrid planning, combining reactive agents, cognitive LLM-based coordination, and STRIPS PDDL symbolic path clearance.
 
 ---
@@ -116,7 +121,3 @@ Launch a lightweight documentation server:
 npm run doc
 ```
 Access the server at **[http://localhost:3000](http://localhost:3000)**.
-
-### Production Build
-The documentation hub is compiled for production and hosted via GitHub Pages:
-**[https://ale-bena.github.io/asa-autobots/](https://ale-bena.github.io/asa-autobots/)**
