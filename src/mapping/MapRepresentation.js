@@ -209,7 +209,7 @@ export class MapRepresentation {
      * Prints a colored ANSI representation of the grid map to the console.
      */
     printMap() {
-        console.log('\n🗺️  ASA Grid Map Representation:');
+        console.log('\n️  ASA Grid Map Representation:');
         for (let y = this.height - 1; y >= 0; y--) {
             let rowStr = '';
             for (let x = 0; x < this.width; x++) {

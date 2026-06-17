@@ -16,9 +16,9 @@ const NUM_AGENTS = 3;
 const RUN_DURATION_MS = 15000; // Run for 15 seconds
 
 console.log('================================================================================');
-console.log(`⚡ ASA Autobots - Multi-Agent Benchmark Runner`);
-console.log(`👥 Spawning ${NUM_AGENTS} Agent Processes...`);
-console.log(`⏱️ Duration: ${RUN_DURATION_MS / 1000} seconds`);
+console.log(` ASA Autobots - Multi-Agent Benchmark Runner`);
+console.log(` Spawning ${NUM_AGENTS} Agent Processes...`);
+console.log(`️ Duration: ${RUN_DURATION_MS / 1000} seconds`);
 console.log('================================================================================');
 
 const processes = [];
