@@ -17,7 +17,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Install Dependencies
         run: npm install
@@ -31,4 +31,4 @@ jobs:
         run: npx knip
 
       - name: Run Test Suite
-        run: find test/ -name "*.test.js" | xargs node --test
+        run: npm test
