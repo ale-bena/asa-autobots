@@ -236,7 +236,7 @@
             font-size: 1.25rem;
             flex-shrink: 0;
         }
-        
+
         .toast-message {
             flex-grow: 1;
         }
@@ -668,7 +668,8 @@
 
         <header>
             <h1>Map Builder</h1>
-            <div class="subtitle">Visually paint map grids, configure NPCS, and directly edit/validate the game configuration JSON.</div>
+            <div class="subtitle">Visually paint map grids, configure NPCS, and directly edit/validate the game
+                configuration JSON.</div>
         </header>
 
         <div class="tool-layout">
@@ -822,6 +823,42 @@
                             </select>
                         </div>
                     </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="movementDuration">Agent Move Duration (ms)</label>
+                            <input type="number" id="movementDuration" class="form-input" value="50" min="0"
+                                oninput="generateJson()">
+                        </div>
+                        <div class="form-group">
+                            <label for="obsDistance">Observation Distance</label>
+                            <input type="number" id="obsDistance" class="form-input" value="5" min="0"
+                                oninput="generateJson()">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="agentType">Agent Type</label>
+                            <input type="text" id="agentType" class="form-input" value="" placeholder="default (undefined)"
+                                oninput="generateJson()">
+                        </div>
+                        <div class="form-group">
+                            <label for="parcelDecay">Parcel Decay Rate</label>
+                            <input type="text" id="parcelDecay" class="form-input" value="1s" placeholder="e.g. 1s"
+                                oninput="generateJson()">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="rewardAvg">Parcel Reward Avg</label>
+                            <input type="number" id="rewardAvg" class="form-input" value="30" min="0"
+                                oninput="generateJson()">
+                        </div>
+                        <div class="form-group">
+                            <label for="rewardVariance">Parcel Reward Var</label>
+                            <input type="number" id="rewardVariance" class="form-input" value="10" min="0"
+                                oninput="generateJson()">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- NPC Configuration Card -->
@@ -854,13 +891,19 @@
 
                     <div style="margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
                         <button class="btn" style="flex: 1; min-width: 90px;" onclick="copyJson()">📋 Copy</button>
-                        <button class="btn btn-outline" style="flex: 1; min-width: 90px;" onclick="downloadJson()">💾 Download</button>
-                        <button class="btn btn-outline" style="flex: 1; min-width: 90px;" onclick="toggleImport()">📥 Import</button>
+                        <button class="btn btn-outline" style="flex: 1; min-width: 90px;" onclick="downloadJson()">💾
+                            Download</button>
+                        <button class="btn btn-outline" style="flex: 1; min-width: 90px;" onclick="toggleImport()">📥
+                            Import</button>
                     </div>
-                    <div id="importContainer" style="display: none; margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.25rem;">
+                    <div id="importContainer"
+                        style="display: none; margin-top: 1.25rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.25rem;">
                         <label for="importJsonInput">Paste Map JSON or Choose File</label>
-                        <input type="file" id="mapFileSelect" accept=".json" class="form-input" style="margin-bottom: 0.75rem;" onchange="handleMapFileSelect(this, 'importJsonInput')">
-                        <textarea id="importJsonInput" class="form-input" style="font-family: var(--font-mono); font-size: 0.8rem; height: 120px; resize: vertical;" placeholder='{ "map": { "tiles": [...] } }'></textarea>
+                        <input type="file" id="mapFileSelect" accept=".json" class="form-input"
+                            style="margin-bottom: 0.75rem;" onchange="handleMapFileSelect(this, 'importJsonInput')">
+                        <textarea id="importJsonInput" class="form-input"
+                            style="font-family: var(--font-mono); font-size: 0.8rem; height: 120px; resize: vertical;"
+                            placeholder='{ "map": { "tiles": [...] } }'></textarea>
                         <button class="btn" style="margin-top: 0.75rem;" onclick="applyImport()">Apply Import</button>
                     </div>
                 </div>
@@ -871,7 +914,14 @@
 
         <footer
             style="margin-top: 3rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem; text-align: center; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 2rem;">
-            made by <a href="https://github.com/ale-bena" target="_blank" style="color: var(--text-main); font-weight: 700; text-decoration: none; transition: color var(--transition-fast);" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'">Alessandro Benassi</a> and <a href="https://github.com/xupremix" target="_blank" style="color: var(--text-main); font-weight: 700; text-decoration: none; transition: color var(--transition-fast);" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'">Lollato Filippo</a>
+            made by <a href="https://github.com/ale-bena" target="_blank"
+                style="color: var(--text-main); font-weight: 700; text-decoration: none; transition: color var(--transition-fast);"
+                onmouseover="this.style.color='var(--primary)'"
+                onmouseout="this.style.color='var(--text-main)'">Alessandro Benassi</a> and <a
+                href="https://github.com/xupremix" target="_blank"
+                style="color: var(--text-main); font-weight: 700; text-decoration: none; transition: color var(--transition-fast);"
+                onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-main)'">Lollato
+                Filippo</a>
         </footer>
 
     </div>
@@ -884,6 +934,7 @@
         let isMouseDown = false;
         let undoStack = [];
         let redoStack = [];
+        let skipJsonOutputUpdate = false;
 
         // NPC State array: each entry is { type: "random", count: 1, moving_event: "frame" }
         let npcState = [
@@ -1211,6 +1262,24 @@
             const parcelMax = parseInt(document.getElementById('parcelMax').value) || 5;
             const parcelGen = document.getElementById('parcelGen').value || '2s';
 
+            // Custom configuration fields
+            const movementDurationVal = document.getElementById('movementDuration').value;
+            const movementDuration = movementDurationVal !== "" ? parseInt(movementDurationVal) : 50;
+
+            const obsDistanceVal = document.getElementById('obsDistance').value;
+            const obsDistance = obsDistanceVal !== "" ? parseInt(obsDistanceVal) : 5;
+
+            const agentTypeInput = document.getElementById('agentType').value.trim();
+            const agentType = agentTypeInput === "" ? undefined : agentTypeInput;
+
+            const parcelDecay = document.getElementById('parcelDecay').value || '1s';
+
+            const rewardAvgVal = document.getElementById('rewardAvg').value;
+            const rewardAvg = rewardAvgVal !== "" ? parseInt(rewardAvgVal) : 30;
+
+            const rewardVarianceVal = document.getElementById('rewardVariance').value;
+            const rewardVariance = rewardVarianceVal !== "" ? parseInt(rewardVarianceVal) : 10;
+
             const tiles = [];
             for (let x = 0; x < gridWidth; x++) {
                 const column = [];
@@ -1243,20 +1312,23 @@
                 npcs: formattedNpcs,
                 parcels: {
                     generation_event: parcelGen,
-                    decaying_event: "1s",
+                    decaying_event: parcelDecay,
                     max: parcelMax,
-                    reward_avg: 30,
-                    reward_variance: 10
+                    reward_avg: rewardAvg,
+                    reward_variance: rewardVariance
                 },
                 player: {
-                    movement_duration: 50,
-                    observation_distance: 5,
+                    agent_type: agentType,
+                    movement_duration: movementDuration,
+                    observation_distance: obsDistance,
                     capacity: capacity
                 }
             };
 
-            const textarea = document.getElementById('jsonOutput');
-            textarea.value = JSON.stringify(payload, null, 2);
+            if (!skipJsonOutputUpdate) {
+                const textarea = document.getElementById('jsonOutput');
+                textarea.value = JSON.stringify(payload, null, 2);
+            }
 
             setValidationStatus(true);
         }
@@ -1304,6 +1376,9 @@
                 // If valid, sync settings and canvas state
                 saveState();
 
+                // Set flag to avoid overwriting textarea while typing
+                skipJsonOutputUpdate = true;
+
                 gridWidth = width;
                 gridHeight = height;
 
@@ -1315,6 +1390,28 @@
                 if (data.maxPlayers) document.getElementById('maxPlayers').value = data.maxPlayers;
                 if (data.player && data.player.capacity) document.getElementById('capacity').value = data.player.capacity;
                 if (data.parcels && data.parcels.max) document.getElementById('parcelMax').value = data.parcels.max;
+
+                // Sync new configuration fields
+                if (data.player && data.player.movement_duration !== undefined) {
+                    document.getElementById('movementDuration').value = data.player.movement_duration;
+                }
+                if (data.player && data.player.observation_distance !== undefined) {
+                    document.getElementById('obsDistance').value = data.player.observation_distance;
+                }
+                if (data.player && data.player.agent_type !== undefined) {
+                    document.getElementById('agentType').value = data.player.agent_type;
+                } else {
+                    document.getElementById('agentType').value = '';
+                }
+                if (data.parcels && data.parcels.decaying_event !== undefined) {
+                    document.getElementById('parcelDecay').value = data.parcels.decaying_event;
+                }
+                if (data.parcels && data.parcels.reward_avg !== undefined) {
+                    document.getElementById('rewardAvg').value = data.parcels.reward_avg;
+                }
+                if (data.parcels && data.parcels.reward_variance !== undefined) {
+                    document.getElementById('rewardVariance').value = data.parcels.reward_variance;
+                }
 
                 // Sync parcel spawn rate select dropdown
                 if (data.parcels && data.parcels.generation_event) {
@@ -1363,6 +1460,8 @@
 
             } catch (err) {
                 setValidationStatus(false, `JSON Syntax Error:\n${err.message}`);
+            } finally {
+                skipJsonOutputUpdate = false;
             }
         }
 
@@ -1414,7 +1513,7 @@
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = function (e) {
                 document.getElementById(textareaId).value = e.target.result;
             };
             reader.readAsText(file);
@@ -1426,7 +1525,7 @@
 
             try {
                 const data = JSON.parse(rawJson);
-                
+
                 if (!data.map || typeof data.map.width === 'undefined' || typeof data.map.height === 'undefined' || !data.map.tiles) {
                     showNotification("Invalid format! Must contain map.width, map.height, and map.tiles.", "error");
                     return;
@@ -1445,7 +1544,29 @@
                 if (data.maxPlayers) document.getElementById('maxPlayers').value = data.maxPlayers;
                 if (data.player && data.player.capacity) document.getElementById('capacity').value = data.player.capacity;
                 if (data.parcels && data.parcels.max) document.getElementById('parcelMax').value = data.parcels.max;
-                
+
+                // Sync new configuration fields
+                if (data.player && data.player.movement_duration !== undefined) {
+                    document.getElementById('movementDuration').value = data.player.movement_duration;
+                }
+                if (data.player && data.player.observation_distance !== undefined) {
+                    document.getElementById('obsDistance').value = data.player.observation_distance;
+                }
+                if (data.player && data.player.agent_type !== undefined) {
+                    document.getElementById('agentType').value = data.player.agent_type;
+                } else {
+                    document.getElementById('agentType').value = '';
+                }
+                if (data.parcels && data.parcels.decaying_event !== undefined) {
+                    document.getElementById('parcelDecay').value = data.parcels.decaying_event;
+                }
+                if (data.parcels && data.parcels.reward_avg !== undefined) {
+                    document.getElementById('rewardAvg').value = data.parcels.reward_avg;
+                }
+                if (data.parcels && data.parcels.reward_variance !== undefined) {
+                    document.getElementById('rewardVariance').value = data.parcels.reward_variance;
+                }
+
                 if (data.parcels && data.parcels.generation_event) {
                     const genEvent = String(data.parcels.generation_event).trim().toLowerCase();
                     const dropdown = document.getElementById('parcelGen');

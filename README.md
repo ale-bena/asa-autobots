@@ -5,6 +5,12 @@
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D24.0.0-blue.svg)](https://nodejs.org)
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
+---
+
+<p align="center">
+  <video src="./output.mp4" width="100%" style="max-width: 850px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.15); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);" controls autoplay loop muted></video>
+</p>
+
 This repository contains the implementation, test suites, and documentation for a cooperative multi-agent delivery system designed for the Deliveroo competitive simulator. The project demonstrates hybrid planning, combining reactive agents, cognitive LLM-based coordination, and STRIPS PDDL symbolic path clearance.
 
 ---
