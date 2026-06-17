@@ -234,17 +234,25 @@ export class PddlServiceBridge {
         }
 
         // 2. Declare objects and initial positions
+        const sanitizePddlName = (id, fallbackX, fallbackY) => {
+            const rawName = id || `crate_${fallbackX}_${fallbackY}`;
+            let safe = rawName.replace(/[^a-zA-Z0-9_-]/g, '_');
+            if (!/^[a-zA-Z]/.test(safe)) {
+                safe = 'c_' + safe;
+            }
+            return safe;
+        };
+
         initFacts.push('(me ag)');
         initFacts.push(`(at ag t_${agent.x}_${agent.y})`);
 
-        let targetCrateId = 'crate_target';
+        const targetCrateId = sanitizePddlName(targetCrate.id, targetCrate.x, targetCrate.y);
         initFacts.push(`(at ${targetCrateId} t_${targetCrate.x}_${targetCrate.y})`);
 
         const otherCrateIds = [];
-        let idx = 1;
         for (const c of crates.values()) {
             if (c.x === targetCrate.x && c.y === targetCrate.y) continue;
-            const otherCrateId = `crate_other_${idx++}`;
+            const otherCrateId = sanitizePddlName(c.id, c.x, c.y);
             otherCrateIds.push(otherCrateId);
             initFacts.push(`(at ${otherCrateId} t_${c.x}_${c.y})`);
         }

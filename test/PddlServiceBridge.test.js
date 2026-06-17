@@ -75,10 +75,21 @@ describe('PddlServiceBridge — compileProblemPddl', () => {
         assert.ok(problem.includes('crate-push-problem'));
         assert.ok(problem.includes('deliveroo-crates'));
         assert.ok(problem.includes('ag'));
-        assert.ok(problem.includes('crate_target'));
+        assert.ok(problem.includes('crate_1_1'));
         assert.ok(problem.includes('(at ag t_0_0)'));
-        assert.ok(problem.includes('(at crate_target t_1_1)'));
-        assert.ok(problem.includes('(:goal (at crate_target t_2_2))'));
+        assert.ok(problem.includes('(at crate_1_1 t_1_1)'));
+        assert.ok(problem.includes('(:goal (at crate_1_1 t_2_2))'));
+    });
+
+    test('uses provided crate ID when available', () => {
+        const bridge = new PddlServiceBridge();
+        const map = makeSmallMap();
+        const beliefs = makeBeliefs();
+        const problem = bridge.compileProblemPddl(map, beliefs, { id: 'c_actual', x: 1, y: 1 }, { x: 2, y: 2 });
+
+        assert.ok(problem.includes('c_actual'));
+        assert.ok(problem.includes('(at c_actual t_1_1)'));
+        assert.ok(problem.includes('(:goal (at c_actual t_2_2))'));
     });
 
     test('marks agent and target crate positions as occupied (not clear)', () => {
@@ -109,16 +120,16 @@ describe('PddlServiceBridge — compileProblemPddl', () => {
         const map = makeSmallMap();
         const beliefs = makeBeliefs({
             crates: new Map([
-                ['c1', { x: 0, y: 1 }],
-                ['c2', { x: 2, y: 0 }],
+                ['c1', { id: 'c1', x: 0, y: 1 }],
+                ['c2', { id: 'c2', x: 2, y: 0 }],
             ]),
         });
         const problem = bridge.compileProblemPddl(map, beliefs, { x: 1, y: 1 }, { x: 2, y: 2 });
 
-        assert.ok(problem.includes('crate_other_1'));
-        assert.ok(problem.includes('crate_other_2'));
-        assert.ok(problem.includes('(at crate_other_1 t_0_1)'));
-        assert.ok(problem.includes('(at crate_other_2 t_2_0)'));
+        assert.ok(problem.includes('c1'));
+        assert.ok(problem.includes('c2'));
+        assert.ok(problem.includes('(at c1 t_0_1)'));
+        assert.ok(problem.includes('(at c2 t_2_0)'));
     });
 
     test('includes peer positions as occupied when ignorePeers is false', () => {

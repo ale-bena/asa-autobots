@@ -372,6 +372,12 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
     );
 
     if (!path || path.length < 2) {
+        // Trivial path (length 1) means agent is already at the destination
+        if (path && path.length === 1) {
+            beliefs.me.nextStep = null;
+            beliefs.me.path = [];
+            return true;
+        }
         const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
         // Do not block delivery or spawn zones
         if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
@@ -386,6 +392,69 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
     while (i < path.length) {
         const step = path[i];
         
+        // Stuck Sanity Checks to resolve deadlocks
+        if (beliefs.variables && beliefs.variables.stuckCounter && beliefs.variables.stuckCounter >= 100) {
+            console.error(`[BDI Stuck Check] CRITICAL: Stuck counter reached ${beliefs.variables.stuckCounter}. Aborting plan.`);
+            beliefs.variables.stuckCounter = 0;
+            beliefs.me.nextStep = null;
+            beliefs.me.path = [];
+            return false;
+        }
+
+        if (beliefs.variables && beliefs.variables.stuckCounter && beliefs.variables.stuckCounter >= 8) {
+            console.log(`[BDI Stuck Check] stuckCounter is ${beliefs.variables.stuckCounter}. Actively resolving deadlock.`);
+            if (beliefs.map) {
+                const neighbors = beliefs.map.getNeighbors(beliefs.me);
+                const clearNeighbors = neighbors.filter(n => {
+                    const hasCrate = Array.from(beliefs.crates.values()).some(c => Math.round(c.x) === n.x && Math.round(c.y) === n.y);
+                    const hasPeer = Array.from(beliefs.peers.values()).some(p => Math.round(p.x) === n.x && Math.round(p.y) === n.y);
+                    return !hasCrate && !hasPeer;
+                });
+                
+                // Exclude the step we want to take to make sure we back off in a different direction if possible
+                const backOffCandidates = clearNeighbors.filter(n => n.x !== step.x || n.y !== step.y);
+                const candidates = backOffCandidates.length > 0 ? backOffCandidates : clearNeighbors;
+
+                if (candidates.length > 0) {
+                    const backOffTile = candidates[Math.floor(Math.random() * candidates.length)];
+                    console.log(`[BDI Stuck Check] Deadlock detected. Backing off to clear neighbor tile (${backOffTile.x}, ${backOffTile.y}).`);
+                    beliefs.me.nextStep = backOffTile;
+                    beliefs.me.path = [backOffTile];
+                    const success = yield { action: 'move', target: backOffTile };
+                    if (success) {
+                        if (beliefs.variables) beliefs.variables.stuckCounter = 0;
+                        // Force path recalculation from our new back-off position
+                        path = findAStarPath(
+                            beliefs.map,
+                            { x: beliefs.me.x, y: beliefs.me.y },
+                            { x: actualTargetX, y: actualTargetY },
+                            beliefs.policyRules,
+                            beliefs
+                        );
+                        if (!path || path.length < 2) {
+                            if (path && path.length === 1) {
+                                beliefs.me.nextStep = null;
+                                beliefs.me.path = [];
+                                return true;
+                            }
+                            const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
+                            if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
+                                beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
+                            }
+                            beliefs.me.nextStep = null;
+                            beliefs.me.path = [];
+                            return false;
+                        }
+                        i = 1;
+                        continue;
+                    }
+                }
+            }
+        } else if (beliefs.variables && beliefs.variables.stuckCounter && beliefs.variables.stuckCounter >= 4) {
+            console.log(`[BDI Stuck Check] stuckCounter is ${beliefs.variables.stuckCounter}. Yielding a wait tick to resolve potential deadlock.`);
+            yield { action: 'wait' };
+        }
+        
         // If displaced (e.g. on resume), recalculate path from actual position
         if (beliefs.map && !beliefs.map.isAdjacent(beliefs.me, step)) {
             path = findAStarPath(
@@ -396,6 +465,11 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
                 beliefs
             );
             if (!path || path.length < 2) {
+                if (path && path.length === 1) {
+                    beliefs.me.nextStep = null;
+                    beliefs.me.path = [];
+                    return true;
+                }
                 const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
                 if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
                     beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
@@ -424,6 +498,11 @@ export function* NavigateTo(beliefs, targetX, targetY, radius = 0) {
                 beliefs
             );
             if (!path || path.length < 2) {
+                if (path && path.length === 1) {
+                    beliefs.me.nextStep = null;
+                    beliefs.me.path = [];
+                    return true;
+                }
                 const tileCode = beliefs.map.getTileCode(actualTargetX, actualTargetY);
                 if (tileCode !== MapRepresentation.TILE_CODES.SPAWN && tileCode !== MapRepresentation.TILE_CODES.DELIVERY) {
                     beliefs.blockedTargets.set(`${actualTargetX},${actualTargetY}`, Date.now());
@@ -457,6 +536,7 @@ export function* CollectAndDeliver(beliefs, parcelId) {
     const reached = yield* NavigateTo(beliefs, parcel.x, parcel.y);
     if (!reached) {
         console.log(`[BDI] CollectAndDeliver: failed to navigate to parcel ${parcelId}, aborting.`);
+        beliefs.blockedTargets.set(parcelId, Date.now());
         return;
     }
 

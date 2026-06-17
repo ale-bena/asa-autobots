@@ -18,8 +18,8 @@ import { P2PManager } from './src/communication/P2PCollaboration.js';
 import { IntentionEngine } from './src/agent/Intentions.js';
 
 console.log('================================================================================');
-console.log('🧠 ASA Autobots - LLM Cognitive Coordinator Agent (Agent 2)');
-console.log(`📡 Connecting to: ${SOCKET_HOST}`);
+console.log(' ASA Autobots - LLM Cognitive Coordinator Agent (Agent 2)');
+console.log(` Connecting to: ${SOCKET_HOST}`);
 console.log('================================================================================');
 
 const socket = DjsConnect();

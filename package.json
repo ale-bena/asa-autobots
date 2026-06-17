@@ -18,9 +18,11 @@
   },
   "private": true,
   "scripts": {
+    "start": "node run_map_builder.js",
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
     "benchmark": "node src/benchmark/run_benchmark.js",
+    "map-builder": "node run_map_builder.js",
     "test": "node --test",
     "test:coverage": "node --experimental-test-coverage --test",
     "prebuild": "node -e \"require('fs').mkdirSync('report/build',{recursive:true})\"",

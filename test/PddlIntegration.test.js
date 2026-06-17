@@ -206,6 +206,18 @@ describe('PddlIntegration tests', () => {
         assert.deepStrictEqual(moves[0], { x: 1, y: 0 }); // executes push directly
     });
 
+    test('solveObstaclePushLocally returns null for diagonal target tile', () => {
+        const beliefs = new BeliefBase();
+        beliefs.map = new MapRepresentation(3, 3, [
+            { x: 0, y: 0, type: '3' }, { x: 1, y: 0, type: '3' }, { x: 2, y: 0, type: '3' },
+            { x: 0, y: 1, type: '3' }, { x: 1, y: 1, type: '3' }, { x: 2, y: 1, type: '3' },
+            { x: 0, y: 2, type: '3' }, { x: 1, y: 2, type: '3' }, { x: 2, y: 2, type: '3' }
+        ]);
+        beliefs.me = { x: 0, y: 0 };
+        const moves = solveObstaclePushLocally(beliefs, { x: 1, y: 1 }, { x: 0, y: 2 });
+        assert.strictEqual(moves, null);
+    });
+
     test('executePddlPlanRecipe empty moves', () => {
         const gen = executePddlPlanRecipe(new BeliefBase(), []);
         assert.strictEqual(gen.next().done, true);
@@ -279,5 +291,39 @@ describe('PddlIntegration tests', () => {
 
         assert.strictEqual(step.done, true);
         assert.strictEqual(beliefs.me.nextStep, null);
+    });
+
+    test('resolveCrateBlockedPath routes around unpushable/recently-failed crates', async () => {
+        const beliefs = new BeliefBase();
+        // Two parallel corridors connected at (0,0)-(0,1) and (2,0)-(2,1)
+        // Top corridor: (0,0) -> (1,0) -> (2,0) with crate c1 at (1,0)
+        // Bottom corridor: (0,1) -> (1,1) -> (2,1) with crate c2 at (1,1) and crate-move-capable tiles at (1,1), (2,1)
+        beliefs.map = new MapRepresentation(3, 2, [
+            { x: 0, y: 0, type: '3' }, { x: 1, y: 0, type: '3' }, { x: 2, y: 0, type: '3' },
+            { x: 0, y: 1, type: '3' }, { x: 1, y: 1, type: '5' }, { x: 2, y: 1, type: '5' }
+        ]);
+        beliefs.me = { x: 0, y: 0 };
+        beliefs.crates.set('c1', { id: 'c1', x: 1, y: 0 });
+        beliefs.crates.set('c2', { id: 'c2', x: 1, y: 1 });
+
+        const engineState = {
+            failedPddlSolves: new Map(),
+            blockedDeliveryZones: new Map()
+        };
+
+        // Mark c1 (at 1,0) as failed PDDL solve recently
+        engineState.failedPddlSolves.set('1,0->null', Date.now());
+
+        const bestGoal = { type: 'deliver', targetId: null, x: 2, y: 0 };
+        const result = await resolveCrateBlockedPath(beliefs, bestGoal, engineState);
+
+        // Result should be the moves to push c2 via local solver
+        assert.ok(result);
+        assert.strictEqual(result.length, 2);
+        assert.deepStrictEqual(result[0], { x: 0, y: 1 }); // move to (0,1)
+        assert.deepStrictEqual(result[1], { x: 1, y: 1 }); // move to (1,1) / push c2
+
+        // Goal should NOT be blocked
+        assert.strictEqual(beliefs.blockedTargets.has('2,0'), false);
     });
 });

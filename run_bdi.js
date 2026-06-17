@@ -17,8 +17,8 @@ import { MapRepresentation } from './src/mapping/MapRepresentation.js';
 import { P2PManager } from './src/communication/P2PCollaboration.js';
 
 console.log('================================================================================');
-console.log('🤖 ASA Autobots - BDI/PDDL Physical Executor Agent (Agent 1)');
-console.log(`📡 Connecting to: ${SOCKET_HOST}`);
+console.log(' ASA Autobots - BDI/PDDL Physical Executor Agent (Agent 1)');
+console.log(` Connecting to: ${SOCKET_HOST}`);
 console.log('================================================================================');
 
 const socket = DjsConnect();

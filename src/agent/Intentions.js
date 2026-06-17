@@ -268,6 +268,31 @@ export class IntentionEngine {
 
                     // Fallback: try ignoring crates (admin explicitly ordered this move)
                     if (!path || path.length < 2) {
+                        // Trivial path (length 1) means agent is already at the target
+                        if (path && path.length === 1) {
+                            console.log(`[BDI] admin_move to (${tx}, ${ty}) — already at target. Completing immediately.`);
+                            beliefs.activeContracts.delete('admin_move');
+                            engine.adminMoveRetries = 0;
+                            yield { action: 'say', payload: { type: 'MOVE_TO_ACK', success: true, x: tx, y: ty } };
+                            if (dropOnArrival && beliefs.carried.length > 0) {
+                                console.log(`[BDI] admin_move: dropOnArrival is true. Dropping all carried parcels at destination.`);
+                                while (beliefs.carried.length > 0) {
+                                    yield { action: 'putdown' };
+                                }
+                            }
+                            if (holdOnArrival) {
+                                console.log(`[BDI] holdOnArrival is true. Activating HOLD state for agent.`);
+                                beliefs.hold = true;
+                                if (holdDuration && holdDuration > 0) {
+                                    console.log(`[BDI] Auto-resume timer scheduled in ${holdDuration} seconds.`);
+                                    setTimeout(() => {
+                                        console.log(`[BDI] Auto-resume timer expired. Releasing hold.`);
+                                        beliefs.hold = false;
+                                    }, holdDuration * 1000);
+                                }
+                            }
+                            return;
+                        }
                         console.log(`[BDI] admin_move: primary A* path blocked, trying ignoreCrates fallback.`);
                         path = findAStarPath(
                             beliefs.map,
@@ -279,6 +304,14 @@ export class IntentionEngine {
                     }
 
                     if (!path || path.length < 2) {
+                        // Check again for trivial path after ignoreCrates fallback
+                        if (path && path.length === 1) {
+                            console.log(`[BDI] admin_move to (${tx}, ${ty}) — already at target (ignoreCrates). Completing immediately.`);
+                            beliefs.activeContracts.delete('admin_move');
+                            engine.adminMoveRetries = 0;
+                            yield { action: 'say', payload: { type: 'MOVE_TO_ACK', success: true, x: tx, y: ty } };
+                            return;
+                        }
                         console.log(`[BDI] admin_move to (${tx}, ${ty}) failed: no path found.`);
                         engine.adminMoveRetries++;
                         if (engine.adminMoveRetries >= ADMIN_MOVE_MAX_RETRIES) {
@@ -637,7 +670,10 @@ export class IntentionEngine {
             const stepResult = this.activeGenerator.next(this.lastActionSuccess);
 
             if (stepResult.done) {
-                console.log(`[BDI] Plan ${this.currentGoal?.type || 'unknown'} completed.`);
+                const goalType = this.currentGoal?.type || 'unknown';
+                if (goalType !== 'patrol_spawn' && goalType !== 'patrol') {
+                    console.log(`[BDI] Plan ${goalType} completed.`);
+                }
                 // Resume previous plan from the stack, but skip stale ones
                 let resumed = false;
                 while (this.suspendedStack.length > 0) {
@@ -712,7 +748,7 @@ export class IntentionEngine {
             yield* NavigateTo(this.beliefs, targetX, targetY);
 
             while (true) {
-                if (!(this.beliefs && this.beliefs.me && this.beliefs.map && this.beliefs.map.getTileCode(this.beliefs.me.x, this.beliefs.me.y) === MapRepresentation.TILE_CODES.DELIVERY)) {
+                if (!(this.beliefs && this.beliefs.me && this.beliefs.map && this.beliefs.map.getTileCode(Math.round(this.beliefs.me.x), Math.round(this.beliefs.me.y)) === MapRepresentation.TILE_CODES.DELIVERY)) {
                     break;
                 }
                 const carriedList = this.beliefs.carried || [];

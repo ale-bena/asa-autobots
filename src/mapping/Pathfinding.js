@@ -27,20 +27,23 @@ function heuristic(a, b) {
  * @returns {Array<{x: number, y: number}>|null} Array of steps from start (inclusive) to goal (inclusive), or null if unreachable.
  */
 export function findAStarPath(map, start, goal, policy = null, beliefs = null, blockPeers = false) {
+    const roundedStart = { x: Math.round(start.x), y: Math.round(start.y) };
+    const roundedGoal = { x: Math.round(goal.x), y: Math.round(goal.y) };
+
     // If start is same as goal, return trivial single-node path.
-    if (start.x === goal.x && start.y === goal.y) {
-        return [start];
+    if (roundedStart.x === roundedGoal.x && roundedStart.y === roundedGoal.y) {
+        return [roundedStart];
     }
 
-    const startKey = `${start.x},${start.y}`;
-    const openSet = [start];
+    const startKey = `${roundedStart.x},${roundedStart.y}`;
+    const openSet = [roundedStart];
     const cameFrom = new Map();
 
     const gScore = new Map();
     gScore.set(startKey, 0);
 
     const fScore = new Map();
-    fScore.set(startKey, heuristic(start, goal));
+    fScore.set(startKey, heuristic(roundedStart, roundedGoal));
 
     const avoidTiles = new Set(policy && policy.avoidTiles ? policy.avoidTiles : []);
 
@@ -93,7 +96,7 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null, b
         const currentKey = `${current.x},${current.y}`;
 
         // Reconstruct path if goal is reached.
-        if (current.x === goal.x && current.y === goal.y) {
+        if (current.x === roundedGoal.x && current.y === roundedGoal.y) {
             const path = [current];
             let temp = currentKey;
             while (cameFrom.has(temp)) {
@@ -115,7 +118,7 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null, b
                 continue;
             }
 
-            const isGoal = neighbor.x === goal.x && neighbor.y === goal.y;
+            const isGoal = neighbor.x === roundedGoal.x && neighbor.y === roundedGoal.y;
 
             // Treat intermediate blocked targets as blocked.
             const isBlockedTarget = beliefs && beliefs.blockedTargets && beliefs.blockedTargets.has(neighborKey);
@@ -148,7 +151,7 @@ export function findAStarPath(map, start, goal, policy = null, beliefs = null, b
             if (tentativeGScore < (gScore.get(neighborKey) ?? Infinity)) {
                 cameFrom.set(neighborKey, current);
                 gScore.set(neighborKey, tentativeGScore);
-                fScore.set(neighborKey, tentativeGScore + heuristic(neighbor, goal));
+                fScore.set(neighborKey, tentativeGScore + heuristic(neighbor, roundedGoal));
 
                 if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
                     openSet.push(neighbor);

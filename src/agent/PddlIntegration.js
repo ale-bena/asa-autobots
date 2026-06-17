@@ -20,11 +20,11 @@ import { MapRepresentation } from '../mapping/MapRepresentation.js';
  */
 export function findClearCrateCapableTile(beliefs, cratePos) {
     if (!beliefs.map) return null;
-    
+
     const neighborsOfCrate = beliefs.map.getNeighbors(cratePos);
     const queue = [];
     const visited = new Set([`${cratePos.x},${cratePos.y}`]);
-    
+
     for (const n of neighborsOfCrate) {
         visited.add(`${n.x},${n.y}`);
         queue.push({ x: n.x, y: n.y, firstStep: n });
@@ -51,25 +51,9 @@ export function findClearCrateCapableTile(beliefs, cratePos) {
             const dx = current.firstStep.x - cratePos.x;
             const dy = current.firstStep.y - cratePos.y;
             const agentPushTile = { x: cratePos.x - dx, y: cratePos.y - dy };
-            
+
             if (beliefs.map.isWalkableTile(agentPushTile.x, agentPushTile.y)) {
-                // Check path to agentPushTile treating cratePos as blocked
-                const hasPath = (beliefs.me.x === agentPushTile.x && beliefs.me.y === agentPushTile.y) || 
-                    findAStarPath(
-                        beliefs.map,
-                        { x: beliefs.me.x, y: beliefs.me.y },
-                        agentPushTile,
-                        beliefs.policyRules,
-                        {
-                            crates: new Map([['temp_crate', cratePos]]),
-                            blockedTargets: new Map(),
-                            peers: new Map()
-                        }
-                    ) !== null;
-                    
-                if (hasPath) {
-                    return { x: current.x, y: current.y };
-                }
+                return { x: current.x, y: current.y };
             }
         }
 
@@ -94,19 +78,23 @@ export function findClearCrateCapableTile(beliefs, cratePos) {
  */
 export function solveObstaclePushLocally(beliefs, crate, targetTile) {
     if (!beliefs.map) return null;
-    
+
     // Direction of push
     const dx = crate.x - targetTile.x;
     const dy = crate.y - targetTile.y;
-    
+
+    if (Math.abs(dx) + Math.abs(dy) !== 1) {
+        return null;
+    }
+
     const pushFromX = crate.x + dx;
     const pushFromY = crate.y + dy;
-    
+
     // Verify pushFrom is walkable
     if (!beliefs.map.isWalkableTile(pushFromX, pushFromY)) {
         return null;
     }
-    
+
     // Path to the push-from position treating the target crate as blocked.
     const path = (beliefs.me.x === pushFromX && beliefs.me.y === pushFromY)
         ? [{ x: pushFromX, y: pushFromY }]
@@ -117,17 +105,17 @@ export function solveObstaclePushLocally(beliefs, crate, targetTile) {
             beliefs.policyRules,
             beliefs
         );
-        
+
     if (!path || path.length === 0) {
         return null;
     }
-    
+
     // Map path to moves (excluding current position)
     const moves = path.slice(1).map(step => ({ x: step.x, y: step.y }));
-    
+
     // Final move is onto the crate's current tile to execute the push
     moves.push({ x: crate.x, y: crate.y });
-    
+
     return moves;
 }
 
@@ -175,20 +163,52 @@ export async function resolveCrateBlockedPath(beliefs, bestGoal, engineState) {
         beliefs.policyRules,
         beliefs
     );
-    if (pathNormal && pathNormal.length >= 2) return null; // Path exists, no crate blocking
+    if (pathNormal && pathNormal.length >= 1) return null; // Path exists (or agent already at goal), no crate blocking
 
+    // Identify unpushable crates (crates that have failed PDDL solve recently, within 30s)
+    const unpushableCrates = new Map();
+    if (beliefs.crates && engineState.failedPddlSolves) {
+        const now = Date.now();
+        for (const [cId, crate] of beliefs.crates.entries()) {
+            const cratePrefix = `${crate.x},${crate.y}->`;
+            const crateKeyExact = `${crate.x},${crate.y}`;
+            let hasRecentFail = false;
+            for (const [key, ts] of engineState.failedPddlSolves.entries()) {
+                if ((key === crateKeyExact || key.startsWith(cratePrefix)) && (now - ts < 30000)) {
+                    hasRecentFail = true;
+                    break;
+                }
+            }
+            if (hasRecentFail) {
+                unpushableCrates.set(cId, crate);
+            }
+        }
+    }
+
+    // Find path ignoring all pushable crates, but treating unpushable/recently-failed crates as walls.
     const pathIgnoreCrates = findAStarPath(
         beliefs.map,
         { x: beliefs.me.x, y: beliefs.me.y },
         { x: bestGoal.x, y: bestGoal.y },
         beliefs.policyRules,
-        null
+        { crates: unpushableCrates }
     );
-    if (!pathIgnoreCrates || pathIgnoreCrates.length < 2) return null; // No path even ignoring crates
 
+    // If no path exists even when ignoring pushable crates (i.e. blocked by unpushable ones), block the goal.
+    if (!pathIgnoreCrates || pathIgnoreCrates.length < 2) {
+        if (pathIgnoreCrates && pathIgnoreCrates.length === 1) {
+            return null; // Already at goal, no crate blocking
+        }
+        _blockGoal(beliefs, bestGoal, engineState);
+        return null;
+    }
+
+    // Find the first crate along this path (which is guaranteed not to be in unpushableCrates)
     let firstCrate = null;
     for (const step of pathIgnoreCrates) {
-        const crate = Array.from(beliefs.crates.values()).find(c => c.x === step.x && c.y === step.y);
+        const crate = Array.from(beliefs.crates.values()).find(
+            c => c.x === step.x && c.y === step.y && !unpushableCrates.has(c.id)
+        );
         if (crate) {
             firstCrate = crate;
             break;
@@ -202,16 +222,20 @@ export async function resolveCrateBlockedPath(beliefs, bestGoal, engineState) {
         ? `${firstCrate.x},${firstCrate.y}->${targetTile.x},${targetTile.y}`
         : `${firstCrate.x},${firstCrate.y}->null`;
     const lastFail = engineState.failedPddlSolves.get(pddlKey);
-    const pddlCooldownMs = 30000; // 30s cooldown
+    const pddlCooldownMs = 1000; // 1s cooldown
 
     if (lastFail && (Date.now() - lastFail) < pddlCooldownMs) {
-        console.log(`[PDDL Throttle] Skipping solver for crate at (${firstCrate.x}, ${firstCrate.y}) — failed ${((Date.now() - lastFail) / 1000).toFixed(1)}s ago (cooldown: ${pddlCooldownMs / 1000}s).`);
-        _blockGoal(beliefs, bestGoal, engineState);
+        const lastLogKey = `log_${pddlKey}`;
+        const lastLogTime = engineState.failedPddlSolves.get(lastLogKey) || 0;
+        if (Date.now() - lastLogTime > 5000) {
+            console.log(`[PDDL Throttle] Skipping solver for crate at (${firstCrate.x}, ${firstCrate.y}) — failed ${((Date.now() - lastFail) / 1000).toFixed(1)}s ago (cooldown: ${pddlCooldownMs / 1000}s).`);
+            engineState.failedPddlSolves.set(lastLogKey, Date.now());
+        }
         return null;
     }
 
     if (!targetTile) {
-        _blockGoal(beliefs, bestGoal, engineState);
+        engineState.failedPddlSolves.set(pddlKey, Date.now());
         return null;
     }
 
@@ -237,8 +261,14 @@ export async function resolveCrateBlockedPath(beliefs, bestGoal, engineState) {
     }
 
     console.log(`[PDDL] Solver failed. Recording cooldown for key: ${pddlKey}`);
+    console.log(`[PDDL Debug] Target Crate: (${firstCrate.x}, ${firstCrate.y}), Target Goal: (${targetTile.x}, ${targetTile.y})`);
+    console.log(`[PDDL Debug] Agent position: (${beliefs.me.x}, ${beliefs.me.y})`);
+    const peersStr = Array.from(beliefs.peers.values()).map(p => `(${Math.round(p.x)}, ${Math.round(p.y)})`).join(', ');
+    console.log(`[PDDL Debug] Peers: [${peersStr}]`);
+    const cratesStr = Array.from(beliefs.crates.values()).map(c => `(${c.x}, ${c.y})`).join(', ');
+    console.log(`[PDDL Debug] Crates: [${cratesStr}]`);
+    
     engineState.failedPddlSolves.set(pddlKey, Date.now());
-    _blockGoal(beliefs, bestGoal, engineState);
     return null;
 }
 

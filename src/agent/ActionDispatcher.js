@@ -97,6 +97,7 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
                 if (isHeadOn && beliefs.me.id > peerConflict.id) {
                     console.log(`[BDI Yield] Head-on conflict with ${peerConflict.id} at (${target.x}, ${target.y}). Yielding priority.`);
                     await new Promise(resolve => setTimeout(resolve, 150));
+                    beliefs.variables.stuckCounter = (beliefs.variables.stuckCounter || 0) + 1;
                     success = false;
                     break;
                 }
@@ -111,6 +112,7 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
             if (peerNextConflict && beliefs.me.id > peerNextConflict.id) {
                 console.log(`[BDI Yield] Target collision race with ${peerNextConflict.id} for tile (${target.x}, ${target.y}). Yielding priority.`);
                 await new Promise(resolve => setTimeout(resolve, 150));
+                beliefs.variables.stuckCounter = (beliefs.variables.stuckCounter || 0) + 1;
                 success = false;
                 break;
             }
@@ -138,11 +140,13 @@ export async function dispatchAction(action, beliefs, socket, engineState, getPe
                 }
                 
                 engineState.collisionCounter = 0; // Reset collision count
+                beliefs.variables.stuckCounter = 0; // Reset stuck counter
                 success = true;
             } else {
                 console.warn(`[BDI] Move failed to (${target.x}, ${target.y}) - Collision detected.`);
                 logActionFailure(beliefs, action, 'Move failed (collision detected)');
                 engineState.collisionCounter++;
+                beliefs.variables.stuckCounter = (beliefs.variables.stuckCounter || 0) + 1;
 
                 if (engineState.collisionCounter >= 2) {
                     const blockKey = `${target.x},${target.y}`;
