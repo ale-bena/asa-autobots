@@ -16,6 +16,7 @@
     "whatwg-url": "^14.0.0",
     "tr46": "^4.0.0"
   },
+   "private": true,
   "scripts": {
     "start": "node scripts/serve.js",
     "doc": "node scripts/serve.js",
@@ -23,7 +24,12 @@
     "llm": "node run_llm.js",
     "benchmark": "node src/benchmark/run_benchmark.js",
     "test": "node --test",
-    "test:coverage": "node --experimental-test-coverage --test"
+    "test:coverage": "node --experimental-test-coverage --test",
+    "prebuild": "node -e \"require('fs').mkdirSync('report/build',{recursive:true})\"",
+    "build": "latexmk -pdf -cd -outdir=build report/report.tex",
+    "postbuild": "node -e \"const fs=require('fs');fs.renameSync('report/build/report.pdf','report/report.pdf');fs.rmSync('report/build',{recursive:true,force:true})\"",
+    "watch": "latexmk -pdf -pvc -cd -outdir=build report/report.tex",
+    "clean": "node -e \"const fs=require('fs');fs.rmSync('report/build',{recursive:true,force:true});fs.rmSync('report/report.pdf',{force:true})\""
   },
   "repository": {
     "type": "git",

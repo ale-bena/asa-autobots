@@ -10,8 +10,8 @@ The agents of each team cooperate with each other to compete against the other t
 
 The aim is to develop two cooperating agents:
 \begin{itemize}
-\item {Agent 1 — BDI physical executor}: performs the actual moving, picking, and delivering.
-\item {Agent 2 — LLM cognitive coordinator}: can carry the same execution as agent one, but needs to hae theabilito to interpret 
+\item {Agent 1, BDI physical executor}: performs the actual moving, picking, and delivering.
+\item {Agent 2, LLM cognitive coordinator}: can carry the same execution as agent one, but needs to hae theabilito to interpret 
 Admin chat messages. From them it can derive, tasks(coordinating with BDI agent), rules and answare Q\&A.
 \end{itemize}
 On top of this, PDDL planning is used as an additional tool to solve complex situations.
@@ -44,8 +44,6 @@ Each agent also recieves their own identity and state (id, name, x, y, score) \t
 The game parameters, such as observation distance, player capacity, parcel decay interval,
 movement duration are received separately via onConfig and are kept in beliefs.config and used for calibration.
 The most used ones are cached as dedicated fields.
-\uline{Together they form a single belief base, populated at different points,
-and serve to calibrate the agent's reasoning.}
 
 Before the BDI executor begins acting, the two teammates perform a startup handshake to guarantee
 both are online. Each agent's execution loop is gated on a \texttt{synced} flag: while unsynchronized,

@@ -16,6 +16,7 @@
 \usepackage{multirow}
 \usepackage{booktabs}
 \usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepackage{longtable}
@@ -122,14 +123,14 @@
     \begingroup
       % override format of title chapter
       \titleformat{\chapter}[display]
-        {\normalfont\Huge\bfseries}{}{1em}{}
+        {\normalfont\LARGE\bfseries}{}{1em}{}
 
       % prevent \chapter from starting a new page
       \makeatletter
       \patchcmd{\chapter}{\if@openright\cleardoublepage\else\clearpage\fi}{\par}{}{}
       \makeatother
 
-      \titlespacing*{\chapter}{0pt}{0.40in}{0.02in}
+      \titlespacing*{\chapter}{0pt}{0.01in}{0.02in}
       \titlespacing*{\section}{0pt}{0.15in}{0.02in}
       \titlespacing*{\subsection}{0pt}{0.10in}{0.02in}
 
@@ -139,7 +140,7 @@
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       % chapters
       \input{chapters/1_introduction.tex}
-      %\cleardoublepage
+      \cleardoublepage
       \input{chapters/2_bdi_agent.tex}
       %\cleardoublepage
       \input{chapters/3_pddl_use.tex}
@@ -150,10 +151,11 @@
       %\cleardoublepage
       \input{chapters/6_tests_and_conclusion.tex}
       %\cleardoublepage
-
+    
     % bibliography
     \addcontentsline{toc}{chapter}{Bibliography}
     \bibliographystyle{plain}
+    \nocite{*}
     \bibliography{biblio}
     %\newpage
     %\input{acknowledgements}

@@ -9,21 +9,36 @@ natural-language reasoning.
 The agent maintains a model of the world (\emph{beliefs}), evaluates which goals
 are worth pursuing (\emph{desires}), commits to one (\emph{intention}), and
 executes it incrementally. A control loop, driven by the game loop, runs each cycle
-of the schema below at a tick every 16ms, so roughly \SI{60}{\hertz}.
+of the schema below at a tick.
 
 \begin{center}
-\begin{verbatim}
-  perceive --> revise beliefs --> deliberate --> commit to plan --> act
-                    ^                (throttled)                       |
-                    +-------------------- world ---------------------- +
-\end{verbatim}
+\begin{tikzpicture}[
+  node distance=2mm and 4mm,
+  box/.style={draw, rounded corners=2pt, font=\small, inner sep=3pt},
+  >={Stealth[round]}
+]
+  \node[box] (perceive)           {perceive};
+  \node[box, right=of perceive]   (revise)     {revise beliefs};
+  \node[box, right=of revise]     (deliberate) {deliberate};
+  \node[box, right=of deliberate] (commit)     {commit to plan};
+  \node[box, right=of commit]     (act)        {act};
+  \node[font=\scriptsize, below=3mm] at ($(deliberate.east)!0.5!(commit.west)$) {(throttled)};
+
+  \draw[->] (perceive)   -- (revise);
+  \draw[->] (revise)     -- (deliberate);
+  \draw[->] (deliberate) -- (commit);
+  \draw[->] (commit)     -- (act);
+
+  \draw[->] (act.south) -- ++(0,-5mm)
+    -| node[below, pos=0.25, font=\scriptsize]{world} (revise.south);
+\end{tikzpicture}
 \end{center}
 
-\[
-\text{Beliefs} \;\rightarrow\; \text{Goal} \;\rightarrow\; \text{Plan}
-\;\rightarrow\; \text{Action} \;\rightarrow\; \text{Feedback}
-\;\rightarrow\; \text{Beliefs}
-\]
+%\[
+%\text{Beliefs} \;\rightarrow\; \text{Goal} \;\rightarrow\; \text{Plan}
+%\;\rightarrow\; \text{Action} \;\rightarrow\; \text{Feedback}
+%\;\rightarrow\; \text{Beliefs}
+%\]
 
 \section{Sensing and Belief Revision}
 
@@ -97,7 +112,7 @@ time and adjusting it by the coordinator's policy multipliers and bonuses:
 %
 \begin{equation}
   \mathrm{value} = \bigl(\mathrm{reward} - r_{\text{decay}}\cdot t_{\text{trip}}\bigr)
-                   \cdot m_{\text{policy}}, \qquad
+                   \cdot m_{\text{policy}} + b_{\text{policy}}, \qquad
   \mathrm{utility} = \frac{\mathrm{value}}{t_{\text{trip}}}.
 \end{equation}
 %
@@ -112,7 +127,8 @@ relay tile, patrols the parcel spawn zones, and finally wanders.
 \subsection{Delivery Optimization}
 
 Both the utility estimates above and the delivery step itself defer to a dedicated
-optimizer (\texttt{DeliveryOptimizer.js}): on reaching a delivery tile the agent rarely
+optimizer \\
+(\texttt{DeliveryOptimizer.js}): on reaching a delivery tile the agent rarely
 just drops everything, since policy rules may bound which rewards score or require a
 minimum stack size. \texttt{optimizeDeliveryStack} jointly chooses \emph{which subset}
 of cargo to deliver and \emph{how long to wait} first (candidate wait times are taken

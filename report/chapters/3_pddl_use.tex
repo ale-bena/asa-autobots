@@ -2,19 +2,22 @@
 \label{ch:pddl}
 
 The BDI loop is complemented by a symbolic planning layer reserved for one
-sub-problem: clearing a pushable crate that blocks a corridor. PDDL(Planning Domain Definition Language) 
-is an exact sybolic planner, useless for reward economics but ideal for the discrete, combinatorial
+sub-problem: clearing a pushable crate that blocks a corridor. PDDL (Planning Domain Definition Language) 
+is an exact symbolic planner, useless for reward economics but ideal for the discrete, combinatorial
 question ``what sequence of moves and pushes relocates this crate out of the way?'',
 where an ad-hoc heuristic would be brittle.
 
 \section{Role and scope}
 \label{sec:role_scope}
-The design choice is to invoke it as narrowly as possible. Ordinary tile-by-tile
-navigation stays with A\textsuperscript{*}, which is fast and runs constantly; a
-general-purpose solver called on every query would be far too slow for a
-\SI{60}{\hertz} control loop. Restricting PDDL to occasional obstacle resolution keeps
-it off the main loop while still guaranteeing a correct plan where local heuristics fail.
-\\
+%The design choice is to invoke it as narrowly as possible. 
+Ordinary tile-by-tile navigation stays with A\textsuperscript{*}, 
+which is fast and runs constantly; a
+general-purpose solver called on every query would be far too slow for the 
+control loop, so PDDL is kept off the main loop while still
+guaranteeing a correct plan where local heuristics fail. \\
+
+%Restricting PDDL to occasional obstacle resolution keeps
+%it off the main loop while still guaranteeing a correct plan where local heuristics fail.
 The planner is reached through the \texttt{pddl-client} interface. For testing and
 development we point it at a \emph{local} service on \texttt{http://localhost:5001}
 (set via the \texttt{PAAS\_HOST} variable) rather than the public hosted endpoint, for
@@ -81,23 +84,30 @@ the blocking crate: a nearby clear, crate-capable tile, reachable via a push who
 search). Resolution then proceeds in tiers, cheapest first:
 
 \begin{center}
-\begin{verbatim}
-  A* path blocked by crate
-        |
-        v
-  pick destination tile  --(none)-->  block goal temporarily
-        |
-        v
-  local push solver  --(success)-->  execute push          (0 ms)
-        |
-     (fails)
-        v
-  PDDL solver @ :5001  --(success)-->  execute plan
-        |
-     (fails)
-        v
-  record cooldown + block goal
-\end{verbatim}
+\begin{tikzpicture}[
+  node distance=8.5mm and 27mm,
+  box/.style={draw, rounded corners=2pt, font=\small, inner sep=3pt, align=center},
+  term/.style={draw, rounded corners=2pt, font=\small, inner sep=3pt, align=center, fill=gray!10},
+  >={Stealth[round]}
+]
+  \node[box] (blocked)            {A* path blocked by crate};
+  \node[box, below=of blocked]    (pick)     {pick destination tile};
+  \node[box, below=of pick]       (local)    {local push solver};
+  \node[box, below=of local]      (pddl)     {PDDL solver @ :5001};
+  \node[box, below=of pddl]       (cooldown) {record cooldown + block goal};
+
+  \node[term, right=of pick]      (blockgoal) {block goal\\temporarily};
+  \node[term, right=of local]     (execpush)  {execute push};
+  \node[term, right=of pddl]      (execplan)  {execute plan};
+
+  \draw[->] (blocked)  -- (pick);
+  \draw[->] (pick)     -- (local);
+  \draw[->] (local)    -- node[left,  font=\footnotesize]{fails}   (pddl);
+  \draw[->] (pddl)     -- node[left,  font=\footnotesize]{fails}   (cooldown);
+  \draw[->] (pick)     -- node[above, font=\footnotesize]{none}    (blockgoal);
+  \draw[->] (local)    -- node[above, font=\footnotesize]{success} (execpush);
+  \draw[->] (pddl)     -- node[above, font=\footnotesize]{success} (execplan);
+\end{tikzpicture}
 \end{center}
 
 A purely local, single-push computation is tried first because it is instantaneous

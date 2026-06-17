@@ -1,25 +1,34 @@
 \chapter{LLM Agent}
 \label{ch:llm}
-
 This second agent is a cognitive coordinator. It is built on the same BDI core as the
-executor, owning a \texttt{BeliefBase} and an \texttt{IntentionEngine}, so it can
-itself move, pick up, and deliver, including the PDDL-based crate clearing described in 
-\ref{ch:pddl}. 
-What sets it apart is an additional natural-language reasoning layer. Its job is to 
-receive instructions from the Admin in the chat, reason
-about them, and translate them into concrete commands and policies for the whole
-team. It never invents game actions from this reasoning directly: every effect is
-mediated either by a tool or by a peer-to-peer message, and any movement it commands,
-whether for itself or the partner, is ultimately carried out by a BDI agent through
-the loop of the previous chapters.
-There were 3 possible models to chose from and the one selected is \texttt{llama-3.3-70b-lmstudio}.
+executor (\ref{ch:bdi}), so it too can move, pick up, deliver, and clear crates
+with PDDL (\ref{ch:pddl}). What sets it apart is an additional natural-language
+reasoning layer: it receives instructions from the Admin in the chat, reasons about
+them, and translates them into concrete commands and policies for the whole team. It
+never acts on this reasoning directly; every effect is mediated by a tool or a
+peer-to-peer message and ultimately carried out by a BDI agent. Of the three candidate
+models available, the one selected is \texttt{llama-3.3-70b-lmstudio}.
 
 \begin{center}
-\begin{verbatim}
-  Admin prompt --> reasoning loop --> tool call --> {local effect, P2P message}
-                        ^                  |
-                        +---- tool result -+        (repeat until "stop")
-\end{verbatim}
+\begin{tikzpicture}[
+  node distance=2mm and 5mm,
+  box/.style={draw, rounded corners=2pt, font=\small, inner sep=3pt, align=center},
+  >={Stealth[round]}
+]
+  \node[box] (prompt)             {Admin prompt};
+  \node[box, right=of prompt]     (loop)   {reasoning\\loop};
+  \node[box, right=of loop]       (tool)   {tool call};
+  \node[box, right=of tool]       (effect) {local effect\\/ P2P msg};
+  
+  \draw[->] (prompt) -- (loop);
+  \draw[->] (loop)   -- (tool);
+  \draw[->] (tool)   -- (effect);
+
+  \draw[->] (tool.south) -- ++(0,-5mm)
+    -| node[below, pos=0.25, font=\scriptsize]{tool result} (loop.south);
+
+  \node[font=\scriptsize, right=3mm of effect] {(repeat until ``stop'')};
+\end{tikzpicture}
 \end{center}
 
 \section{The reasoning loop}
@@ -40,14 +49,11 @@ model executes the requested tool (or records the answer), feeds the result
 back as the next input, and repeats until a \texttt{stop} is produced. Outputs that
 violate the schema are rejected and re-requested with an error description, up to three attempts. 
 The loop advances one step at a time by design, so a message containing
-several tasks \uline{is decomposed and resolved in presentation order}, with intermediate
-answers returned in that same order(\ref{sub:res_and_lim}).
-
-
+several tasks is decomposed and resolved alongside intermediate
+answers (\ref{sub:res_and_lim}).
 
 
 \section{Prompt construction}
-
 The system prompt is fixed for the whole run and organised into clearly delimited
 sections. A \emph{role} description frames the model as the team's reasoning brain
 and lists the agent identifiers. A \emph{definitions} block gives precise meanings
@@ -62,8 +68,7 @@ with the available tools and a bank of worked examples.
 The definitions and operating rules are what make the behaviour reliable rather than
 improvised. Because \emph{reward}, \emph{task}, and \emph{rule} are defined
 explicitly, the model can consistently separate a one-off rewarded task from a
-standing rule, the distinction that drives feasibility gating (a task is checked for
-a positive reward before acting, a rule is simply applied). The operating rules
+standing rule, the distinction that drives feasibility gating. The operating rules
 encode the rest of the discipline: expressions must be solved with the arithmetic
 tool instead of computed by the model, multi-task prompts must be decomposed and
 answered in presentation order, and unknown facts such as positions or map extremes
@@ -74,9 +79,7 @@ walkable before a move is ordered, and never sending both agents to the same til
 Beyond stating the rules, the prompt teaches them largely by example. It is
 few-shot, with curated cases covering feasibility checks, multi-task decomposition,
 rule application, holds and resumes, and cooperation contracts, each showing the full
-turn-by-turn exchange. \texttt{The examples, more than the rules alone, are what holps the model to 
-hold the JSOM protocol and execute one step at a time.(remove)}
-Finally, the tools section of the prompt
+turn-by-turn exchange. Finally, the tools section of the prompt
 is generated automatically from the same registry the coordinator executes against,
 so the descriptions the model reads can never drift from the tools that actually run.
 
@@ -101,8 +104,7 @@ rule-changing actions (movement, variable setting, cooperation proposals) are
 reward-gated: they are issued only once the arithmetic evaluation has confirmed a
 strictly positive reward for the current prompt. Once confirmed, the gate is sticky
 for the rest of that prompt, so later numeric evaluations such as computing
-coordinates do not re-lock it. A prompt with no reward yields no action and no chat
-output.
+coordinates do not re-lock it.
 
 Two classes are intentionally exempt. \emph{Standing policy rules}
 (``from now on\ldots'', penalties, multipliers) are announcements of an effect, not
