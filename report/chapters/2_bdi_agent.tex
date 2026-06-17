@@ -9,7 +9,7 @@ natural-language reasoning.
 The agent maintains a model of the world (\emph{beliefs}), evaluates which goals
 are worth pursuing (\emph{desires}), commits to one (\emph{intention}), and
 executes it incrementally. A control loop, driven by the game loop, runs each cycle
-of the schema below at a tick.
+of the schema below at each tick.
 
 \begin{center}
 \begin{tikzpicture}[
@@ -22,7 +22,7 @@ of the schema below at a tick.
   \node[box, right=of revise]     (deliberate) {deliberate};
   \node[box, right=of deliberate] (commit)     {commit to plan};
   \node[box, right=of commit]     (act)        {act};
-  \node[font=\scriptsize, below=3mm] at ($(deliberate.east)!0.5!(commit.west)$) {(throttled)};
+  \node[font=\scriptsize, below=3mm] at ($(deliberate.east)!0.5!(commit.west)$){};
 
   \draw[->] (perceive)   -- (revise);
   \draw[->] (revise)     -- (deliberate);
@@ -86,7 +86,7 @@ Because of the one-way gates, adjacency is directed and not symmetric: a move fr
 $A$ to $B$ may be legal while the reverse is not. For this reason no adjacency table
 is precomputed; the graph is implicit and evaluated lazily. Pathfinding
 (\texttt{src/mapping/Pathfinding.js}) expands it by repeatedly calling
-\texttt{getNeighbors()} during the search, automatically respecting walls and gates.
+\texttt{getNeighbors()} during the search, automatically respecting walls, crates and directional tiles.
 
 \section{Desires and Goal Selection}
 \label{sec:desires-goals}
@@ -116,12 +116,11 @@ time and adjusting it by the coordinator's policy multipliers and bonuses:
   \mathrm{utility} = \frac{\mathrm{value}}{t_{\text{trip}}}.
 \end{equation}
 %
-Because travel time is real, a closer modest parcel can outscore a distant high-reward
-one. When already carrying cargo, the agent also weighs delivering now against detouring
+When already carrying cargo, the agent weighs delivering now against detouring
 for one more pickup. This trade-off is bounded by three factors: the carrying capacity,
 the decay risk to the cargo already held, and any required-stack-size incentive, which
 can make it worth delaying delivery to assemble a larger batch. When no option scores
-positively, deliberation degrades gracefully: it delivers what is held, anchors near a
+positively, deliberation degrades: it delivers what is held, anchors near a
 relay tile, patrols the parcel spawn zones, and finally wanders.
 
 \subsection{Delivery Optimization}
@@ -150,14 +149,12 @@ The agent is deliberately reluctant to abandon an intention: a newly selected go
 replaces the running one only when \texttt{shouldPreemptActivePlan(...)}
 (\texttt{PreemptionManager.js}) judges the switch worthwhile, which prevents
 oscillation between comparable options. The exception is a path blocked by a crate,
-which suspends the active plan and injects a PDDL \texttt{clear\_corridor} plan
+which suspends the active plan and injects a PDDL \texttt{push\_crate} plan
 instead (\cref{ch:pddl}).
 
 On commit, \texttt{instantiatePlanRecipe(goal)} maps the goal type to a
-generator-based plan recipe (e.g. \texttt{pickup} $\to$ \texttt{CollectAndDeliver},
-\texttt{deliver} $\to$ \texttt{\_deliverRecipe}, plus the admin and cooperation
-recipes). These generators yield one primitive step at a time and can be suspended
-and resumed via a suspension stack, so a corridor-clearing plan can interrupt a
+generator-based plan recipe. These generators yield one primitive step at a time and can be suspended
+and resumed via a suspension stack, so a priority plan can interrupt a
 delivery and the delivery resumes afterwards. Suspended plans that have gone stale, since
 their target disappeared or became obsolete, are discarded rather than resumed.
 
@@ -171,19 +168,23 @@ rather than continue blindly.
 
 Two behaviours sit outside the normal deliberation cycle. The first is an
 \emph{opportunistic pickup}: if the agent finds itself standing on a free parcel and
-is still below its carrying capacity (starting at infinity), it grabs the parcel immediately, before any
-goal evaluation (deliberation). This is done to avoid leaving reachable parcels on the floor and wasting potential value.
+is still below its carrying capacity, it grabs the parcel immediately, before any
+goal evaluation. This is done to avoid leaving reachable parcels on the floor and wasting potential value.
 
 The second is \emph{collision avoidance} between the two teammates, designed so they
 never deadlock over a tile during testing. Before moving, each agent uses the partner's broadcast
 position and planned next step to detect a possible conflict where both aim for the same tile (see
 \cref{sec:agent-comm}).
 When this happens one agent must yield, and this is decided deterministically by comparing agent identifiers,
-so both reach the same conclusion independently without any negotiation(higher ID yields). The yeilding agent 
+so both reach the same conclusion independently without any negotiation(higher ID yields). The yielding agent 
 pauses \SI{150}{\milli\second} to let the other pass. If a move is still rejected,
 the agent waits one tick (\SI{100}{\milli\second}) and retries, and after two repeated
 collisions on the same step it marks that tile as blocked and re-plans a route around it.
 The block is cleared after a short timeout so the tile stays reusable.
+When the two agents repeatedly block each other, a \texttt{stuckCounter} escalates the response: 
+it first waits a tick, then steps aside to a free neighbouring tile and re-plans, and as a last resort 
+abandons the plan so deliberation can start fresh.
+% A \texttt{stuckCounter} escalates persistent blocking, stepping the agent aside to re-plan and, as a last resort, abandoning the plan.
 When a plan finishes, the engine resumes any suspended plan or clears the goal and
 re-deliberates on the next tick.
 

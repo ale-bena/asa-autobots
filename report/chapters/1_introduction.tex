@@ -6,15 +6,15 @@ Parcel rewards decay over time, so the goal is to maximize total delivered score
 and dropping off parcels efficiently before they lose value. 
 Extra points can be earned by answering questions
 and following instructions sent by the Admin in the game chat.
-The agents of each team cooperate with each other to compete against the other teams.
+The agents of each team cooperate with each other to compete against other teams.
 
 The aim is to develop two cooperating agents:
 \begin{itemize}
 \item {Agent 1, BDI physical executor}: performs the actual moving, picking, and delivering.
-\item {Agent 2, LLM cognitive coordinator}: can carry the same execution as agent one, but needs to hae theabilito to interpret 
-Admin chat messages. From them it can derive, tasks(coordinating with BDI agent), rules and answare Q\&A.
+\item {Agent 2, LLM cognitive coordinator}: can carry the same execution as agent one, but needs to have the ability to interpret 
+Admin chat messages, deriving tasks, rules and questions.
 \end{itemize}
-On top of this, PDDL planning is used as an additional tool to solve complex situations.
+PDDL planning is used as an additional tool to solve complex situations.
 
 All the code and the instuctions to run the agents can be found in the GitHub repository:\\ 
 \url{https://github.com/ale-bena/asa-autobots.git}
@@ -25,6 +25,7 @@ Both agents connect to the socket via DjsConnect() and they receive the initial 
 This last consists in the static grid map, containing width, height and the tiles, which are parsed via an enum:
 
 \noindent
+{\small
 \begin{minipage}[t]{0.5\textwidth}
 \begin{itemize}
     \item WALL
@@ -39,15 +40,13 @@ This last consists in the static grid map, containing width, height and the tile
     \item ARROW\_UP, ARROW\_RIGHT,\\ARROW\_DOWN, ARROW\_LEFT
 \end{itemize}
 \end{minipage}
+}
 
 Each agent also recieves their own identity and state (id, name, x, y, score) \texttt{via onYou}, stored in beliefs.me.
 The game parameters, such as observation distance, player capacity, parcel decay interval,
 movement duration are received separately via onConfig and are kept in beliefs.config and used for calibration.
-The most used ones are cached as dedicated fields.
 
 Before the BDI executor begins acting, the two teammates perform a startup handshake to guarantee
 both are online. Each agent's execution loop is gated on a \texttt{synced} flag: while unsynchronized,
 it periodically sends a \texttt{SYNC\_REQ} to its peer; upon receiving one, an agent replies with a
-\texttt{SYNC\_ACK}, and the first acknowledgement received flips \texttt{synced} to true and releases
-the loop. This rendezvous ensures neither agent starts picking or delivering before its partner is
-reachable over P2P.
+\texttt{SYNC\_ACK} and releases the loop.

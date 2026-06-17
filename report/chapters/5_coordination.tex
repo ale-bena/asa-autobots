@@ -47,9 +47,8 @@ families:
         reply more likely to reach the Admin.
   \item \textbf{Contracts:} \texttt{PROPOSE\_CONTRACT}, \texttt{ACCEPT\_CONTRACT},
         \texttt{CLOSE\_CONTRACT} for the propose/accept/close lifecycle, plus
-        \texttt{SIGNAL\_READY} and \texttt{RELEASE\_CARGO} as the status transitions
-        inside the hand-off and relay choreography: \texttt{SIGNAL\_READY} announces
-        that an agent has dropped its cargo and stepped aside so the partner may
+        \texttt{SIGNAL\_READY} and \texttt{RELEASE\_CARGO} as the main status transitions: 
+        \texttt{SIGNAL\_READY} announces that an agent has dropped its cargo and stepped aside so the partner may
         collect it, and \texttt{RELEASE\_CARGO} marks the cargo as released for the
         partner to take.
 \end{itemize}
@@ -76,20 +75,13 @@ cooperation patterns are built on this handshake.
   \item \textbf{Meet-and-wait} (\texttt{RENDEZVOUS}, and \texttt{CLEARING} as a
         special case): both agents converge within a radius of a tile and pause. We
         decided to model ``clear this gate'' as a rendezvous rather than a separate
-        mechanism, because mechanically it is the same act, bring an agent to a point
-        and hold, and collapsing the two keeps the executor simple.
+        mechanism, because mechanically it is the same act, bring an agent to a point and hold.
   \item \textbf{Hand-off} (\texttt{HANDOFF}): one agent carries its cargo to a shared
         tile, drops it, and steps aside so the other can collect it. This exists for
         the case where the carrier cannot reach the delivery zone but its partner can.
   \item \textbf{Relay} (\texttt{RELAY}): a persistent contract in which a designated
-        courier repeatedly farms parcels and drops them, while the partner delivers
-        them. The decision driving this pattern is strategic: the game awards a bonus
-        when a parcel is picked up by one agent and delivered by another, and the
-        relay is how the team deliberately manufactures that situation. A consequence
-        we had to handle explicitly is the choice of drop tile. It is placed
-        \emph{adjacent to} the best delivery zone but never \emph{on} it, because a
-        courier putting a parcel down on a delivery tile would score the delivery
-        itself and so cancel the very bonus the relay is meant to earn.
+        courier repeatedly collects parcels and brings them to the partner which has the duty to 
+        deliver them.
 \end{itemize}
 
 Blocking commands wait for confirmation before the coordinator proceeds: a directed

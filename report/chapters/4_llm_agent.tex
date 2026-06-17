@@ -103,7 +103,7 @@ check. Any expression, whether a reward value or a logical condition, must be re
 through the arithmetic tool rather than computed by the model itself. World- or
 rule-changing actions (movement, variable setting, cooperation proposals) are
 reward-gated: they are issued only once the arithmetic evaluation has confirmed a
-strictly positive reward for the current prompt. Once confirmed, the gate is sticky
+strictly positive reward for the current prompt. Once confirmed, the gate holds
 for the rest of that prompt, so later numeric evaluations such as computing
 coordinates do not re-lock it.
 

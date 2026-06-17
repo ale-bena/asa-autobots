@@ -3,9 +3,7 @@
 
 The BDI loop is complemented by a symbolic planning layer reserved for one
 sub-problem: clearing a pushable crate that blocks a corridor. PDDL (Planning Domain Definition Language) 
-is an exact symbolic planner, useless for reward economics but ideal for the discrete, combinatorial
-question ``what sequence of moves and pushes relocates this crate out of the way?'',
-where an ad-hoc heuristic would be brittle.
+is an exact symbolic planner, useful for planning out a sequence where moving crate is involved.
 
 \section{Role and scope}
 \label{sec:role_scope}
@@ -18,18 +16,12 @@ guaranteeing a correct plan where local heuristics fail. \\
 
 %Restricting PDDL to occasional obstacle resolution keeps
 %it off the main loop while still guaranteeing a correct plan where local heuristics fail.
-The planner is reached through the \texttt{pddl-client} interface. For testing and
-development we point it at a \emph{local} service on \texttt{http://localhost:5001}
-(set via the \texttt{PAAS\_HOST} variable) rather than the public hosted endpoint, for
-performance: the online solver takes \SIrange{1}{3}{\second} per query plus network
-latency, whereas a local instance answers far faster. Since crate clearing suspends the
-agent's active plan, cutting that latency directly shortens the time it stands idle
-before an obstacle.
+The planner is reached through the \texttt{pddl-client} interface. To maximize performance 
+we decided to locally host the PDDL solver on \texttt{http://localhost:5001}.
 
 \section{The domain}
 \label{sec:domain}
-The domain, \texttt{deliveroo-crates}, is a compact STRIPS(STanford Research Institute Problem Solver) 
-model with two families of actions:
+The domain is comprised of two families of actions:
 
 \begin{itemize}
   \item \textbf{Movement} (\texttt{move-right/left/up/down}): the agent moves to
@@ -37,18 +29,18 @@ model with two families of actions:
         meaning it is currently known to be free of crates and other agents.
   \item \textbf{Pushing} (\texttt{push-right/left/up/down}): when the agent, a
         crate, and a destination tile are aligned in the same direction, the agent
-        advances onto the crate's tile and push the crate one step forward in a clear and allowed direction(crate tile, crate-move-capable flag).
-        The effects flip the clear predicates accordingly.
+        advances onto the crate's tile and push the crate one step forward in a clear 
+        and allowed direction(crate tile, crate-move-capable flag). Clear predicates are
+        adjusted accordingly.
 \end{itemize}
 
 Directionality is encoded as explicit adjacency predicates
 (right/left/up/down) rather than coordinates, so the planner reasons over
-a symbolic graph.  Because these predicates are emitted only when the move-legality check passes, the
-one-way gate rules are respected automatically.
+a symbolic graph.
 
 \section{The problem}
 \label{sec:problem}
-Each time a crate must be cleared, a fresh problem is compiled from the agent's
+Each time a crate is blocking a path, a fresh problem is compiled from the agent's
 current beliefs. The compiler scans the walkable tiles and produces four kinds of
 facts:
 
@@ -64,24 +56,22 @@ facts:
         crate, each as a distinct object.
 \end{itemize}
 
-A design choice that has been applied is that only \emph{physical} obstacles mark a tile
-as non-clear. \emph{Transient} goal blocks, such as a delivery zone that is
-momentarily unreachable, are left out, because including them would label otherwise
-reachable tiles as blocked and could lead the planner to wrongly conclude that no
-solution exists.
+Only \emph{physical} obstacles mark a tile as non-clear, \emph{Transient} goal blocks, 
+such as a delivery zone that is momentarily unreachable, are left out, because 
+including them would label otherwise reachable tiles as blocked and could lead the 
+planner to wrongly conclude that no solution exists.
 
-The goal is a single fact: the blocking crate relocated onto a chosen clearance
-tile, that is, an empty crate-capable tile out of the agent's way. The plan the
+The goal is a single fact: the blocking crate is relocated onto a chosen clear
+tile, that is, an empty crate-capable tile. The plan the
 solver returns, a sequence of moves and pushes, is then translated back into grid
-steps and handed to the executor as an interruptible plan.
+steps and handed to the executor as a plan.
 
-\section{Focus on crates and the tiered strategy}
+\section{Crates and strategy}
 \label{sec:tiered-strategy}
-Crates are the only dynamic, \emph{relocatable} obstacle in the Deliveroo game, which is why
+Crates are a dynamic, \emph{relocatable} obstacle in the Deliveroo game, which is why
 they receive dedicated planning. The agent first picks a sensible destination for
 the blocking crate: a nearby clear, crate-capable tile, reachable via a push whose
-``push-from'' side the agent can actually stand on (found by a short breadth-first
-search). Resolution then proceeds in tiers, cheapest first:
+``push-from'' side the agent can actually stand on. Resolution then proceeds in tiers, cheapest first:
 
 \begin{center}
 \begin{tikzpicture}[
@@ -91,30 +81,30 @@ search). Resolution then proceeds in tiers, cheapest first:
   >={Stealth[round]}
 ]
   \node[box] (blocked)            {A* path blocked by crate};
-  \node[box, below=of blocked]    (pick)     {pick destination tile};
+  \node[box, below=of blocked]    (reach)    {reachable ignoring\\pushable crates?};
+  \node[box, below=of reach]      (pick)     {pick destination tile};
   \node[box, below=of pick]       (local)    {local push solver};
   \node[box, below=of local]      (pddl)     {PDDL solver @ :5001};
-  \node[box, below=of pddl]       (cooldown) {record cooldown + block goal};
+  \node[box, below=of pddl]       (cooldown) {record cooldown};
 
-  \node[term, right=of pick]      (blockgoal) {block goal\\temporarily};
+  \node[term, right=of reach]     (blockgoal) {block goal\\temporarily};
   \node[term, right=of local]     (execpush)  {execute push};
   \node[term, right=of pddl]      (execplan)  {execute plan};
 
-  \draw[->] (blocked)  -- (pick);
+  \draw[->] (blocked)  -- (reach);
+  \draw[->] (reach)    -- node[left,  font=\footnotesize]{yes}     (pick);
+  \draw[->] (reach)    -- node[above, font=\footnotesize]{no}      (blockgoal);
   \draw[->] (pick)     -- (local);
   \draw[->] (local)    -- node[left,  font=\footnotesize]{fails}   (pddl);
-  \draw[->] (pddl)     -- node[left,  font=\footnotesize]{fails}   (cooldown);
-  \draw[->] (pick)     -- node[above, font=\footnotesize]{none}    (blockgoal);
   \draw[->] (local)    -- node[above, font=\footnotesize]{success} (execpush);
+  \draw[->] (pddl)     -- node[left,  font=\footnotesize]{fails}   (cooldown);
   \draw[->] (pddl)     -- node[above, font=\footnotesize]{success} (execplan);
 \end{tikzpicture}
 \end{center}
 
-A purely local, single-push computation is tried first because it is instantaneous
-and covers the common case where the crate is bypassable using and adjacent tile.
-When that fails, typically because the push
-requires manoeuvring around further crates, the agent falls back to the
-PDDL solver, which can chain multiple pushes and moves. Failed solves are recorded
-with a 30\,s cooldown so the agent does not repeatedly hammer the planner on an
-unsolvable blockage; in that case the blocked target is shelved temporarily and the
-deliberation layer simply chooses something else to do and so picks a different goal.
+To manouvre around multiple crates we rely on the PDDL solver, which can chain multiple pushes and moves. 
+Failed solves are recorded with a 1\,s cooldown so the agent does not repeatedly hammer 
+the planner on the same blockage. A crate whose solve keeps failing is then treated as a wall.
+ 
+%in that case the blocked target is shelved temporarily and the
+%deliberation layer simply chooses something else to do and so picks a different goal.
