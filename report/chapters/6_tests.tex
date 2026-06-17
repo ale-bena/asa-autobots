@@ -1,9 +1,9 @@
 \chapter{Tests}
 \label{ch:tests}
-Both the agent have been tested locally during the building process continously,
+Both agents have been tested locally during the building process continuously,
 to find bugs, test different configurations, and improve them. 
 
-Extra attention was dedicated on checking the structure of the messages and actions proposed by the LLM,
+Extra attention was dedicated to checking the structure of the messages and actions proposed by the LLM,
 since we cannot blindly rely on a non-deterministic way of extracting intentions from the Admin prompt.
 
 To facilitate testing on multiple scenarios we decided to build a flexible map-builder tool 
@@ -18,9 +18,9 @@ comply with the tests.
 
 \subsection{Considerations}
 \label{sub:res_and_lim}
-We have found creating an appropriate, logically sound, system prompt for the
-LLM not trivia, as it frequently tried to vier off the guardrails.
+We have found creating an appropriate, logically sound system prompt for the LLM not trivial, 
+as it frequently tried to veer off the guardrails.
 
-Some known limitations we found were: the occasional inability for the LLM to reason about associating 
+Some known limitations we found were: the occasional inability of the LLM to reason about associating 
 multiple rewards to different tasks, resulting in missed opportunities and unhandled requests; not performing
 the actions in the same sequential order as they were provided, leading to out of order answers.

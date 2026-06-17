@@ -3,7 +3,7 @@
 
 The BDI loop is complemented by a symbolic planning layer reserved for one
 sub-problem: clearing a pushable crate that blocks a corridor. PDDL (Planning Domain Definition Language) 
-is an exact symbolic planner, useful for planning out a sequence where moving crate is involved.
+is an exact symbolic planner, useful for planning out a sequence where moving crates is involved.
 
 \section{Role and scope}
 \label{sec:role_scope}
@@ -30,7 +30,7 @@ The domain is comprised of two families of actions:
   \item \textbf{Pushing} (\texttt{push-right/left/up/down}): when the agent, a
         crate, and a destination tile are aligned in the same direction, the agent
         advances onto the crate's tile and push the crate one step forward in a clear 
-        and allowed direction(crate tile, crate-move-capable flag). Clear predicates are
+        and allowed direction (crate tile, crate-move-capable flag). Clear predicates are
         adjusted accordingly.
 \end{itemize}
 
@@ -56,7 +56,7 @@ facts:
         crate, each as a distinct object.
 \end{itemize}
 
-Only \emph{physical} obstacles mark a tile as non-clear, \emph{Transient} goal blocks, 
+Only \emph{physical} obstacles mark a tile as non-clear. \emph{Transient} goal blocks, 
 such as a delivery zone that is momentarily unreachable, are left out, because 
 including them would label otherwise reachable tiles as blocked and could lead the 
 planner to wrongly conclude that no solution exists.
@@ -102,7 +102,7 @@ the blocking crate: a nearby clear, crate-capable tile, reachable via a push who
 \end{tikzpicture}
 \end{center}
 
-To manouvre around multiple crates we rely on the PDDL solver, which can chain multiple pushes and moves. 
+To maneuver around multiple crates we rely on the PDDL solver, which can chain multiple pushes and moves. 
 Failed solves are recorded with a 1\,s cooldown so the agent does not repeatedly hammer 
 the planner on the same blockage. A crate whose solve keeps failing is then treated as a wall.
  

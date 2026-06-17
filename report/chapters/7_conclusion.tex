@@ -1,5 +1,17 @@
 \chapter{Conclusion}
 \label{ch:conclusion}
 
-With this project we were able to achieve 
-Summarize the main contributions and discuss future developments.
+Over this project we designed and implemented a complete two-agent team for the Deliveroo environment, 
+building both agents on a shared Belief–Desire–Intention core and layering several decision mechanisms on top of it.\\ 
+On the executor side we engineered an expiration-aware, utility-based goal selection, paired with a delivery optimizer 
+that chooses which subset of cargo to drop to maximize the points actually scored.\\ 
+We integrated a flexible policy-rule system through which the coordinator reshapes at runtime 
+based on the parsed messages provided by the Admin, and a peer-to-peer layer carrying continuous state updates and contract protocols 
+that lets the agents cooperate without a central controller.\\ 
+The cognitive coordinator itself was built around a strict, schema-validated chain-of-thought 
+loop with feasibility-gated actions and a tool registry, so natural-language instructions become safe 
+and verifiable commands. \\
+We restricted PDDL planning to crate-clearing, guaranteeing correct resolution of complex blockages without 
+slowing the main loop.\\
+Finally we validated the whole system with unit and coverage tests alongside a custom map-builder 
+for different scenario design.

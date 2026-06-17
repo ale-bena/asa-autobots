@@ -22,7 +22,7 @@ All the code and the instuctions to run the agents can be found in the GitHub re
 \section{Initial state}
 \label{sec:init_state}
 Both agents connect to the socket via DjsConnect() and they receive the initial state of the game.
-This last consists in the static grid map, containing width, height and the tiles, which are parsed via an enum:
+The latter consists of the static grid map, containing width, height and the tiles, which are parsed via an enum:
 
 \noindent
 {\small
@@ -42,7 +42,7 @@ This last consists in the static grid map, containing width, height and the tile
 \end{minipage}
 }
 
-Each agent also recieves their own identity and state (id, name, x, y, score) \texttt{via onYou}, stored in beliefs.me.
+Each agent also receives their own identity and state (id, name, x, y, score) \texttt{via onYou}, stored in beliefs.me.
 The game parameters, such as observation distance, player capacity, parcel decay interval,
 movement duration are received separately via onConfig and are kept in beliefs.config and used for calibration.
 
