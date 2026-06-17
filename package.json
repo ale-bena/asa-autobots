@@ -16,7 +16,7 @@
     "whatwg-url": "^14.0.0",
     "tr46": "^4.0.0"
   },
-   "private": true,
+  "private": true,
   "scripts": {
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
@@ -34,7 +34,10 @@
     "url": "git+https://github.com/ale-bena/asa-autobots.git"
   },
   "keywords": [],
-  "author": "",
+  "authors": [
+    "Alessandro Benassi",
+    "Filippo Lollato"
+  ],
   "license": "ISC",
   "type": "module",
   "bugs": {

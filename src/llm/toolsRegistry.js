@@ -92,80 +92,6 @@ async function waitUntilReached(agentId, targetX, targetY, coordinator, sendTime
 }
 
 /**
- * Blocking wait until the agent has successfully picked up the specified parcel or timed out.
- * NOTE: Currently preserved as a utility function for direct physical action coordination
- * (e.g. for future/legacy physical coordination support or test assertions).
- */
-async function waitUntilPickedUp(agentId, parcelId, coordinator) {
-    const beliefs = coordinator.beliefs;
-    const timeoutMs = 8000; // 8 seconds
-    const startTime = Date.now();
-
-    console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to pick up parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
-
-    while (Date.now() - startTime < timeoutMs) {
-        if (agentId === beliefs.me.id) {
-            if (beliefs.carried.includes(parcelId)) {
-                console.log(`[LLM Tool Wait] Coordinator successfully picked up parcel ${parcelId}.`);
-                return { success: true, message: `Agent picked up parcel ${parcelId}` };
-            }
-            if (!beliefs.activeContracts.has('admin_pickup')) {
-                console.log(`[LLM Tool Wait] admin_pickup contract cleared for coordinator.`);
-                break;
-            }
-        } else {
-            const peer = beliefs.peers.get(agentId);
-            if (peer && peer.carried && peer.carried.includes(parcelId)) {
-                console.log(`[LLM Tool Wait] Agent ${agentId} successfully picked up parcel ${parcelId}.`);
-                return { success: true, message: `Agent ${agentId} picked up parcel ${parcelId}` };
-            }
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.warn(`[LLM Tool Wait] Timeout/failure waiting for agent ${agentId} to pick up parcel ${parcelId}.`);
-    return { success: false, error: `Agent failed to pick up parcel ${parcelId} within timeout.` };
-}
-
-/**
- * Blocking wait until the agent has successfully delivered/dropped the specified parcel or timed out.
- * NOTE: Preserved as part of the LLM tool wait-loop utility suite for future physical tool
- * coordination extensions or test suite assertions.
- */
-async function waitUntilDelivered(agentId, parcelId, coordinator) {
-    const beliefs = coordinator.beliefs;
-    const timeoutMs = 5000; // 5 seconds
-    const startTime = Date.now();
-
-    console.log(`[LLM Tool Wait] Waiting for agent ${agentId} to deliver parcel ${parcelId}. Timeout: ${timeoutMs / 1000}s`);
-
-    while (Date.now() - startTime < timeoutMs) {
-        if (agentId === beliefs.me.id) {
-            if (!beliefs.carried.includes(parcelId)) {
-                console.log(`[LLM Tool Wait] Coordinator successfully delivered parcel ${parcelId}.`);
-                return { success: true, message: `Agent delivered parcel ${parcelId}` };
-            }
-            if (!beliefs.activeContracts.has('admin_deliver')) {
-                console.log(`[LLM Tool Wait] admin_deliver contract cleared for coordinator.`);
-                break;
-            }
-        } else {
-            const peer = beliefs.peers.get(agentId);
-            if (peer) {
-                if (peer.carried && !peer.carried.includes(parcelId)) {
-                    console.log(`[LLM Tool Wait] Agent ${agentId} successfully delivered parcel ${parcelId}.`);
-                    return { success: true, message: `Agent ${agentId} delivered parcel ${parcelId}` };
-                }
-            }
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.warn(`[LLM Tool Wait] Timeout/failure waiting for agent ${agentId} to deliver parcel ${parcelId}.`);
-    return { success: false, error: `Agent failed to deliver parcel ${parcelId} within timeout.` };
-}
-
-/**
  * Registry of tool objects.
  * Each tool object contains description, getArgsSchema function, isAction flag, and its handler function.
  */
@@ -538,8 +464,8 @@ export const TOOLS_REGISTRY = {
                     });
             }
 
-            // CRITICAL: Automatically close all active cooperative contracts to release agents from wait loops
-            for (const [coopId, contract] of coordinator.beliefs.activeContracts.entries()) {
+            // Automatically close all active cooperative contracts to release agents from wait loops
+            for (const [coopId, _] of coordinator.beliefs.activeContracts.entries()) {
                 if (coopId === 'admin_move') continue;
                 if (resumeId === 'all' || resumeId === coordinator.getPeerAgentId()) {
                     await coordinator.P2P(

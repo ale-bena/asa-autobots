@@ -43,15 +43,6 @@ let _OPENAI_CONFIG = {
 };
 
 // /**
-//  * External PDDL solver API configuration.
-//  * Supports local and remote PAAS solver instances.
-//  * @type {{solverUrl: string}}
-//  */
-let _SOLVER_CONFIG = {
-    solverUrl: process.env.PAAS_HOST || 'http://localhost:5001'
-};
-
-// /**
 //  * Cost penalty values used during pathfinding.
 //  * @type {{AVOID_TILE_PENALTY: number, CRATE_TILE_PENALTY: number}}
 //  */
@@ -81,7 +72,6 @@ export const SOCKET_HOST = _SOCKET_HOST;
 export const AGENT_IDS = _AGENT_IDS;
 export const AGENT_TOKENS = _AGENT_TOKENS;
 export const OPENAI_CONFIG = _OPENAI_CONFIG;
-const SOLVER_CONFIG = _SOLVER_CONFIG;
 export const PATHFINDING_CONFIG = _PATHFINDING_CONFIG;
 export const LOGGER_CONFIG = _LOGGER_CONFIG;
 
@@ -96,7 +86,6 @@ export function __updateTestEnvironment(env = {}) {
     if (env.LITELLM_BASE_URL !== undefined) _OPENAI_CONFIG.baseURL = env.LITELLM_BASE_URL || 'https://llm.bears.disi.unitn.it/v1';
     if (env.LITELLM_API_KEY !== undefined) _OPENAI_CONFIG.apiKey = env.LITELLM_API_KEY || 'sk-5SezoNnWTgMf-3KuMRJYQw';
     if (env.LLM_MODEL !== undefined) _OPENAI_CONFIG.model = env.LLM_MODEL || 'llama-3.3-70b-lmstudio';
-    if (env.PAAS_HOST !== undefined) _SOLVER_CONFIG.solverUrl = env.PAAS_HOST || 'http://localhost:5001';
 
     if (env.LOG_TOOL_CALLS !== undefined) _LOGGER_CONFIG.enableToolCalls = env.LOG_TOOL_CALLS !== 'false';
     if (env.LOG_MOVEMENT !== undefined) _LOGGER_CONFIG.enableMovement = env.LOG_MOVEMENT !== 'false';

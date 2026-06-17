@@ -7,7 +7,7 @@
 
 import OpenAI from 'openai';
 import { OPENAI_CONFIG, AGENT_IDS } from '../config/config.js';
-import { SYSTEM_PROMPT } from './prompts.js';
+import { SYSTEM_PROMPT } from './system_prompt.js';
 import { TOOLS_REGISTRY } from './toolsRegistry.js';
 import { logger } from '../utils/logger.js';
 

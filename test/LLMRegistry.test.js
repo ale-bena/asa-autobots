@@ -18,7 +18,7 @@
 
 import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { SYSTEM_PROMPT } from '../src/llm/prompts.js';
+import { SYSTEM_PROMPT } from '../src/llm/system_prompt.js';
 import { TOOLS_REGISTRY, generateToolsPrompt } from '../src/llm/toolsRegistry.js';
 import { AGENT_IDS } from '../src/config/config.js';
 import { MapRepresentation } from '../src/mapping/MapRepresentation.js';
@@ -239,7 +239,7 @@ describe('LLM prompts and toolsRegistry tests', () => {
         };
         const coordinator = {
             beliefs,
-            P2P: async () => {},
+            P2P: async () => { },
             getPeerAgentId: () => AGENT_IDS.LLM_AGENT_ID
         };
 
@@ -462,7 +462,7 @@ describe('LLM prompts and toolsRegistry tests', () => {
         };
         const coordinator = {
             beliefs,
-            P2P: async () => {},
+            P2P: async () => { },
             getPeerAgentId: () => AGENT_IDS.LLM_AGENT_ID
         };
 

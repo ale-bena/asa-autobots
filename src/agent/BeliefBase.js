@@ -78,7 +78,7 @@ export class BeliefBase {
 
         /**
          * Active policy guidelines parsed from coordinator agent.
-         * @type {{avoidTiles: Array<string>, minRewardThreshold: number, maxRewardLimit: number, requiredStackSize: number|null, multiplierRules: Array<Object>, bonusRules: Array<Object>}}
+         * @type {{avoidTiles: Array<string>, minRewardThreshold: number, maxRewardLimit: number, requiredStackSize: number|null, maxStackSize: number|null}}
          */
         this.policyRules = {
             avoidTiles: [],
@@ -148,7 +148,6 @@ export class BeliefBase {
     revise(sensorPayload) {
         if (!sensorPayload) return;
 
-        // 1. Revise Self info
         // 1. Revise Self info
         if (sensorPayload.me) {
             Object.assign(this.me, sensorPayload.me);
@@ -335,7 +334,7 @@ export class BeliefBase {
                 continue;
             }
 
-            // No crate at this coordinate in our beliefs. Try to associate with closest unmatched out-of-view crate
+            // No crate at this coordinate in our beliefs, we'll try to associate it with the closest unmatched out-of-view crate
             let closestCrate = null;
             let minDistance = Infinity;
 
@@ -481,8 +480,8 @@ export class BeliefBase {
         for (const [id, parcel] of this.parcels.entries()) {
             if (sensedParcelMap.has(id)) continue;
 
-            // If we are carrying this parcel, do not delete it!
-            // Instead, update its position to our current position,
+            // If we are carrying this parcel, we don't want to delete it.
+            // Instead, we update its position to our current position,
             // and decay its reward based on elapsed time.
             if (this.carried.includes(id)) {
                 parcel.x = this.me.x;
@@ -600,42 +599,6 @@ export class BeliefBase {
                     }
                 }
             }
-
-            // 3. Extract coordinates from condition if it has a penalty
-            if (r.condition) {
-                const isPenalty = (r.multiplier !== undefined && r.multiplier !== null && r.multiplier < 1) || 
-                                  (r.bonus !== undefined && r.bonus !== null && r.bonus < 0);
-                if (isPenalty) {
-                    const coord = extractCoordinatesFromCondition(r.condition);
-                    if (coord && !cumulativeAvoidTiles.includes(coord)) {
-                        cumulativeAvoidTiles.push(coord);
-                    }
-                }
-            }
-
-            // 4. Extract coordinates from bonusRules
-            if (r.bonusRules && Array.isArray(r.bonusRules)) {
-                for (const br of r.bonusRules) {
-                    if (br && br.bonus !== undefined && br.bonus !== null && br.bonus < 0 && br.condition) {
-                        const coord = extractCoordinatesFromCondition(br.condition);
-                        if (coord && !cumulativeAvoidTiles.includes(coord)) {
-                            cumulativeAvoidTiles.push(coord);
-                        }
-                    }
-                }
-            }
-
-            // 5. Extract coordinates from multiplierRules
-            if (r.multiplierRules && Array.isArray(r.multiplierRules)) {
-                for (const mr of r.multiplierRules) {
-                    if (mr && mr.multiplier !== undefined && mr.multiplier !== null && mr.multiplier < 1 && mr.condition) {
-                        const coord = extractCoordinatesFromCondition(mr.condition);
-                        if (coord && !cumulativeAvoidTiles.includes(coord)) {
-                            cumulativeAvoidTiles.push(coord);
-                        }
-                    }
-                }
-            }
             
             // Only extract global limits if they apply to all tiles
             if (r.all_tiles) {
@@ -737,28 +700,4 @@ export class BeliefBase {
             this.policyRules.maxStackSize = extractedMax;
         }
     }
-}
-
-/**
- * Extracts "x,y" coordinates from an AST condition string like "x == 2 && y == 3".
- * @param {string} condition - The condition string.
- * @returns {string|null} The coordinates string, or null if not parsed.
- */
-function extractCoordinatesFromCondition(condition) {
-    if (typeof condition !== 'string') return null;
-    const clean = condition.replace(/[\(\)]/g, '').trim();
-    
-    // Pattern 1: x == <num> && y == <num>
-    const match1 = clean.match(/x\s*==?\s*(\d+)\s*&&\s*y\s*==?\s*(\d+)/i);
-    if (match1) {
-        return `${match1[1]},${match1[2]}`;
-    }
-    
-    // Pattern 2: y == <num> && x == <num>
-    const match2 = clean.match(/y\s*==?\s*(\d+)\s*&&\s*x\s*==?\s*(\d+)/i);
-    if (match2) {
-        return `${match2[2]},${match2[1]}`;
-    }
-    
-    return null;
 }
