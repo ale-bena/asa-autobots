@@ -28,7 +28,7 @@ when they are converging on the same tile, so one can yield or re-deliberate tow
 different target without any explicit negotiation or locking.
 
 \section{Message Structure}
-
+\label{sub:msg-structure}
 Every cooperative message is a JSON object with a \texttt{type} field that selects a
 handler; the remaining fields are the payload. The vocabulary groups into three
 families:
@@ -63,7 +63,7 @@ writes shared memory. The executor thus needs no special command interpreter, si
 coordination and perception update the same beliefs through the same revision path.
 
 \section{Coordination Workflow}
-
+\label{sec:coord-workflow}
 \paragraph{Contract handshake.} Multi-agent manoeuvres are negotiated as
 \emph{contracts} rather than hard-coded. One agent proposes, the other validates that 
 the target tile is valid and walkable and accepts, both mark it active, and either may cancel it

@@ -76,7 +76,7 @@ solver returns, a sequence of moves and pushes, is then translated back into gri
 steps and handed to the executor as an interruptible plan.
 
 \section{Focus on crates and the tiered strategy}
-
+\label{sec:tiered-strategy}
 Crates are the only dynamic, \emph{relocatable} obstacle in the Deliveroo game, which is why
 they receive dedicated planning. The agent first picks a sensible destination for
 the blocking crate: a nearby clear, crate-capable tile, reachable via a push whose

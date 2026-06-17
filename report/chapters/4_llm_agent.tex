@@ -32,7 +32,7 @@ models available, the one selected is \texttt{llama-3.3-70b-lmstudio}.
 \end{center}
 
 \section{The reasoning loop}
-
+\label{sec:reasoninig-loop}
 A prompt triggers an iterative, single-step reasoning loop driven by a language
 model under a fixed system prompt. The model returns one validated JSON
 object per turn, of exactly one of three kinds:
@@ -54,6 +54,7 @@ answers (\ref{sub:res_and_lim}).
 
 
 \section{Prompt construction}
+\label{sec:prompt}
 The system prompt is fixed for the whole run and organised into clearly delimited
 sections. A \emph{role} description frames the model as the team's reasoning brain
 and lists the agent identifiers. A \emph{definitions} block gives precise meanings
@@ -85,7 +86,7 @@ so the descriptions the model reads can never drift from the tools that actually
 
 
 \section{Message filtering and history}
-
+\label{sec:filtering-history}
 Two filters precede the reasoning loop, both enforced in code rather than left to the
 prompt. First, only messages originating from the Admin are treated as candidate
 instructions; messages from any other agent are routed to the P2P handler instead.
@@ -96,7 +97,7 @@ only when needed and in filtered form, namely past questions and answers only, n
 the intermediate reasoning or tool calls, so the prompt stays compact.
 
 \section{Feasibility gating}
-
+\label{sec:feasibility}
 The central reasoning discipline is that effectful actions are gated on a feasibility
 check. Any expression, whether a reward value or a logical condition, must be resolved
 through the arithmetic tool rather than computed by the model itself. World- or
@@ -114,7 +115,7 @@ context and history lookup, contract cancellation) are likewise exempt, as they 
 no reward of their own.
 
 \section{Tools}
-
+\label{sec:tools}
 Tools fall into two groups. \emph{Read} tools retrieve facts without side effects:
 arithmetic evaluation, the local context snapshot (own and peer state, parcels, map
 extremes), and conversation history. \emph{Act} tools change behaviour: directing an

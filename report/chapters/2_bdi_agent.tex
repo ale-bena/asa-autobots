@@ -1,5 +1,5 @@
 \chapter{BDI Agent}
-
+\label(ch:bdi)
 Both agents are built on the same Belief--Desire--Intention reasoning core: each
 constructs a \texttt{BeliefBase} and runs an \texttt{IntentionEngine}. The physical
 executor uses it directly to move, pick up and deliver; the LLM coordinator
@@ -41,7 +41,7 @@ of the schema below at a tick.
 %\]
 
 \section{Sensing and Belief Revision}
-
+\label{sec:sensing-beliefs}
 Sensing happens at each movement and whenever something new enters the observation 
 zone. A raw perception frame from the server reports the agent's own state, the
 visible map configuration, and the nearby agents, crates and parcels, but only
@@ -70,7 +70,7 @@ beliefs, while an \texttt{onMsg} handler processes Admin prompts (for the LLM ag
 and the P2P coordination messages exchanged between the two agents.
 
 \section{Navigation Graph (Adjacency)}
-
+\label{sec:adjacency}
 There is no adjacency map sent by the server: the initial state (\texttt{onMap})
 only provides a flat list of tiles, each with $x$, $y$ and a type. Adjacency, which is the
 edges of the navigation graph describing which tile-to-tile moves are legal, is
@@ -89,7 +89,7 @@ is precomputed; the graph is implicit and evaluated lazily. Pathfinding
 \texttt{getNeighbors()} during the search, automatically respecting walls and gates.
 
 \section{Desires and Goal Selection}
-
+\label{sec:desires-goals}
 Deliberation is throttled to stay stable and avoid redundant pathfinding: goal
 re-evaluation runs every \texttt{GOAL\_EVAL\_INTERVAL} (12 ticks, about 200ms), but
 fires immediately when there is no active plan or when the carried inventory
@@ -125,7 +125,7 @@ positively, deliberation degrades gracefully: it delivers what is held, anchors 
 relay tile, patrols the parcel spawn zones, and finally wanders.
 
 \subsection{Delivery Optimization}
-
+\label{sub:delivery-opt}
 Both the utility estimates above and the delivery step itself defer to a dedicated
 optimizer \\
 (\texttt{DeliveryOptimizer.js}): on reaching a delivery tile the agent rarely
@@ -145,7 +145,7 @@ and a waiting penalty; parcels that can never yield positive value are discarded
 same routine is reused during goal selection, keeping valuation and execution consistent.
 
 \section{Intention Commitment and Plans}
-
+\label{sec:intention-plans}
 The agent is deliberately reluctant to abandon an intention: a newly selected goal
 replaces the running one only when \texttt{shouldPreemptActivePlan(...)}
 (\texttt{PreemptionManager.js}) judges the switch worthwhile, which prevents
@@ -162,7 +162,7 @@ delivery and the delivery resumes afterwards. Suspended plans that have gone sta
 their target disappeared or became obsolete, are discarded rather than resumed.
 
 \section{Execution}
-
+\label{sec:exec}
 Each cycle advances the active plan by one step: (\texttt{move},
 \texttt{pickup}, \texttt{putdown}, \texttt{wait}, \texttt{say}), handed to
 \texttt{dispatchAction} (\texttt{ActionDispatcher.js}) which emits it on the socket.
