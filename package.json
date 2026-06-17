@@ -18,8 +18,6 @@
   },
    "private": true,
   "scripts": {
-    "start": "node scripts/serve.js",
-    "doc": "node scripts/serve.js",
     "bdi": "node run_bdi.js",
     "llm": "node run_llm.js",
     "benchmark": "node src/benchmark/run_benchmark.js",

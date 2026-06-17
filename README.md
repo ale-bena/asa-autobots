@@ -109,15 +109,3 @@ Execute the agent pipelines and evaluation benchmarks via the following scripts:
   npm run benchmark
   ```
 
----
-
-## Documentation Hub
-
-An interactive single-page application (SPA) documentation hub is provided inside the `docs/` directory.
-
-### Local Documentation Server
-Launch a lightweight documentation server:
-```bash
-npm run doc
-```
-Access the server at **[http://localhost:3000](http://localhost:3000)**.
